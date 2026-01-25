@@ -179,6 +179,23 @@ let wordPopoverInput = null;
 let wordPopoverSave = null;
 let wordPopoverAnchor = null;
 let wordPopoverEditing = false;
+const swipeState = {
+  active: false,
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+  currentY: 0,
+  pointerId: null,
+  action: null,
+};
+
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
 
 function getSafeAreaInset(side) {
   if (!side) return 0;
@@ -893,7 +910,7 @@ function isClozeCorrect(card, answer) {
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const wrapper = document.createElement("div");
-  wrapper.className = "review-text";
+  wrapper.className = showBack ? "review-text review-text--reveal" : "review-text";
 
   if (card.type === "cloze") {
     const frontSection = document.createElement("div");
@@ -902,6 +919,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.className = "review-label";
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
+    frontText.className = "review-front";
     frontText.innerHTML = renderTextWithWords(card.clozeText || "");
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -922,6 +940,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.className = "review-label";
       backLabel.textContent = "Respuesta";
       const answers = document.createElement("div");
+      answers.className = "review-back";
       answers.textContent = (card.clozeAnswers || []).join(", ") || "-";
       backSection.appendChild(backLabel);
       backSection.appendChild(answers);
@@ -940,6 +959,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.className = "review-label";
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
+    frontText.className = "review-front";
     frontText.innerHTML = renderTextWithWords(card.front || "");
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -952,6 +972,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.className = "review-label";
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
+      backText.className = "review-back";
       backText.innerHTML = renderTextWithWords(card.back || "");
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
@@ -960,6 +981,93 @@ function renderReviewCard(card, showBack = false) {
   }
 
   elements.reviewCard.appendChild(wrapper);
+}
+
+function ensureSwipeOverlay() {
+  let overlay = elements.reviewCard.querySelector(".review-swipe-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "review-swipe-overlay";
+    const label = document.createElement("div");
+    label.className = "review-swipe-label";
+    overlay.appendChild(label);
+    elements.reviewCard.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function updateSwipeOverlay(action, intensity) {
+  const overlay = ensureSwipeOverlay();
+  const label = overlay.querySelector(".review-swipe-label");
+  if (!action || intensity <= 0) {
+    overlay.style.opacity = "0";
+    overlay.style.background = "transparent";
+    label.textContent = "";
+    return;
+  }
+  const capped = Math.min(0.8, intensity);
+  let color = "transparent";
+  let text = "";
+  switch (action) {
+    case "error":
+      color = `rgba(251, 113, 133, ${capped})`;
+      text = "ERROR";
+      break;
+    case "easy":
+      color = `rgba(52, 211, 153, ${capped})`;
+      text = "FÁCIL";
+      break;
+    case "good":
+      color = `rgba(59, 130, 246, ${capped})`;
+      text = "BUENO";
+      break;
+    case "bad":
+      color = `rgba(251, 191, 36, ${capped})`;
+      text = "MALO";
+      break;
+    default:
+      break;
+  }
+  overlay.style.opacity = "1";
+  overlay.style.background = color;
+  label.textContent = text;
+}
+
+function resetSwipeVisuals({ animate = true } = {}) {
+  if (!elements.reviewCard) return;
+  elements.reviewCard.style.transition = animate ? "transform 0.25s ease-out" : "none";
+  elements.reviewCard.style.transform = "translate(0px, 0px) rotate(0deg)";
+  updateSwipeOverlay(null, 0);
+}
+
+function applySwipeVisuals(dx, dy) {
+  const maxRotation = 6;
+  const rotation = Math.max(-maxRotation, Math.min(maxRotation, dx / 20));
+  elements.reviewCard.style.transition = "none";
+  elements.reviewCard.style.transform = `translate(${dx}px, ${dy}px) rotate(${rotation}deg)`;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const intensity = Math.min(1, Math.max(absX, absY) / 180);
+  let action = null;
+  if (absX > absY) {
+    action = dx > 0 ? "easy" : "error";
+  } else {
+    action = dy < 0 ? "good" : "bad";
+  }
+  updateSwipeOverlay(action, intensity);
+}
+
+function resolveSwipeAction(dx, dy) {
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const threshold = 110;
+  if (absX < threshold && absY < threshold) return null;
+  if (absX >= absY) {
+    if (absX < absY * 1.25) return null;
+    return dx > 0 ? "easy" : "error";
+  }
+  if (absY < absX * 1.25) return null;
+  return dy < 0 ? "good" : "bad";
 }
 
 async function buildReviewQueue() {
@@ -1034,8 +1142,30 @@ async function buildReviewQueue() {
     return tagFilter.every((tag) => cardTags.includes(tag));
   });
 
-  state.reviewQueue = filtered;
-  state.currentSessionQueue = filtered.map((card) => card.id);
+  const bucketed = new Map();
+  filtered.forEach((card) => {
+    const bucketId = canonicalizeBucketId(card.srs?.bucket) || "new";
+    if (!bucketed.has(bucketId)) {
+      bucketed.set(bucketId, []);
+    }
+    bucketed.get(bucketId).push(card);
+  });
+
+  const orderedBuckets = bucketPriority.length ? bucketPriority : BUCKET_ORDER;
+  const ordered = [];
+  orderedBuckets.forEach((bucket) => {
+    const bucketCards = bucketed.get(bucket);
+    if (bucketCards?.length) {
+      ordered.push(...shuffle(bucketCards));
+    }
+  });
+  bucketed.forEach((bucketCards, bucket) => {
+    if (orderedBuckets.includes(bucket)) return;
+    ordered.push(...shuffle(bucketCards));
+  });
+
+  state.reviewQueue = ordered;
+  state.currentSessionQueue = ordered.map((card) => card.id);
   state.currentIndex = 0;
 }
 
@@ -1069,6 +1199,7 @@ function showNextReviewCard() {
   state.reviewShowingBack = false;
   elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
   renderReviewCard(card, false);
+  resetSwipeVisuals({ animate: false });
   if (elements.reviewPlayerCounter) {
     elements.reviewPlayerCounter.textContent = `${state.currentIndex + 1}/${total}`;
   }
@@ -1088,15 +1219,6 @@ function revealReviewAnswer() {
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
   elements.flipCard.classList.add("hidden");
-}
-
-function hideReviewAnswer() {
-  const card = state.reviewQueue[state.currentIndex];
-  if (!card) return;
-  renderReviewCard(card, false);
-  state.reviewShowingBack = false;
-  elements.reviewActions.classList.add("hidden");
-  elements.flipCard.classList.remove("hidden");
 }
 
 function exitReviewPlayer() {
@@ -1144,6 +1266,62 @@ async function handleReviewRating(rating) {
   state.currentIndex += 1;
   showNextReviewCard();
   await loadStats();
+}
+
+function handleReviewPointerDown(event) {
+  if (!elements.reviewCard || !state.reviewShowingBack) return;
+  if (elements.screenReviewPlayer?.classList.contains("hidden")) return;
+  if (event.button && event.button !== 0) return;
+  if (wordPopover && !wordPopover.classList.contains("hidden")) return;
+  if (event.target.closest(".word")) return;
+  swipeState.active = true;
+  swipeState.pointerId = event.pointerId;
+  swipeState.startX = event.clientX;
+  swipeState.startY = event.clientY;
+  swipeState.currentX = event.clientX;
+  swipeState.currentY = event.clientY;
+  swipeState.action = null;
+  elements.reviewCard.setPointerCapture(event.pointerId);
+  elements.reviewCard.classList.add("review-card--dragging");
+}
+
+function handleReviewPointerMove(event) {
+  if (!swipeState.active || swipeState.pointerId !== event.pointerId) return;
+  const dx = event.clientX - swipeState.startX;
+  const dy = event.clientY - swipeState.startY;
+  swipeState.currentX = event.clientX;
+  swipeState.currentY = event.clientY;
+  applySwipeVisuals(dx, dy);
+}
+
+function finalizeSwipe(event) {
+  if (!swipeState.active || swipeState.pointerId !== event.pointerId) return;
+  const dx = swipeState.currentX - swipeState.startX;
+  const dy = swipeState.currentY - swipeState.startY;
+  swipeState.active = false;
+  swipeState.pointerId = null;
+  elements.reviewCard.classList.remove("review-card--dragging");
+  const action = resolveSwipeAction(dx, dy);
+  if (!action) {
+    resetSwipeVisuals({ animate: true });
+    return;
+  }
+  swipeState.action = action;
+  const outX = dx === 0 ? (action === "easy" ? 260 : -260) : dx * 1.4;
+  const outY = dy === 0 ? (action === "good" ? -260 : 260) : dy * 1.4;
+  const maxRotation = 6;
+  const rotation = Math.max(-maxRotation, Math.min(maxRotation, outX / 20));
+  elements.reviewCard.style.transition = "transform 0.28s ease-out";
+  elements.reviewCard.style.transform = `translate(${outX}px, ${outY}px) rotate(${rotation}deg)`;
+  updateSwipeOverlay(action, 0.8);
+  elements.reviewCard.addEventListener(
+    "transitionend",
+    () => {
+      resetSwipeVisuals({ animate: false });
+      handleReviewRating(action);
+    },
+    { once: true }
+  );
 }
 
 async function handleImportPreview() {
@@ -1482,21 +1660,17 @@ elements.cancelCard.addEventListener("click", closeCardModal);
 if (elements.reviewCard) {
   elements.reviewCard.addEventListener("click", (event) => {
     const wordEl = event.target.closest(".word");
-    if (wordEl) {
-      event.stopPropagation();
-      const word = wordEl.dataset.word;
-      if (word) {
-        openWordPopover(word, wordEl.getBoundingClientRect());
-      }
-      return;
-    }
-    if (elements.screenReviewPlayer?.classList.contains("hidden")) return;
-    if (state.reviewShowingBack) {
-      hideReviewAnswer();
-    } else {
-      revealReviewAnswer();
+    if (!wordEl) return;
+    event.stopPropagation();
+    const word = wordEl.dataset.word;
+    if (word) {
+      openWordPopover(word, wordEl.getBoundingClientRect());
     }
   });
+  elements.reviewCard.addEventListener("pointerdown", handleReviewPointerDown);
+  elements.reviewCard.addEventListener("pointermove", handleReviewPointerMove);
+  elements.reviewCard.addEventListener("pointerup", finalizeSwipe);
+  elements.reviewCard.addEventListener("pointercancel", finalizeSwipe);
 }
 
 elements.startReview.addEventListener("click", async () => {
@@ -1517,6 +1691,7 @@ elements.startReview.addEventListener("click", async () => {
   if (elements.reviewPlayerFolder) {
     elements.reviewPlayerFolder.textContent = state.reviewFolderName;
   }
+  elements.reviewComplete?.classList.add("hidden");
   setReviewMode(true);
   showNextReviewCard();
 });
@@ -1560,12 +1735,21 @@ elements.exportJson.addEventListener("click", handleExportJson);
 
 elements.resetLocal.addEventListener("click", handleResetLocal);
 
-document.addEventListener("click", (event) => {
-  if (wordPopover && !wordPopover.classList.contains("hidden")) {
-    if (!event.target.closest(".word-popover") && !event.target.closest(".word")) {
-      closeWordPopover();
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (wordPopover && !wordPopover.classList.contains("hidden")) {
+      if (!event.target.closest(".word-popover") && !event.target.closest(".word")) {
+        closeWordPopover();
+        event.stopPropagation();
+        event.preventDefault();
+      }
     }
-  }
+  },
+  { capture: true }
+);
+
+document.addEventListener("click", (event) => {
   if (event.target.closest(".item-menu")) return;
   if (event.target.closest("[data-menu-toggle]")) return;
   closeAllMenus();

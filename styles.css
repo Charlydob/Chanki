@@ -470,6 +470,8 @@ textarea {
   font-size: 18px;
   width: 100%;
   overflow: auto;
+  position: relative;
+  touch-action: none;
 }
 
 .review-card--large {
@@ -482,13 +484,23 @@ textarea {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  height: 100%;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.review-card .review-text--reveal {
+  justify-content: space-between;
 }
 
 .review-card .review-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  text-align: left;
+  text-align: center;
+  align-items: center;
+  width: 100%;
 }
 
 .review-card .review-label {
@@ -496,6 +508,18 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted);
+}
+
+.review-card .review-front {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.review-card .review-back {
+  margin-top: 14px;
+  opacity: 0.9;
+  font-size: 18px;
 }
 
 .review-card .cloze-input {
@@ -517,6 +541,7 @@ textarea {
   display: flex;
   gap: 10px;
   width: 100%;
+  justify-content: center;
 }
 
 .review-actions button {
@@ -525,6 +550,29 @@ textarea {
   border-radius: 14px;
   font-size: 15px;
   padding: 0 10px;
+}
+
+.review-swipe-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.review-swipe-label {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #0b0d12;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 8px 14px;
+  border-radius: 999px;
 }
 
 .review-screen {
