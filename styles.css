@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   --bg: #0b0d12;
-  --surface: rgba(17, 21, 30, 0.74);
-  --surface-2: rgba(24, 30, 42, 0.88);
+  --surface: rgba(18, 24, 36, 0.72);
+  --surface-2: rgba(26, 34, 48, 0.9);
   --glass-border: rgba(255, 255, 255, 0.08);
   --text: #eef1f8;
   --muted: #9aa7bd;
@@ -32,6 +32,7 @@ body {
   background: radial-gradient(circle at top, rgba(124, 58, 237, 0.15), transparent 50%),
     radial-gradient(circle at 20% 20%, rgba(94, 234, 212, 0.12), transparent 55%),
     radial-gradient(circle at 80% 0%, rgba(251, 191, 36, 0.08), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.12), transparent 50%),
     var(--bg);
   color: var(--text);
 }
@@ -51,6 +52,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 8px;
+  gap: 12px;
 }
 
 .brand {
@@ -93,6 +95,7 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .button {
@@ -108,6 +111,13 @@ body {
   box-shadow: 0 8px 20px rgba(139, 92, 246, 0.35);
   transition: transform 0.15s ease, box-shadow 0.2s ease;
   touch-action: manipulation;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 
 .button:active {
@@ -144,10 +154,11 @@ body {
   right: 0;
   display: flex;
   justify-content: space-around;
-  background: rgba(15, 20, 32, 0.85);
+  background: rgba(12, 16, 28, 0.86);
   border-top: 1px solid var(--glass-border);
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   backdrop-filter: blur(18px);
+  box-shadow: 0 -12px 30px rgba(4, 6, 14, 0.6);
 }
 
 .tab {
@@ -191,6 +202,11 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  max-width: 100%;
+}
+
+.list-item > div {
+  min-width: 0;
 }
 
 .list-item small {
@@ -204,6 +220,7 @@ body {
   border: 1px solid var(--glass-border);
   box-shadow: 0 18px 40px rgba(10, 14, 24, 0.4);
   backdrop-filter: blur(18px);
+  max-width: 100%;
 }
 
 .field {
@@ -211,6 +228,22 @@ body {
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
+}
+
+.field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-inline span {
+  flex: 1;
+}
+
+.field-inline input[type="checkbox"] {
+  width: auto;
+  min-width: auto;
 }
 
 .field input,
@@ -233,6 +266,7 @@ textarea {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .row .field {
@@ -270,6 +304,7 @@ textarea {
   box-shadow: 0 20px 50px rgba(8, 10, 18, 0.5);
   transform: translateY(0);
   animation: modal-pop 0.2s ease;
+  max-width: 100%;
 }
 
 @keyframes modal-pop {
@@ -300,6 +335,29 @@ textarea {
   justify-content: center;
   text-align: center;
   font-size: 18px;
+  width: 100%;
+}
+
+.review-card .review-text {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.review-card .cloze-input {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.review-feedback {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.review-answers {
+  font-size: 14px;
+  color: var(--text);
 }
 
 .review-actions {
@@ -353,6 +411,7 @@ textarea#import-text {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   align-items: end;
+  width: 100%;
 }
 
 .bucket-bar {
@@ -425,12 +484,17 @@ textarea#import-text {
 }
 
 .mini-chart {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-  align-items: end;
-  min-height: 70px;
+  width: 100%;
   margin-top: 8px;
+}
+
+canvas.mini-chart {
+  width: 100%;
+  height: 120px;
+  display: block;
+  border-radius: 12px;
+  background: rgba(13, 18, 28, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .mini-bar {
@@ -500,6 +564,25 @@ textarea#import-text {
 
 .toast.error {
   border-color: rgba(251, 113, 133, 0.6);
+}
+
+.word {
+  display: inline-block;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+}
+
+.word:active,
+.word:hover {
+  background: rgba(139, 92, 246, 0.2);
+  color: #fff;
+}
+
+.word-title {
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .app,

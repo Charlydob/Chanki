@@ -149,7 +149,7 @@
                   <p id="stats-week-average">0</p>
                 </div>
               </div>
-              <div id="stats-week-chart" class="mini-chart"></div>
+              <canvas id="stats-week-chart" class="mini-chart" width="320" height="120"></canvas>
             </div>
             <div class="card stats-card">
               <h3>Racha</h3>
@@ -202,12 +202,12 @@
             </div>
             <div class="card settings-block">
               <div class="section-header">
-                <h3>Conexión</h3>
-                <p class="muted">URL de tu Firebase RTDB (https://...).</p>
+                <h3>Conexión (Avanzado)</h3>
+                <p class="muted">Database URL opcional para cambiar de instancia RTDB.</p>
               </div>
               <label class="field">
                 <span>Database URL</span>
-                <input id="settings-dburl" type="text" />
+                <input id="settings-dburl" type="text" placeholder="https://..." />
               </label>
               <button id="test-connection" class="button ghost">Probar conexión</button>
             </div>
@@ -227,6 +227,16 @@
                 </label>
               </div>
               <button id="save-settings" class="button">Guardar ajustes</button>
+            </div>
+            <div class="card settings-block">
+              <div class="section-header">
+                <h3>Cloze</h3>
+                <p class="muted">Controla la comparación de respuestas en cloze.</p>
+              </div>
+              <label class="field field-inline">
+                <span>Comparar sin mayúsculas (recomendado para alemán)</span>
+                <input id="settings-cloze-case" type="checkbox" />
+              </label>
             </div>
             <div class="card settings-block">
               <div class="section-header">
@@ -312,19 +322,19 @@
           <span>Nombre de usuario</span>
           <input id="username-input" type="text" placeholder="tu nombre" />
         </label>
-        <button id="save-username" class="button">Entrar</button>
+        <button id="save-username" class="button" type="button">Entrar</button>
       </div>
     </div>
 
     <div id="db-overlay" class="overlay hidden">
       <div class="modal">
-        <h2>Configurar Database URL</h2>
-        <p>No se pudo conectar a la base de datos. Pega la URL de tu RTDB.</p>
+        <h2>Conexión a Database URL</h2>
+        <p>No se pudo conectar a la RTDB. Puedes editar la URL avanzada y reintentar.</p>
         <label class="field">
           <span>Database URL</span>
           <input id="dburl-input" type="text" placeholder="https://..." />
         </label>
-        <button id="save-dburl" class="button">Guardar y recargar</button>
+        <button id="save-dburl" class="button" type="button">Guardar y reintentar</button>
       </div>
     </div>
 
@@ -332,20 +342,35 @@
       <div class="modal">
         <h2 id="card-modal-title">Nueva tarjeta</h2>
         <label class="field">
+          <span>Tipo</span>
+          <select id="card-type">
+            <option value="basic">Basic</option>
+            <option value="cloze">Cloze</option>
+          </select>
+        </label>
+        <label class="field" id="card-basic-front-field">
           <span>Frente</span>
           <textarea id="card-front" rows="3"></textarea>
         </label>
-        <label class="field">
+        <label class="field" id="card-basic-back-field">
           <span>Reverso</span>
           <textarea id="card-back" rows="3"></textarea>
+        </label>
+        <label class="field hidden" id="card-cloze-text-field">
+          <span>Texto cloze (usa ____ para el hueco)</span>
+          <textarea id="card-cloze-text" rows="3"></textarea>
+        </label>
+        <label class="field hidden" id="card-cloze-answers-field">
+          <span>Respuestas (separa con | )</span>
+          <input id="card-cloze-answers" type="text" placeholder="antwort | Antwort2" />
         </label>
         <label class="field">
           <span>Tags (coma)</span>
           <input id="card-tags" type="text" />
         </label>
         <div class="row">
-          <button id="save-card" class="button">Guardar</button>
-          <button id="cancel-card" class="button ghost">Cancelar</button>
+          <button id="save-card" class="button" type="button">Guardar</button>
+          <button id="cancel-card" class="button ghost" type="button">Cancelar</button>
         </div>
       </div>
     </div>
@@ -358,8 +383,23 @@
           <input id="folder-name-input" type="text" placeholder="Ej: Verbos" />
         </label>
         <div class="row">
-          <button id="save-folder" class="button">Crear</button>
-          <button id="cancel-folder" class="button ghost">Cancelar</button>
+          <button id="save-folder" class="button" type="button">Crear</button>
+          <button id="cancel-folder" class="button ghost" type="button">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="word-modal" class="overlay hidden">
+      <div class="modal">
+        <h2>Palabra</h2>
+        <div class="word-title" id="word-title"></div>
+        <label class="field">
+          <span>Significado</span>
+          <textarea id="word-meaning" rows="3" placeholder="Añade una definición"></textarea>
+        </label>
+        <div class="row">
+          <button id="save-word" class="button" type="button">Guardar</button>
+          <button id="cancel-word" class="button ghost" type="button">Cerrar</button>
         </div>
       </div>
     </div>
