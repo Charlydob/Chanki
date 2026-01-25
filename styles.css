@@ -192,7 +192,7 @@ body {
 }
 
 .list-item {
-  padding: 12px;
+  padding: 12px 14px;
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--glass-border);
@@ -205,12 +205,130 @@ body {
   max-width: 100%;
 }
 
-.list-item > div {
+.list-item > * {
   min-width: 0;
 }
 
 .list-item small {
   color: var(--muted);
+}
+
+.item-main {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+  flex: 1;
+}
+
+.item-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.item-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.item-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-chevron {
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.item-menu-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.icon-button {
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text);
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.item-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+  box-shadow: 0 16px 40px rgba(3, 8, 20, 0.5);
+  z-index: 5;
+}
+
+.item-menu button {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.item-menu button:hover {
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.item-menu button.danger {
+  color: var(--danger);
 }
 
 .card {
@@ -338,11 +456,30 @@ textarea {
   width: 100%;
 }
 
+.review-card--large {
+  min-height: 240px;
+  font-size: 20px;
+}
+
 .review-card .review-text {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 100%;
+}
+
+.review-card .review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.review-card .review-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
 }
 
 .review-card .cloze-input {
@@ -364,6 +501,87 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.review-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-player {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at top, rgba(124, 58, 237, 0.18), transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(94, 234, 212, 0.15), transparent 55%),
+    var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+  gap: 16px;
+  z-index: 70;
+}
+
+.review-player__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-player__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+  flex: 1;
+}
+
+.review-player__title span:first-child {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.review-player__title span:last-child {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.review-player__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  justify-content: center;
+}
+
+.chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.review-complete {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+}
+
+.review-mode .tabs,
+.review-mode .app__header {
+  display: none;
+}
+
+.review-mode .app__main {
+  padding: 0;
 }
 
 .settings-block {
