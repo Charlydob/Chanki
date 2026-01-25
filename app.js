@@ -16,6 +16,8 @@ import {
   userRoot,
   fetchGlossaryWord,
   upsertGlossaryEntries,
+  ensureVocabFolders,
+  createOrUpdateVocabCard,
 } from "./lib/rtdb.js";
 import { parseImport } from "./lib/parser.js";
 import { computeNextSrs } from "./lib/srs.js";
@@ -28,12 +30,16 @@ const state = {
   selectedFolderId: null,
   cards: [],
   cardCursor: null,
+  cardsLoadedIds: new Set(),
   cardCache: new Map(),
   glossaryCache: new Map(),
   reviewQueue: [],
   currentSessionQueue: [],
   currentIndex: 0,
+  sessionActive: false,
+  sessionTotal: 0,
   showOnlyDuplicates: false,
+  loadingMore: false,
   sessionStats: {
     startTime: null,
     answeredCount: 0,
@@ -56,9 +62,15 @@ const state = {
   },
   reviewInputValue: "",
   activeWordKey: null,
+  activeWordContext: null,
   reviewFolderName: "Todas",
   reviewShowingBack: false,
   repairAttempted: false,
+  vocabFolderIds: {
+    deEs: null,
+    esDe: null,
+  },
+  vocabFoldersPromise: null,
 };
 
 const elements = {
@@ -354,11 +366,74 @@ function renderTextWithWords(text) {
     .map((part) => {
       if (part.type === "word") {
         const safeWord = escapeHtml(part.value);
-        return `<span class="word" data-word="${safeWord}">${safeWord}</span>`;
+        const wordKey = normalizeWordKey(part.value);
+        const meaning = wordKey ? state.glossaryCache.get(wordKey)?.meaning : "";
+        const hasMeaning = Boolean(meaning && meaning.trim());
+        return `<span class="word${hasMeaning ? " has-meaning" : ""}" data-word="${safeWord}">${safeWord}</span>`;
       }
       return escapeHtml(part.value).replace(/\n/g, "<br>");
     })
     .join("");
+}
+
+function renderTextWithLanguage(text, language) {
+  return `<span class="lang-chunk" data-language="${language}">${renderTextWithWords(text)}</span>`;
+}
+
+function renderBackWithLanguage(text) {
+  const markerIndex = text.toLowerCase().indexOf("es:");
+  if (markerIndex === -1) {
+    return renderTextWithLanguage(text, "es");
+  }
+  const before = text.slice(0, markerIndex);
+  const after = text.slice(markerIndex);
+  return `${renderTextWithLanguage(before, "de")}${renderTextWithLanguage(after, "es")}`;
+}
+
+function parseMeaningInput(rawMeaning) {
+  const tags = [];
+  const tagRegex = /\(([^)]+)\)/g;
+  let match = tagRegex.exec(rawMeaning);
+  while (match) {
+    const chunk = match[1]
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    tags.push(...chunk);
+    match = tagRegex.exec(rawMeaning);
+  }
+  const cleanedMeaning = rawMeaning.replace(tagRegex, "").replace(/\s+/g, " ").trim();
+  return {
+    cleanedMeaning,
+    tags: [...new Set(tags)],
+  };
+}
+
+function refreshCurrentReviewCard() {
+  const card = state.reviewQueue[state.currentIndex];
+  if (!card) return;
+  renderReviewCard(card, state.reviewShowingBack);
+}
+
+async function ensureVocabFolderIds() {
+  if (!state.username) return null;
+  if (state.vocabFolderIds.deEs && state.vocabFolderIds.esDe) {
+    return state.vocabFolderIds;
+  }
+  if (state.vocabFoldersPromise) {
+    return state.vocabFoldersPromise;
+  }
+  state.vocabFoldersPromise = (async () => {
+    const db = getDb();
+    const folders = await ensureVocabFolders(db, state.username, state.folders);
+    state.vocabFolderIds = folders;
+    return folders;
+  })();
+  try {
+    return await state.vocabFoldersPromise;
+  } finally {
+    state.vocabFoldersPromise = null;
+  }
 }
 
 function normalizeWordKey(word) {
@@ -644,6 +719,7 @@ function ensureWordPopover() {
     const key = state.activeWordKey;
     if (!key || !state.username) return;
     const meaning = wordPopoverInput.value.trim();
+    const { cleanedMeaning, tags } = parseMeaningInput(meaning);
     try {
       const db = getDb();
       await upsertGlossaryEntries(db, state.username, [
@@ -657,9 +733,23 @@ function ensureWordPopover() {
       wordPopoverEditing = false;
       wordPopoverEditor.classList.add("hidden");
       updateWordPopoverMeaning(meaning);
+      if (cleanedMeaning) {
+        const folderIds = await ensureVocabFolderIds();
+        const direction = state.activeWordContext?.language === "es" ? "es-de" : "de-es";
+        const folderId = direction === "es-de" ? folderIds?.esDe : folderIds?.deEs;
+        if (folderId) {
+          await createOrUpdateVocabCard(db, state.username, {
+            folderId,
+            front: wordPopoverTitle.textContent,
+            back: cleanedMeaning,
+            tags: [...tags, "vocab"],
+          });
+        }
+      }
+      refreshCurrentReviewCard();
     } catch (error) {
       console.error("Error al guardar glosario", error);
-      showToast("No se pudo guardar.", "error");
+      showToast(`No se pudo guardar: ${error?.message || error?.code || "error"}`, "error");
     }
   });
 }
@@ -699,6 +789,7 @@ function closeWordPopover() {
   wordPopoverEditor?.classList.add("hidden");
   wordPopoverEditing = false;
   state.activeWordKey = null;
+  state.activeWordContext = null;
   wordPopoverAnchor = null;
 }
 
@@ -741,21 +832,36 @@ async function openWordPopover(word, anchorRect) {
 
 async function loadCards(reset = false) {
   if (!state.selectedFolderId) return;
+  if (state.loadingMore) return;
+  state.loadingMore = true;
+  if (elements.loadMore) {
+    elements.loadMore.disabled = true;
+  }
   if (reset) {
     state.cards = [];
     state.cardCursor = null;
+    state.cardsLoadedIds = new Set();
   }
-  const db = getDb();
-  const result = await fetchCardsByFolder(
-    db,
-    state.username,
-    state.selectedFolderId,
-    20,
-    state.cardCursor
-  );
-  state.cards = reset ? result.cards : [...state.cards, ...result.cards];
-  state.cardCursor = result.lastKey;
-  renderCards();
+  try {
+    const db = getDb();
+    const result = await fetchCardsByFolder(
+      db,
+      state.username,
+      state.selectedFolderId,
+      20,
+      state.cardCursor
+    );
+    const newCards = result.cards.filter((card) => !state.cardsLoadedIds.has(card.id));
+    newCards.forEach((card) => state.cardsLoadedIds.add(card.id));
+    state.cards = reset ? newCards : [...state.cards, ...newCards];
+    state.cardCursor = result.lastKey;
+    renderCards();
+  } finally {
+    state.loadingMore = false;
+    if (elements.loadMore) {
+      elements.loadMore.disabled = false;
+    }
+  }
 }
 
 function updateCardsTitle() {
@@ -887,11 +993,14 @@ async function handleCardListAction(event) {
       try {
         await deleteCard(db, state.username, card);
         showToast("Tarjeta borrada.");
-        await loadCards(true);
+        state.cards = state.cards.filter((item) => item.id !== card.id);
+        state.cardsLoadedIds.delete(card.id);
+        state.cardCache.delete(card.id);
+        renderCards();
         await loadStats();
       } catch (error) {
         console.error("Error al borrar tarjeta", error);
-        showToast("No se pudo borrar la tarjeta.", "error");
+        showToast(`No se pudo borrar: ${error?.message || error?.code || "error"}`, "error");
       }
     }
   }
@@ -997,7 +1106,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.innerHTML = renderTextWithWords(card.clozeText || "");
+    frontText.innerHTML = renderTextWithLanguage(card.clozeText || "", "de");
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
 
@@ -1037,7 +1146,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.innerHTML = renderTextWithWords(card.front || "");
+    frontText.innerHTML = renderTextWithLanguage(card.front || "", "de");
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     wrapper.appendChild(frontSection);
@@ -1050,7 +1159,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
       backText.className = "review-back";
-      backText.innerHTML = renderTextWithWords(card.back || "");
+      backText.innerHTML = renderBackWithLanguage(card.back || "");
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       wrapper.appendChild(backSection);
@@ -1247,10 +1356,10 @@ async function buildReviewQueue() {
 }
 
 function showNextReviewCard() {
-  const total = state.reviewQueue.length;
+  const total = state.sessionTotal || state.reviewQueue.length;
   const card = state.reviewQueue[state.currentIndex];
   if (!card) {
-    if (state.currentIndex >= total) {
+    if (state.sessionActive && state.currentIndex >= state.sessionTotal && state.sessionTotal > 0) {
       elements.reviewActions.classList.add("hidden");
       elements.flipCard.classList.add("hidden");
       elements.reviewCard.classList.add("hidden");
@@ -1264,9 +1373,11 @@ function showNextReviewCard() {
         elements.reviewComplete.classList.remove("hidden");
       }
       if (elements.reviewPlayerCounter) {
-        const totalCount = state.reviewQueue.length;
+        const totalCount = state.sessionTotal || state.reviewQueue.length;
         elements.reviewPlayerCounter.textContent = `${totalCount}/${totalCount}`;
       }
+    } else if (elements.reviewComplete) {
+      elements.reviewComplete.classList.add("hidden");
     }
     return;
   }
@@ -1305,6 +1416,8 @@ function exitReviewPlayer() {
   state.reviewQueue = [];
   state.currentSessionQueue = [];
   state.currentIndex = 0;
+  state.sessionActive = false;
+  state.sessionTotal = 0;
   state.reviewShowingBack = false;
   if (elements.reviewComplete) {
     elements.reviewComplete.classList.add("hidden");
@@ -1780,6 +1893,10 @@ if (elements.reviewCard) {
     event.stopPropagation();
     const word = wordEl.dataset.word;
     if (word) {
+      const langChunk = wordEl.closest(".lang-chunk");
+      const language = langChunk?.dataset.language
+        || (wordEl.closest(".review-front") ? "de" : "es");
+      state.activeWordContext = { language };
       openWordPopover(word, wordEl.getBoundingClientRect());
     }
   });
@@ -1793,6 +1910,8 @@ elements.startReview.addEventListener("click", async () => {
   await buildReviewQueue();
   if (!state.reviewQueue.length) {
     showToast("No hay tarjetas para repasar con esos filtros.", "error");
+    state.sessionActive = false;
+    state.sessionTotal = 0;
     return;
   }
   state.sessionStart = Date.now();
@@ -1801,6 +1920,8 @@ elements.startReview.addEventListener("click", async () => {
     startTime: Date.now(),
     answeredCount: 0,
   };
+  state.sessionActive = true;
+  state.sessionTotal = state.reviewQueue.length;
   state.reviewFolderName = elements.reviewFolder.value === "all"
     ? "Todas"
     : state.folders[elements.reviewFolder.value]?.name || "Carpeta";
