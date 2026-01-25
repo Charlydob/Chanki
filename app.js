@@ -16,7 +16,7 @@ import {
 } from "./lib/rtdb.js";
 import { parseImport } from "./lib/parser.js";
 import { computeNextSrs } from "./lib/srs.js";
-import { fetchDailyStats, calcStreak, recordReviewStats } from "./lib/stats.js";
+import { fetchDailyStats, calcStreak, recordReviewStats, fetchTotalsStats, fetchBucketCounts } from "./lib/stats.js";
 
 const state = {
   username: localStorage.getItem("chanki_username") || "",
@@ -30,6 +30,15 @@ const state = {
   reviewPointer: 0,
   sessionStart: null,
   lastReviewAt: null,
+  bucketCounts: {},
+  reviewBuckets: {
+    new: true,
+    immediate: true,
+    lt24h: true,
+    tomorrow: true,
+    week: true,
+    future: true,
+  },
   prefs: {
     maxNew: Number(localStorage.getItem("chanki_max_new")) || 10,
     maxReviews: Number(localStorage.getItem("chanki_max_reviews")) || 50,
@@ -58,6 +67,7 @@ const elements = {
   cancelCard: document.getElementById("cancel-card"),
   cardsTitle: document.getElementById("cards-title"),
   reviewFolder: document.getElementById("review-folder"),
+  reviewBucketChart: document.getElementById("review-bucket-chart"),
   reviewTags: document.getElementById("review-tags"),
   reviewMaxNew: document.getElementById("review-max-new"),
   reviewMax: document.getElementById("review-max"),
@@ -70,26 +80,65 @@ const elements = {
   importPreview: document.getElementById("import-preview"),
   importParse: document.getElementById("import-parse"),
   importSave: document.getElementById("import-save"),
-  statsToday: document.getElementById("stats-today"),
-  statsWeek: document.getElementById("stats-week"),
-  statsStreak: document.getElementById("stats-streak"),
-  statsChart: document.getElementById("stats-chart"),
+  statsTodayCount: document.getElementById("stats-today-count"),
+  statsTodayMinutes: document.getElementById("stats-today-minutes"),
+  statsTodayAccuracy: document.getElementById("stats-today-accuracy"),
+  statsTodayDistribution: document.getElementById("stats-today-distribution"),
+  statsWeekTotal: document.getElementById("stats-week-total"),
+  statsWeekMinutes: document.getElementById("stats-week-minutes"),
+  statsWeekAverage: document.getElementById("stats-week-average"),
+  statsWeekChart: document.getElementById("stats-week-chart"),
+  statsStreakCurrent: document.getElementById("stats-streak-current"),
+  statsStreakBest: document.getElementById("stats-streak-best"),
+  statsTotalCards: document.getElementById("stats-total-cards"),
+  statsTotalNew: document.getElementById("stats-total-new"),
+  statsTotalLearned: document.getElementById("stats-total-learned"),
+  statsBucketCounts: document.getElementById("stats-bucket-counts"),
   settingsUsername: document.getElementById("settings-username"),
   settingsDbUrl: document.getElementById("settings-dburl"),
   settingsMaxNew: document.getElementById("settings-max-new"),
   settingsMax: document.getElementById("settings-max"),
   saveSettings: document.getElementById("save-settings"),
+  testConnection: document.getElementById("test-connection"),
   exportJson: document.getElementById("export-json"),
   resetLocal: document.getElementById("reset-local"),
   dbUrlInput: document.getElementById("dburl-input"),
   saveDbUrl: document.getElementById("save-dburl"),
+  folderModal: document.getElementById("folder-modal"),
+  folderModalTitle: document.getElementById("folder-modal-title"),
+  folderNameInput: document.getElementById("folder-name-input"),
+  saveFolder: document.getElementById("save-folder"),
+  cancelFolder: document.getElementById("cancel-folder"),
+  toastContainer: document.getElementById("toast-container"),
+};
+
+const BUCKET_ORDER = ["new", "immediate", "lt24h", "tomorrow", "week", "future"];
+const BUCKET_LABELS = {
+  new: "Nvo",
+  immediate: "Ahora",
+  lt24h: "<24h",
+  tomorrow: "Mañana",
+  week: "<1sem",
+  future: "Futuro",
 };
 
 let editingCardId = null;
 let activeUnsubscribe = null;
+let editingFolderId = null;
 
 function showOverlay(overlay, show) {
   overlay.classList.toggle("hidden", !show);
+}
+
+function showToast(message, type = "") {
+  if (!elements.toastContainer) return;
+  const toast = document.createElement("div");
+  toast.className = `toast${type ? ` ${type}` : ""}`;
+  toast.textContent = message;
+  elements.toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+  }, 2500);
 }
 
 function setStatus(text) {
@@ -124,12 +173,26 @@ function mapToTags(map) {
   return Object.keys(map);
 }
 
+function openFolderModal(folder = null) {
+  editingFolderId = folder ? folder.id : null;
+  elements.folderModalTitle.textContent = folder ? "Renombrar carpeta" : "Nueva carpeta";
+  elements.saveFolder.textContent = folder ? "Guardar" : "Crear";
+  elements.folderNameInput.value = folder ? folder.name : "";
+  showOverlay(elements.folderModal, true);
+  elements.folderNameInput.focus();
+}
+
+function closeFolderModal() {
+  showOverlay(elements.folderModal, false);
+  elements.folderNameInput.value = "";
+}
+
 function renderFolders() {
   const container = elements.folderTree;
   container.innerHTML = "";
   const folderList = Object.values(state.folders);
   if (!folderList.length) {
-    container.innerHTML = "<div class=\"card\">Crea tu primera carpeta.</div>";
+    container.innerHTML = "<div class=\"card\">Crea tu primera carpeta para organizar tus tarjetas.</div>";
     return;
   }
   folderList.forEach((folder) => {
@@ -159,6 +222,15 @@ function renderFolderSelects() {
     option.value = folder.id;
     option.textContent = folder.name;
     select.appendChild(option);
+  });
+}
+
+function renderBucketFilter() {
+  if (!elements.reviewBucketChart) return;
+  elements.reviewBucketChart.querySelectorAll(".bucket-bar").forEach((bar) => {
+    const bucket = bar.dataset.bucket;
+    const active = state.reviewBuckets[bucket];
+    bar.classList.toggle("active", Boolean(active));
   });
 }
 
@@ -234,13 +306,8 @@ async function initFolders() {
   });
 }
 
-async function handleAddFolder() {
-  const name = prompt("Nombre de la carpeta");
-  if (!name) return;
-  const id = `folder_${Date.now()}`;
-  const path = name;
-  const db = getDb();
-  await createFolder(db, state.username, { id, name, path, parentId: null });
+function handleAddFolder() {
+  openFolderModal();
 }
 
 async function handleFolderAction(event) {
@@ -254,21 +321,50 @@ async function handleFolderAction(event) {
     await loadCards(true);
   }
   if (action === "rename") {
-    const name = prompt("Nuevo nombre");
-    if (name) {
-      await updateFolder(db, state.username, folderId, { name });
+    const folder = state.folders[folderId];
+    if (folder) {
+      openFolderModal(folder);
     }
   }
   if (action === "delete") {
     const confirmDelete = confirm("¿Seguro? Esto no borra tarjetas asociadas.");
     if (confirmDelete) {
-      await deleteFolder(db, state.username, folderId);
-      if (state.selectedFolderId === folderId) {
-        state.selectedFolderId = null;
-        state.cards = [];
-        renderCards();
+      try {
+        await deleteFolder(db, state.username, folderId);
+        showToast("Guardado");
+        if (state.selectedFolderId === folderId) {
+          state.selectedFolderId = null;
+          state.cards = [];
+          renderCards();
+        }
+      } catch (error) {
+        console.error("Error al borrar carpeta", error);
+        showToast("Error al borrar carpeta", "error");
       }
     }
+  }
+}
+
+async function handleSaveFolder() {
+  const name = elements.folderNameInput.value.trim();
+  if (!name) {
+    showToast("Escribe un nombre.", "error");
+    return;
+  }
+  const db = getDb();
+  try {
+    if (editingFolderId) {
+      await updateFolder(db, state.username, editingFolderId, { name });
+    } else {
+      const id = `folder_${Date.now()}`;
+      const path = name;
+      await createFolder(db, state.username, { id, name, path, parentId: null });
+    }
+    showToast("Guardado");
+    closeFolderModal();
+  } catch (error) {
+    console.error("Error al guardar carpeta", error);
+    showToast("Error al guardar carpeta", "error");
   }
 }
 
@@ -296,32 +392,46 @@ async function handleCardListAction(event) {
 
 async function handleSaveCard() {
   if (!state.selectedFolderId) {
-    alert("Selecciona una carpeta primero");
+    showToast("Selecciona una carpeta primero.", "error");
     return;
   }
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
   if (!front || !back) {
-    alert("Completa frente y reverso");
+    showToast("Completa frente y reverso.", "error");
     return;
   }
   const tags = normalizeTags(elements.cardTags.value);
   const db = getDb();
   if (editingCardId) {
-    await updateCard(db, state.username, editingCardId, {
-      front,
-      back,
-      tags: tagsToMap(tags),
-    });
+    try {
+      await updateCard(db, state.username, editingCardId, {
+        front,
+        back,
+        tags: tagsToMap(tags),
+      });
+      showToast("Guardado");
+    } catch (error) {
+      console.error("Error al guardar tarjeta", error);
+      showToast("Error al guardar tarjeta", "error");
+      return;
+    }
   } else {
     const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-    await createCard(db, state.username, {
-      id,
-      folderId: state.selectedFolderId,
-      front,
-      back,
-      tags: tagsToMap(tags),
-    });
+    try {
+      await createCard(db, state.username, {
+        id,
+        folderId: state.selectedFolderId,
+        front,
+        back,
+        tags: tagsToMap(tags),
+      });
+      showToast("Guardado");
+    } catch (error) {
+      console.error("Error al crear tarjeta", error);
+      showToast("Error al crear tarjeta", "error");
+      return;
+    }
   }
   closeCardModal();
   await loadCards(true);
@@ -339,15 +449,21 @@ function renderReviewCard(card, showBack = false) {
 async function buildReviewQueue() {
   const db = getDb();
   const folderId = elements.reviewFolder.value === "all" ? null : elements.reviewFolder.value;
-  const enabledBuckets = Array.from(document.querySelectorAll("[data-bucket]"))
-    .filter((input) => input.checked)
-    .map((input) => input.dataset.bucket);
+  const enabledBuckets = Object.entries(state.reviewBuckets)
+    .filter(([, active]) => active)
+    .map(([bucket]) => bucket);
+  if (!enabledBuckets.length) {
+    showToast("Activa al menos un bucket.", "error");
+    state.reviewQueue = [];
+    state.reviewPointer = 0;
+    return;
+  }
   const tagFilter = normalizeTags(elements.reviewTags.value);
 
   const maxNew = Number(elements.reviewMaxNew.value || state.prefs.maxNew);
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
 
-  const bucketPriority = ["immediate", "lt24h", "tomorrow", "week", "future", "new"];
+  const bucketPriority = BUCKET_ORDER;
   const queue = [];
 
   for (const bucket of bucketPriority) {
@@ -386,7 +502,7 @@ function showNextReviewCard() {
   const card = state.reviewQueue[state.reviewPointer];
   if (!card) {
     elements.reviewArea.classList.add("hidden");
-    alert("No hay tarjetas para repasar con esos filtros.");
+    showToast("No hay tarjetas para repasar con esos filtros.", "error");
     return;
   }
   elements.reviewArea.classList.remove("hidden");
@@ -431,7 +547,7 @@ async function handleImportPreview() {
 async function handleImportSave() {
   const parsed = elements.importPreview.dataset.parsed ? JSON.parse(elements.importPreview.dataset.parsed) : null;
   if (!parsed || !parsed.cards.length) {
-    alert("Previsualiza primero");
+    showToast("Previsualiza primero.", "error");
     return;
   }
   const db = getDb();
@@ -447,7 +563,7 @@ async function handleImportSave() {
     }
   }
   if (!folderId) {
-    alert("Selecciona una carpeta o define FOLDER: en el import");
+    showToast("Selecciona una carpeta o define FOLDER: en el import.", "error");
     return;
   }
   for (const card of parsed.cards) {
@@ -462,52 +578,102 @@ async function handleImportSave() {
   }
   elements.importText.value = "";
   elements.importPreview.textContent = "Importación completada";
+  showToast("Importación completada.");
   await loadCards(true);
 }
 
-function drawStatsChart(data) {
-  const canvas = elements.statsChart;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const padding = 20;
-  const width = canvas.width - padding * 2;
-  const height = canvas.height - padding * 2;
-  const values = data.map((day) => (day.reviews || 0) + (day.new || 0));
+function renderWeekChart(daily) {
+  const container = elements.statsWeekChart;
+  if (!container) return;
+  container.innerHTML = "";
+  const values = daily.map((day) => (day.reviews || 0) + (day.new || 0));
   const maxVal = Math.max(1, ...values);
+  daily.forEach((day, index) => {
+    const bar = document.createElement("div");
+    bar.className = "mini-bar";
+    bar.style.height = `${Math.max(8, (values[index] / maxVal) * 70)}px`;
+    const label = document.createElement("span");
+    label.textContent = day.key.slice(6);
+    bar.appendChild(label);
+    container.appendChild(bar);
+  });
+}
 
-  ctx.strokeStyle = "#1f2937";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(padding, padding);
-  ctx.lineTo(padding, padding + height);
-  ctx.lineTo(padding + width, padding + height);
-  ctx.stroke();
+function renderBucketCounts(bucketCounts) {
+  const container = elements.statsBucketCounts;
+  if (!container) return;
+  container.innerHTML = "";
+  const maxVal = Math.max(1, ...Object.values(bucketCounts));
+  BUCKET_ORDER.forEach((bucket) => {
+    const count = bucketCounts[bucket] || 0;
+    const row = document.createElement("div");
+    row.className = "bucket-count";
+    row.innerHTML = `
+      <strong>${BUCKET_LABELS[bucket]}</strong>
+      <div class="bar"><span style="width: ${Math.max(8, (count / maxVal) * 100)}%"></span></div>
+      <small>${count} tarjetas</small>
+    `;
+    container.appendChild(row);
+  });
+}
 
-  ctx.strokeStyle = "#5eead4";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  values.forEach((value, index) => {
-    const x = padding + (width / (values.length - 1 || 1)) * index;
-    const y = padding + height - (value / maxVal) * height;
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+function renderBucketFilterCounts(bucketCounts) {
+  Object.entries(BUCKET_LABELS).forEach(([bucket]) => {
+    const el = document.querySelector(`[data-bucket-count="${bucket}"]`);
+    if (el) {
+      el.textContent = bucketCounts[bucket] || 0;
     }
   });
-  ctx.stroke();
 }
 
 async function loadStats() {
   const db = getDb();
-  const daily = await fetchDailyStats(db, userRoot(state.username), 7);
+  const root = userRoot(state.username);
+  const [daily, totals, bucketCounts] = await Promise.all([
+    fetchDailyStats(db, root, 7),
+    fetchTotalsStats(db, root),
+    fetchBucketCounts(db, root),
+  ]);
   const today = daily[daily.length - 1] || {};
+  const todayTotal = (today.reviews || 0) + (today.new || 0);
+  const todayMinutes = today.minutes || 0;
   const weekTotal = daily.reduce((sum, day) => sum + (day.reviews || 0) + (day.new || 0), 0);
-  elements.statsToday.textContent = `${(today.reviews || 0) + (today.new || 0)} repasos`;
-  elements.statsWeek.textContent = `${weekTotal} repasos`;
-  elements.statsStreak.textContent = `${calcStreak(daily)} días`;
-  drawStatsChart(daily);
+  const weekMinutes = daily.reduce((sum, day) => sum + (day.minutes || 0), 0);
+  const accuracyBase = todayTotal || 1;
+  const accuracy = Math.round((((today.good || 0) + (today.easy || 0)) / accuracyBase) * 100);
+
+  elements.statsTodayCount.textContent = `${todayTotal} repasos`;
+  elements.statsTodayMinutes.textContent = `${todayMinutes} min`;
+  elements.statsTodayAccuracy.textContent = `${accuracy}%`;
+
+  elements.statsTodayDistribution.innerHTML = "";
+  ["error", "bad", "good", "easy"].forEach((rating) => {
+    const chip = document.createElement("div");
+    chip.className = "stats-chip";
+    chip.textContent = `${rating}: ${today[rating] || 0}`;
+    elements.statsTodayDistribution.appendChild(chip);
+  });
+
+  elements.statsWeekTotal.textContent = `${weekTotal} repasos`;
+  elements.statsWeekMinutes.textContent = `${weekMinutes} min`;
+  elements.statsWeekAverage.textContent = `${Math.round(weekTotal / 7)} /día`;
+
+  const currentStreak = totals.currentStreak ?? calcStreak(daily);
+  const bestStreak = totals.bestStreak ?? currentStreak;
+  elements.statsStreakCurrent.textContent = `${currentStreak} días`;
+  elements.statsStreakBest.textContent = `${bestStreak} días`;
+
+  const totalCards = totals.totalCards || 0;
+  const newCards = totals.newCards || 0;
+  const learnedCards = totals.learnedCards || Math.max(0, totalCards - newCards);
+  elements.statsTotalCards.textContent = totalCards;
+  elements.statsTotalNew.textContent = newCards;
+  elements.statsTotalLearned.textContent = learnedCards;
+
+  state.bucketCounts = bucketCounts || {};
+  renderBucketCounts(state.bucketCounts);
+  renderBucketFilterCounts(state.bucketCounts);
+  renderWeekChart(daily);
 }
 
 async function handleExportJson() {
@@ -550,7 +716,7 @@ function handleSaveSettings() {
   if (!Number.isNaN(maxReviews)) {
     localStorage.setItem("chanki_max_reviews", String(maxReviews));
   }
-  alert("Preferencias guardadas. Recarga si cambiaste la URL.");
+  showToast("Preferencias guardadas.");
 }
 
 async function initApp() {
@@ -578,6 +744,7 @@ function initFirebaseUi() {
   elements.settingsDbUrl.value = localStorage.getItem("chanki_database_url") || "";
   elements.settingsMaxNew.value = state.prefs.maxNew;
   elements.settingsMax.value = state.prefs.maxReviews;
+  renderBucketFilter();
 }
 
 if ("serviceWorker" in navigator) {
@@ -612,6 +779,22 @@ elements.addFolder.addEventListener("click", handleAddFolder);
 
 elements.folderTree.addEventListener("click", handleFolderAction);
 
+if (elements.saveFolder) {
+  elements.saveFolder.addEventListener("click", handleSaveFolder);
+}
+
+if (elements.cancelFolder) {
+  elements.cancelFolder.addEventListener("click", closeFolderModal);
+}
+
+if (elements.folderModal) {
+  elements.folderModal.addEventListener("click", (event) => {
+    if (event.target === elements.folderModal) {
+      closeFolderModal();
+    }
+  });
+}
+
 elements.addCard.addEventListener("click", () => openCardModal());
 
 elements.loadMore.addEventListener("click", () => loadCards());
@@ -628,6 +811,16 @@ elements.startReview.addEventListener("click", async () => {
   state.lastReviewAt = Date.now();
   showNextReviewCard();
 });
+
+if (elements.reviewBucketChart) {
+  elements.reviewBucketChart.addEventListener("click", (event) => {
+    const bar = event.target.closest(".bucket-bar");
+    if (!bar) return;
+    const bucket = bar.dataset.bucket;
+    state.reviewBuckets[bucket] = !state.reviewBuckets[bucket];
+    renderBucketFilter();
+  });
+}
 
 elements.flipCard.addEventListener("click", () => {
   const card = state.reviewQueue[state.reviewPointer];
@@ -648,6 +841,17 @@ elements.importParse.addEventListener("click", handleImportPreview);
 elements.importSave.addEventListener("click", handleImportSave);
 
 elements.saveSettings.addEventListener("click", handleSaveSettings);
+
+if (elements.testConnection) {
+  elements.testConnection.addEventListener("click", async () => {
+    const connected = await testConnection();
+    if (connected) {
+      showToast("Conexión correcta.");
+    } else {
+      showToast("No se pudo conectar.", "error");
+    }
+  });
+}
 
 elements.exportJson.addEventListener("click", handleExportJson);
 
