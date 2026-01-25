@@ -1,57 +1,56 @@
 # CHANKI
 
-Web app tipo Anki enfocada a iOS PWA. Usa Firebase Realtime Database sin autenticación y está lista para deploy a GitHub Pages.
+CHANKI es una web app estática tipo Anki diseñada para iOS PWA. Funciona con Firebase Realtime Database (sin Auth) y se despliega en GitHub Pages.
 
-## Requisitos
+## Configurar databaseURL
 
-- Node.js 18+
-
-## Arranque rápido
-
-```bash
-npm install
-npm run dev
-```
-
-## Build
-
-```bash
-npm run build
-```
-
-## Deploy a GitHub Pages
-
-El workflow `.github/workflows/deploy.yml` compila y publica en GitHub Pages usando `actions/deploy-pages`.
-Asegúrate de tener activado GitHub Pages en el repo y que el branch principal sea `main`.
-
-## Firebase databaseURL
-
-Si el Database URL por defecto falla, agrega el override en un archivo `.env`:
+La app intenta conectarse primero a:
 
 ```
-VITE_FIREBASE_DATABASE_URL=https://TU-PROYECTO.firebaseio.com
+https://anki-d6b3b-default-rtdb.firebaseio.com
 ```
 
-También puedes guardarlo desde Ajustes en la app (se guarda en localStorage).
+Si no conecta, aparecerá una pantalla para pegar tu `databaseURL`. También puedes cambiarla desde **Ajustes**. Se guarda en `localStorage` con la clave `chanki_database_url`.
 
-## Formato de importación
+## Username (sin Auth)
 
-**Formato A** (rápido):
+- Al abrir la app por primera vez, introduce tu **Nombre de usuario**.
+- Se guarda en `localStorage` como `chanki_username`.
+- Todos los datos cuelgan de `/u/{username}`.
+
+## Formatos de importación
+
+**Formato A** (una tarjeta por línea):
 
 ```
 front :: back
+otra pregunta :: otra respuesta
 ```
 
-Para escribir `::` en el texto usa `\::`.
+Usa `\::` para escapar `::` dentro del texto.
 
-**Formato B** (recomendado):
+**Formato B** (con carpeta y tags):
 
 ```
 FOLDER: Alemán/Verbos/Separable
-TAGS: a1, separable, daily
-FRONT: ...
-BACK: ...
+TAGS: a1, separable
+FRONT: Ich stehe auf
+BACK: Me levanto
 ---
-FRONT: ...
-BACK: ...
+FRONT: ankommen
+BACK: llegar
+---
 ```
+
+## SRS por buckets
+
+- **Error** → `immediate` (5 min)
+- **Malo** → `lt24h` (6 horas)
+- **Bueno** → `tomorrow` (24 horas)
+- **Fácil** → `week` (7 días, si reps < 3) o `future` (14, 30, 60… días)
+
+Los índices de cola se guardan con clave `dueAtPad13_cardId` y se actualizan atómicamente.
+
+## Deploy
+
+No hay build. GitHub Pages sirve directamente los archivos estáticos en `main`.

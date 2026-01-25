@@ -2,17 +2,198 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/Chanki/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#0f172a" />
-    <link rel="apple-touch-icon" href="/Chanki/icons/icon-192.png" />
-    <link rel="manifest" href="/Chanki/manifest.webmanifest" />
     <title>CHANKI</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="app" class="app">
+      <header class="app__header">
+        <div class="brand">
+          <span class="brand__dot"></span>
+          <h1>CHANKI</h1>
+        </div>
+        <div id="status" class="status"></div>
+      </header>
+
+      <main class="app__main">
+        <section id="screen-folders" class="screen active">
+          <div class="screen__header">
+            <h2>Carpetas</h2>
+            <button id="add-folder" class="button">Nueva carpeta</button>
+          </div>
+          <div id="folder-tree" class="list"></div>
+          <div class="screen__header">
+            <h3 id="cards-title">Tarjetas</h3>
+            <button id="add-card" class="button">Nueva tarjeta</button>
+          </div>
+          <div id="cards-list" class="list"></div>
+          <button id="load-more" class="button ghost">Cargar más</button>
+        </section>
+
+        <section id="screen-review" class="screen">
+          <div class="screen__header">
+            <h2>Repasar</h2>
+          </div>
+          <div class="card settings-block">
+            <label class="field">
+              <span>Carpeta</span>
+              <select id="review-folder"></select>
+            </label>
+            <div class="toggles">
+              <label><input type="checkbox" data-bucket="immediate" checked />Immediate</label>
+              <label><input type="checkbox" data-bucket="lt24h" checked />&lt;24h</label>
+              <label><input type="checkbox" data-bucket="tomorrow" checked />Mañana</label>
+              <label><input type="checkbox" data-bucket="week" checked />Semana</label>
+              <label><input type="checkbox" data-bucket="future" checked />Futuro</label>
+              <label><input type="checkbox" data-bucket="new" checked />Nuevas</label>
+            </div>
+            <label class="field">
+              <span>Tags (separados por coma)</span>
+              <input id="review-tags" type="text" placeholder="a1, verbos" />
+            </label>
+            <div class="row">
+              <label class="field">
+                <span>Max nuevas</span>
+                <input id="review-max-new" type="number" min="0" value="10" />
+              </label>
+              <label class="field">
+                <span>Max repasar</span>
+                <input id="review-max" type="number" min="0" value="50" />
+              </label>
+            </div>
+            <button id="start-review" class="button">Empezar</button>
+          </div>
+          <div id="review-area" class="review hidden">
+            <div id="review-card" class="review-card"></div>
+            <button id="flip-card" class="button ghost">Mostrar respuesta</button>
+            <div class="review-actions hidden" id="review-actions">
+              <button data-rating="error" class="button danger">Error</button>
+              <button data-rating="bad" class="button warning">Malo</button>
+              <button data-rating="good" class="button">Bueno</button>
+              <button data-rating="easy" class="button success">Fácil</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen-import" class="screen">
+          <div class="screen__header">
+            <h2>Importar</h2>
+          </div>
+          <textarea id="import-text" rows="10" placeholder="Pega aquí tu contenido"></textarea>
+          <div id="import-preview" class="card"></div>
+          <button id="import-parse" class="button">Previsualizar</button>
+          <button id="import-save" class="button">Guardar en RTDB</button>
+        </section>
+
+        <section id="screen-stats" class="screen">
+          <div class="screen__header">
+            <h2>Estadísticas</h2>
+          </div>
+          <div class="stats-grid">
+            <div class="card">
+              <h3>Hoy</h3>
+              <p id="stats-today">0 repasos</p>
+            </div>
+            <div class="card">
+              <h3>Semana</h3>
+              <p id="stats-week">0 repasos</p>
+            </div>
+            <div class="card">
+              <h3>Racha</h3>
+              <p id="stats-streak">0 días</p>
+            </div>
+          </div>
+          <canvas id="stats-chart" width="320" height="160"></canvas>
+        </section>
+
+        <section id="screen-settings" class="screen">
+          <div class="screen__header">
+            <h2>Ajustes</h2>
+          </div>
+          <div class="card settings-block">
+            <label class="field">
+              <span>Nombre de usuario</span>
+              <input id="settings-username" type="text" />
+            </label>
+            <label class="field">
+              <span>Database URL</span>
+              <input id="settings-dburl" type="text" />
+            </label>
+            <div class="row">
+              <label class="field">
+                <span>Max nuevas</span>
+                <input id="settings-max-new" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span>Max repasar</span>
+                <input id="settings-max" type="number" min="0" />
+              </label>
+            </div>
+            <button id="save-settings" class="button">Guardar</button>
+            <button id="export-json" class="button ghost">Exportar JSON</button>
+            <button id="reset-local" class="button danger">Reset localStorage</button>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tabs">
+        <button class="tab active" data-screen="folders">Carpetas</button>
+        <button class="tab" data-screen="review">Repasar</button>
+        <button class="tab" data-screen="import">Importar</button>
+        <button class="tab" data-screen="stats">Estadísticas</button>
+        <button class="tab" data-screen="settings">Ajustes</button>
+      </nav>
+    </div>
+
+    <div id="overlay" class="overlay hidden">
+      <div class="modal">
+        <h2>Bienvenido a CHANKI</h2>
+        <label class="field">
+          <span>Nombre de usuario</span>
+          <input id="username-input" type="text" placeholder="tu nombre" />
+        </label>
+        <button id="save-username" class="button">Entrar</button>
+      </div>
+    </div>
+
+    <div id="db-overlay" class="overlay hidden">
+      <div class="modal">
+        <h2>Configurar Database URL</h2>
+        <p>No se pudo conectar a la base de datos. Pega la URL de tu RTDB.</p>
+        <label class="field">
+          <span>Database URL</span>
+          <input id="dburl-input" type="text" placeholder="https://..." />
+        </label>
+        <button id="save-dburl" class="button">Guardar y recargar</button>
+      </div>
+    </div>
+
+    <div id="card-modal" class="overlay hidden">
+      <div class="modal">
+        <h2 id="card-modal-title">Nueva tarjeta</h2>
+        <label class="field">
+          <span>Frente</span>
+          <textarea id="card-front" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span>Reverso</span>
+          <textarea id="card-back" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span>Tags (coma)</span>
+          <input id="card-tags" type="text" />
+        </label>
+        <div class="row">
+          <button id="save-card" class="button">Guardar</button>
+          <button id="cancel-card" class="button ghost">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
