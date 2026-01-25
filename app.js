@@ -136,11 +136,6 @@ const elements = {
   folderNameInput: document.getElementById("folder-name-input"),
   saveFolder: document.getElementById("save-folder"),
   cancelFolder: document.getElementById("cancel-folder"),
-  wordModal: document.getElementById("word-modal"),
-  wordTitle: document.getElementById("word-title"),
-  wordMeaning: document.getElementById("word-meaning"),
-  saveWord: document.getElementById("save-word"),
-  cancelWord: document.getElementById("cancel-word"),
   toastContainer: document.getElementById("toast-container"),
 };
 
@@ -176,6 +171,23 @@ const BUCKET_ALIASES = {
 let editingCardId = null;
 let activeUnsubscribe = null;
 let editingFolderId = null;
+let wordPopover = null;
+let wordPopoverTitle = null;
+let wordPopoverMeaning = null;
+let wordPopoverEditor = null;
+let wordPopoverInput = null;
+let wordPopoverSave = null;
+let wordPopoverAnchor = null;
+let wordPopoverEditing = false;
+
+function getSafeAreaInset(side) {
+  if (!side) return 0;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--safe-area-${side}`)
+    .trim();
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 function canonicalizeBucketId(bucket) {
   if (!bucket) return null;
@@ -504,19 +516,117 @@ function updateCardTypeFields(type) {
   elements.cardClozeAnswersField.classList.toggle("hidden", !isCloze);
 }
 
-async function openWordModal(word) {
+function ensureWordPopover() {
+  if (wordPopover) return;
+  wordPopover = document.createElement("div");
+  wordPopover.className = "word-popover hidden";
+  wordPopover.innerHTML = `
+    <div class="word-popover__title"></div>
+    <button class="word-popover__meaning" type="button">
+      <span class="meaning"></span>
+    </button>
+    <div class="word-popover__editor hidden">
+      <input type="text" class="word-popover__input" />
+      <button class="button small" type="button">Guardar</button>
+    </div>
+  `;
+  document.body.appendChild(wordPopover);
+  wordPopoverTitle = wordPopover.querySelector(".word-popover__title");
+  wordPopoverMeaning = wordPopover.querySelector(".word-popover__meaning .meaning");
+  wordPopoverEditor = wordPopover.querySelector(".word-popover__editor");
+  wordPopoverInput = wordPopover.querySelector(".word-popover__input");
+  wordPopoverSave = wordPopover.querySelector(".word-popover__editor .button");
+
+  wordPopover.querySelector(".word-popover__meaning").addEventListener("click", () => {
+    if (!wordPopover || wordPopover.classList.contains("hidden")) return;
+    wordPopoverEditing = true;
+    wordPopoverEditor.classList.remove("hidden");
+    wordPopoverInput.value = wordPopoverMeaning.textContent === "Añade significado…"
+      ? ""
+      : wordPopoverMeaning.textContent;
+    wordPopoverInput.focus();
+  });
+
+  wordPopoverSave.addEventListener("click", async () => {
+    const key = state.activeWordKey;
+    if (!key || !state.username) return;
+    const meaning = wordPopoverInput.value.trim();
+    try {
+      const db = getDb();
+      await upsertGlossaryEntries(db, state.username, [
+        { key, word: wordPopoverTitle.textContent, meaning },
+      ]);
+      state.glossaryCache.set(key, {
+        word: wordPopoverTitle.textContent,
+        meaning,
+      });
+      showToast("Significado guardado.");
+      wordPopoverEditing = false;
+      wordPopoverEditor.classList.add("hidden");
+      updateWordPopoverMeaning(meaning);
+    } catch (error) {
+      console.error("Error al guardar glosario", error);
+      showToast("No se pudo guardar.", "error");
+    }
+  });
+}
+
+function updateWordPopoverMeaning(meaning) {
+  if (!wordPopoverMeaning) return;
+  wordPopoverMeaning.textContent = meaning ? meaning : "Añade significado…";
+}
+
+function positionWordPopover() {
+  if (!wordPopover || !wordPopoverAnchor) return;
+  const padding = 12;
+  const safeTop = getSafeAreaInset("top");
+  const safeBottom = getSafeAreaInset("bottom");
+  const safeLeft = getSafeAreaInset("left");
+  const safeRight = getSafeAreaInset("right");
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const rect = wordPopover.getBoundingClientRect();
+  let left = wordPopoverAnchor.left + wordPopoverAnchor.width / 2 - rect.width / 2;
+  left = Math.max(padding + safeLeft, Math.min(left, viewportWidth - rect.width - padding - safeRight));
+
+  let top = wordPopoverAnchor.top - rect.height - 8;
+  if (top < padding + safeTop) {
+    top = wordPopoverAnchor.bottom + 8;
+  }
+  top = Math.max(padding + safeTop, Math.min(top, viewportHeight - rect.height - padding - safeBottom));
+
+  wordPopover.style.left = `${left}px`;
+  wordPopover.style.top = `${top}px`;
+}
+
+function closeWordPopover() {
+  if (!wordPopover) return;
+  wordPopover.classList.add("hidden");
+  wordPopoverEditor?.classList.add("hidden");
+  wordPopoverEditing = false;
+  state.activeWordKey = null;
+  wordPopoverAnchor = null;
+}
+
+async function openWordPopover(word, anchorRect) {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
     return;
   }
+  ensureWordPopover();
   const key = normalizeWordKey(word);
   state.activeWordKey = key;
-  elements.wordTitle.textContent = word;
-  elements.wordMeaning.value = "";
-  showOverlay(elements.wordModal, true);
+  wordPopoverTitle.textContent = word;
+  wordPopoverAnchor = anchorRect;
+  wordPopoverEditor.classList.add("hidden");
+  wordPopoverEditing = false;
+  updateWordPopoverMeaning("");
+  wordPopover.classList.remove("hidden");
+  positionWordPopover();
   if (state.glossaryCache.has(key)) {
     const cached = state.glossaryCache.get(key);
-    elements.wordMeaning.value = cached.meaning || "";
+    updateWordPopoverMeaning(cached.meaning || "");
+    positionWordPopover();
     return;
   }
   try {
@@ -524,38 +634,14 @@ async function openWordModal(word) {
     const entry = await fetchGlossaryWord(db, state.username, key);
     if (entry) {
       state.glossaryCache.set(key, entry);
-      elements.wordMeaning.value = entry.meaning || "";
+      updateWordPopoverMeaning(entry.meaning || "");
+    } else {
+      updateWordPopoverMeaning("");
     }
+    positionWordPopover();
   } catch (error) {
     console.error("Error al cargar glosario", error);
     showToast("No se pudo cargar la palabra.", "error");
-  }
-}
-
-function closeWordModal() {
-  showOverlay(elements.wordModal, false);
-  elements.wordMeaning.value = "";
-  state.activeWordKey = null;
-}
-
-async function handleSaveWord() {
-  const key = state.activeWordKey;
-  if (!key) return;
-  const meaning = elements.wordMeaning.value.trim();
-  try {
-    const db = getDb();
-    await upsertGlossaryEntries(db, state.username, [
-      { key, word: elements.wordTitle.textContent, meaning },
-    ]);
-    state.glossaryCache.set(key, {
-      word: elements.wordTitle.textContent,
-      meaning,
-    });
-    showToast("Significado guardado.");
-    closeWordModal();
-  } catch (error) {
-    console.error("Error al guardar glosario", error);
-    showToast("No se pudo guardar.", "error");
   }
 }
 
@@ -1063,9 +1149,15 @@ async function handleReviewRating(rating) {
 async function handleImportPreview() {
   const parsed = parseImport(elements.importText.value);
   const count = parsed.cards.length;
-  const clozeCount = parsed.cards.filter((card) => card.type === "cloze").length;
   const glossaryCount = parsed.glossary?.length || 0;
-  elements.importPreview.textContent = `Tarjetas: ${count} (${clozeCount} cloze) · Carpeta: ${parsed.folderPath || "(sin carpeta)"} · Tags: ${parsed.tags.join(", ") || "-"} · Glosario: ${glossaryCount}`;
+  if (!count) {
+    elements.importPreview.textContent =
+      "No se encontraron tarjetas. Usa TYPE: con FRONT/BACK o líneas \"front :: back\".";
+    elements.importPreview.classList.add("error");
+  } else {
+    elements.importPreview.textContent = `Se importarán ${count} tarjetas y ${glossaryCount} palabras al glosario.`;
+    elements.importPreview.classList.remove("error");
+  }
   elements.importPreview.dataset.parsed = JSON.stringify(parsed);
 }
 
@@ -1371,14 +1463,6 @@ if (elements.folderModal) {
   });
 }
 
-if (elements.wordModal) {
-  elements.wordModal.addEventListener("click", (event) => {
-    if (event.target === elements.wordModal) {
-      closeWordModal();
-    }
-  });
-}
-
 elements.addCard.addEventListener("click", () => openCardModal());
 
 elements.loadMore.addEventListener("click", () => loadCards());
@@ -1399,9 +1483,10 @@ if (elements.reviewCard) {
   elements.reviewCard.addEventListener("click", (event) => {
     const wordEl = event.target.closest(".word");
     if (wordEl) {
+      event.stopPropagation();
       const word = wordEl.dataset.word;
       if (word) {
-        openWordModal(word);
+        openWordPopover(word, wordEl.getBoundingClientRect());
       }
       return;
     }
@@ -1475,18 +1560,27 @@ elements.exportJson.addEventListener("click", handleExportJson);
 
 elements.resetLocal.addEventListener("click", handleResetLocal);
 
-if (elements.saveWord) {
-  elements.saveWord.addEventListener("click", handleSaveWord);
-}
-
-if (elements.cancelWord) {
-  elements.cancelWord.addEventListener("click", closeWordModal);
-}
-
 document.addEventListener("click", (event) => {
+  if (wordPopover && !wordPopover.classList.contains("hidden")) {
+    if (!event.target.closest(".word-popover") && !event.target.closest(".word")) {
+      closeWordPopover();
+    }
+  }
   if (event.target.closest(".item-menu")) return;
   if (event.target.closest("[data-menu-toggle]")) return;
   closeAllMenus();
+});
+
+window.addEventListener("scroll", () => {
+  if (wordPopover && !wordPopover.classList.contains("hidden")) {
+    closeWordPopover();
+  }
+}, true);
+
+window.addEventListener("resize", () => {
+  if (wordPopover && !wordPopover.classList.contains("hidden")) {
+    positionWordPopover();
+  }
 });
 
 document.addEventListener("keydown", (event) => {
@@ -1494,11 +1588,11 @@ document.addEventListener("keydown", (event) => {
   if (elements.folderModal && !elements.folderModal.classList.contains("hidden")) {
     closeFolderModal();
   }
-  if (elements.wordModal && !elements.wordModal.classList.contains("hidden")) {
-    closeWordModal();
-  }
   if (elements.cardModal && !elements.cardModal.classList.contains("hidden")) {
     closeCardModal();
+  }
+  if (wordPopover && !wordPopover.classList.contains("hidden")) {
+    closeWordPopover();
   }
 });
 

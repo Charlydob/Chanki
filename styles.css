@@ -12,6 +12,10 @@
   --warning: #fbbf24;
   --success: #34d399;
   --radius: 18px;
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+  --safe-area-left: env(safe-area-inset-left);
+  --safe-area-right: env(safe-area-inset-right);
 }
 
 *,
@@ -111,6 +115,12 @@ body {
   box-shadow: 0 8px 20px rgba(139, 92, 246, 0.35);
   transition: transform 0.15s ease, box-shadow 0.2s ease;
   touch-action: manipulation;
+}
+
+.button.small {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .button:disabled {
@@ -339,6 +349,11 @@ body {
   box-shadow: 0 18px 40px rgba(10, 14, 24, 0.4);
   backdrop-filter: blur(18px);
   max-width: 100%;
+}
+
+.card.error {
+  border-color: rgba(251, 113, 133, 0.6);
+  color: #ffd1d7;
 }
 
 .field {
@@ -819,6 +834,52 @@ canvas.mini-chart {
 .word-title {
   font-size: 16px;
   font-weight: 600;
+}
+
+.word-popover {
+  position: fixed;
+  z-index: 9999;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: 14px;
+  backdrop-filter: blur(14px);
+  background: rgba(15, 18, 25, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
+}
+
+.word-popover__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.word-popover__meaning {
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+}
+
+.word-popover .meaning {
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.word-popover__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.word-popover input {
+  width: 100%;
+  font-size: 16px;
 }
 
 .app,
