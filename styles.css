@@ -929,10 +929,21 @@ canvas.mini-chart {
   cursor: pointer;
 }
 
+.word.has-meaning {
+  background: rgba(255, 215, 0, 0.14);
+  border: 1px solid rgba(255, 215, 0, 0.25);
+  border-radius: 8px;
+  padding: 0 4px;
+}
+
 .word:active,
 .word:hover {
   background: rgba(139, 92, 246, 0.2);
   color: #fff;
+}
+
+.lang-chunk {
+  display: inline;
 }
 
 .word-title {
