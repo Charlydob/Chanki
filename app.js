@@ -12,6 +12,7 @@ import {
   fetchQueueKeys,
   fetchCard,
   updateReview,
+  repairIndexesOnce,
   fetchUserData,
   userRoot,
   fetchGlossaryWord,
@@ -57,6 +58,7 @@ const state = {
   activeWordKey: null,
   reviewFolderName: "Todas",
   reviewShowingBack: false,
+  repairAttempted: false,
 };
 
 const elements = {
@@ -828,6 +830,67 @@ function renderReviewCard(card, showBack = false) {
   elements.reviewCard.appendChild(wrapper);
 }
 
+function parseQueueCardId(queueKey) {
+  if (!queueKey) return null;
+  const separatorIndex = queueKey.indexOf("_");
+  if (separatorIndex === -1) return null;
+  return queueKey.slice(separatorIndex + 1) || null;
+}
+
+async function buildSessionQueue({
+  username,
+  folderIdOrAll,
+  buckets,
+  maxCards,
+  maxNew = null,
+  maxReviews = null,
+}) {
+  const db = getDb();
+  const folderId = folderIdOrAll === "all" ? null : folderIdOrAll;
+  const root = userRoot(username);
+  const cardIds = [];
+  const bucketCounts = {};
+  const bucketPaths = {};
+  const seen = new Set();
+
+  for (const bucket of buckets) {
+    if (cardIds.length >= maxCards) break;
+    let needed = maxCards - cardIds.length;
+    if (bucket === "new" && Number.isFinite(maxNew)) {
+      needed = Math.min(needed, maxNew);
+    } else if (bucket !== "new" && Number.isFinite(maxReviews)) {
+      needed = Math.min(needed, maxReviews);
+    }
+    if (needed <= 0) {
+      bucketCounts[bucket] = 0;
+      continue;
+    }
+    const keys = await fetchQueueKeys(db, username, bucket, folderId, needed);
+    bucketCounts[bucket] = keys.length;
+    bucketPaths[bucket] = folderId
+      ? `${root}/folderQueue/${folderId}/${bucket}`
+      : `${root}/queue/${bucket}`;
+    for (const key of keys) {
+      const cardId = parseQueueCardId(key);
+      if (!cardId || seen.has(cardId)) continue;
+      seen.add(cardId);
+      cardIds.push(cardId);
+      if (cardIds.length >= maxCards) break;
+    }
+  }
+
+  if (!cardIds.length) {
+    console.debug("Review queue empty", {
+      folderSelection: folderIdOrAll,
+      activeBuckets: buckets,
+      bucketCounts,
+      bucketPaths,
+    });
+  }
+
+  return cardIds;
+}
+
 async function buildReviewQueue() {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
@@ -852,27 +915,40 @@ async function buildReviewQueue() {
 
   const maxNew = Number(elements.reviewMaxNew.value || state.prefs.maxNew);
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
+  const maxCards = maxNew + maxReviews;
 
-  const bucketPriority = BUCKET_ORDER;
-  const queue = [];
+  const bucketPriority = BUCKET_ORDER.filter((bucket) => enabledBuckets.includes(bucket));
+  let cardIds = await buildSessionQueue({
+    username: state.username,
+    folderIdOrAll: folderId ?? "all",
+    buckets: bucketPriority,
+    maxCards,
+    maxNew,
+    maxReviews,
+  });
 
-  for (const bucket of bucketPriority) {
-    if (!enabledBuckets.includes(bucket)) continue;
-    const limit = bucket === "new" ? maxNew : maxReviews;
-    const keys = await fetchQueueKeys(db, state.username, bucket, folderId, limit);
-    for (const key of keys) {
-      const cardId = key.split("_").slice(1).join("_");
-      queue.push({ cardId, bucket, key });
+  if (!cardIds.length && !state.repairAttempted) {
+    const repairResult = await repairIndexesOnce(db, state.username, 200);
+    state.repairAttempted = true;
+    if (repairResult.repaired) {
+      cardIds = await buildSessionQueue({
+        username: state.username,
+        folderIdOrAll: folderId ?? "all",
+        buckets: bucketPriority,
+        maxCards,
+        maxNew,
+        maxReviews,
+      });
     }
   }
 
   const cards = await Promise.all(
-    queue.map(async (entry) => {
-      if (state.cardCache.has(entry.cardId)) {
-        return state.cardCache.get(entry.cardId);
+    cardIds.map(async (cardId) => {
+      if (state.cardCache.has(cardId)) {
+        return state.cardCache.get(cardId);
       }
-      const card = await fetchCard(db, state.username, entry.cardId);
-      if (card) state.cardCache.set(entry.cardId, card);
+      const card = await fetchCard(db, state.username, cardId);
+      if (card) state.cardCache.set(cardId, card);
       return card;
     })
   );
