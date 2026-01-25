@@ -33,6 +33,12 @@
             <h3 id="cards-title">Tarjetas</h3>
             <button id="add-card" class="button">Nueva tarjeta</button>
           </div>
+          <div class="cards-meta">
+            <span id="cards-dup-count" class="cards-meta__count">Duplicadas: 0</span>
+            <button id="cards-dup-toggle" class="button ghost small" type="button">
+              Mostrar solo duplicadas
+            </button>
+          </div>
           <div id="cards-list" class="list"></div>
           <button id="load-more" class="button ghost">Cargar más</button>
         </section>
@@ -139,8 +145,8 @@
           </div>
           <textarea id="import-text" rows="10" placeholder="Pega aquí tu contenido"></textarea>
           <div id="import-preview" class="card"></div>
-          <button id="import-parse" class="button">Previsualizar</button>
-          <button id="import-save" class="button">Guardar en RTDB</button>
+          <button id="import-parse" class="button" type="button">Previsualizar</button>
+          <button id="import-save" class="button" type="button">Guardar en RTDB</button>
         </section>
 
         <section id="screen-stats" class="screen">

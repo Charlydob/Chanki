@@ -33,6 +33,7 @@ const state = {
   reviewQueue: [],
   currentSessionQueue: [],
   currentIndex: 0,
+  showOnlyDuplicates: false,
   sessionStats: {
     startTime: null,
     answeredCount: 0,
@@ -88,6 +89,8 @@ const elements = {
   saveCard: document.getElementById("save-card"),
   cancelCard: document.getElementById("cancel-card"),
   cardsTitle: document.getElementById("cards-title"),
+  cardsDupCount: document.getElementById("cards-dup-count"),
+  cardsDupToggle: document.getElementById("cards-dup-toggle"),
   screenReviewConfig: document.getElementById("screen-review-config"),
   screenReviewPlayer: document.getElementById("screen-review-player"),
   reviewFolder: document.getElementById("review-folder"),
@@ -297,6 +300,19 @@ function normalizeTags(text) {
     .filter(Boolean);
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.?!…]+$/g, "")
+    .replace(/["“”‘’|]+/g, "");
+}
+
+function safeKey(value) {
+  return encodeURIComponent(value).slice(0, 240);
+}
+
 function tagsToMap(tags) {
   return tags.reduce((acc, tag) => {
     acc[tag] = true;
@@ -346,7 +362,7 @@ function renderTextWithWords(text) {
 }
 
 function normalizeWordKey(word) {
-  return word.trim().toLowerCase();
+  return safeKey(normalizeText(word));
 }
 
 function openFolderModal(folder = null) {
@@ -442,23 +458,90 @@ function renderBucketFilter() {
   });
 }
 
+function getCardDedupeValues(card) {
+  if (card.type === "cloze") {
+    return {
+      front: card.clozeText || "",
+      back: (card.clozeAnswers || []).join(" | "),
+    };
+  }
+  return {
+    front: card.front || "",
+    back: card.back || "",
+  };
+}
+
 function renderCards() {
   const list = elements.cardsList;
   list.innerHTML = "";
   if (!state.cards.length) {
+    state.showOnlyDuplicates = false;
     list.innerHTML = "<div class=\"card\">No hay tarjetas en esta carpeta.</div>";
+    if (elements.cardsDupCount) {
+      elements.cardsDupCount.textContent = "Duplicadas: 0";
+    }
+    if (elements.cardsDupToggle) {
+      elements.cardsDupToggle.disabled = true;
+      elements.cardsDupToggle.textContent = "Mostrar solo duplicadas";
+    }
     return;
   }
+
+  const frontCount = new Map();
+  const backCount = new Map();
   state.cards.forEach((card) => {
+    const values = getCardDedupeValues(card);
+    const normFront = normalizeText(values.front);
+    const normBack = normalizeText(values.back);
+    if (normFront) {
+      frontCount.set(normFront, (frontCount.get(normFront) || 0) + 1);
+    }
+    if (normBack) {
+      backCount.set(normBack, (backCount.get(normBack) || 0) + 1);
+    }
+  });
+
+  const isDuplicateCard = (card) => {
+    const values = getCardDedupeValues(card);
+    const normFront = normalizeText(values.front);
+    const normBack = normalizeText(values.back);
+    return (
+      (normFront && (frontCount.get(normFront) || 0) > 1)
+      || (normBack && (backCount.get(normBack) || 0) > 1)
+    );
+  };
+
+  const duplicateCards = state.cards.filter((card) => isDuplicateCard(card));
+  const visibleCards = state.showOnlyDuplicates ? duplicateCards : state.cards;
+  const duplicateCount = duplicateCards.length;
+
+  if (elements.cardsDupCount) {
+    elements.cardsDupCount.textContent = `Duplicadas: ${duplicateCount}`;
+  }
+  if (elements.cardsDupToggle) {
+    elements.cardsDupToggle.disabled = duplicateCount === 0 && !state.showOnlyDuplicates;
+    elements.cardsDupToggle.textContent = state.showOnlyDuplicates
+      ? "Mostrar todas"
+      : "Mostrar solo duplicadas";
+  }
+
+  if (!visibleCards.length) {
+    list.innerHTML = state.showOnlyDuplicates
+      ? "<div class=\"card\">No hay tarjetas duplicadas en esta carpeta.</div>"
+      : "<div class=\"card\">No hay tarjetas en esta carpeta.</div>";
+    return;
+  }
+
+  visibleCards.forEach((card) => {
     const item = document.createElement("div");
-    item.className = "list-item";
+    const isDuplicate = isDuplicateCard(card);
+    item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
     const summary = card.type === "cloze"
       ? `${card.clozeText || "(cloze sin texto)"}`
       : `${card.front}`;
     const detail = card.type === "cloze"
       ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
       : `${card.back}`;
-    const menuId = `card-menu-${card.id}`;
     item.innerHTML = `
       <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
         <span class="item-icon" aria-hidden="true">
@@ -483,23 +566,16 @@ function renderCards() {
           </svg>
         </span>
         <span class="item-text">
-          <span class="item-title">${escapeHtml(summary)}</span>
+          <span class="item-title-row">
+            <span class="item-title">${escapeHtml(summary)}</span>
+            ${isDuplicate ? "<span class=\"dup-badge\">DUP</span>" : ""}
+          </span>
           <span class="item-subtitle">${escapeHtml(detail)}</span>
         </span>
       </button>
-      <div class="item-menu-wrapper">
-        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          </svg>
-        </button>
-        <div class="item-menu hidden" data-menu-id="${menuId}">
-          <button data-action="edit" data-id="${card.id}" type="button">Editar</button>
-          <button data-action="move" data-id="${card.id}" type="button">Mover</button>
-          <button data-action="delete" data-id="${card.id}" type="button" class="danger">Borrar</button>
-        </div>
+      <div class="item-actions">
+        <button class="icon-button icon-button--compact" data-action="edit" data-id="${card.id}" type="button" aria-label="Editar">✏️</button>
+        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${card.id}" type="button" aria-label="Borrar">🗑️</button>
       </div>
     `;
     list.appendChild(item);
@@ -595,6 +671,7 @@ function updateWordPopoverMeaning(meaning) {
 
 function positionWordPopover() {
   if (!wordPopover || !wordPopoverAnchor) return;
+  if (wordPopoverEditing && document.activeElement === wordPopoverInput) return;
   const padding = 12;
   const safeTop = getSafeAreaInset("top");
   const safeBottom = getSafeAreaInset("bottom");
@@ -782,17 +859,11 @@ async function handleSaveFolder() {
 }
 
 async function handleCardListAction(event) {
-  const menuToggle = event.target.closest("[data-menu-toggle]");
-  if (menuToggle) {
-    toggleMenu(menuToggle.dataset.menuToggle);
-    return;
-  }
   const actionEl = event.target.closest("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action;
   const cardId = actionEl.dataset.id;
   if (!action || !cardId) return;
-  closeAllMenus();
   const card = state.cards.find((item) => item.id === cardId);
   if (!card) return;
   if (action === "edit") {
@@ -1179,21 +1250,23 @@ function showNextReviewCard() {
   const total = state.reviewQueue.length;
   const card = state.reviewQueue[state.currentIndex];
   if (!card) {
-    elements.reviewActions.classList.add("hidden");
-    elements.flipCard.classList.add("hidden");
-    elements.reviewCard.classList.add("hidden");
-    if (elements.reviewComplete) {
-      const durationMs = state.sessionStats.startTime
-        ? Date.now() - state.sessionStats.startTime
-        : 0;
-      const minutes = Math.max(0, Math.round(durationMs / 60000));
-      const summary = `Repasos: ${state.sessionStats.answeredCount} · Tiempo: ${minutes} min`;
-      elements.reviewCompleteSummary.textContent = summary;
-      elements.reviewComplete.classList.remove("hidden");
-    }
-    if (elements.reviewPlayerCounter) {
-      const totalCount = state.reviewQueue.length;
-      elements.reviewPlayerCounter.textContent = `${totalCount}/${totalCount}`;
+    if (state.currentIndex >= total) {
+      elements.reviewActions.classList.add("hidden");
+      elements.flipCard.classList.add("hidden");
+      elements.reviewCard.classList.add("hidden");
+      if (elements.reviewComplete) {
+        const durationMs = state.sessionStats.startTime
+          ? Date.now() - state.sessionStats.startTime
+          : 0;
+        const minutes = Math.max(0, Math.round(durationMs / 60000));
+        const summary = `Repasos: ${state.sessionStats.answeredCount} · Tiempo: ${minutes} min`;
+        elements.reviewCompleteSummary.textContent = summary;
+        elements.reviewComplete.classList.remove("hidden");
+      }
+      if (elements.reviewPlayerCounter) {
+        const totalCount = state.reviewQueue.length;
+        elements.reviewPlayerCounter.textContent = `${totalCount}/${totalCount}`;
+      }
     }
     return;
   }
@@ -1346,6 +1419,10 @@ async function handleImportPreview() {
 }
 
 async function handleImportSave() {
+  if (window.__importing) {
+    showToast("Importación en curso.", "error");
+    return;
+  }
   const parsed = elements.importPreview.dataset.parsed ? JSON.parse(elements.importPreview.dataset.parsed) : null;
   if (!parsed || !parsed.cards.length) {
     showToast("Previsualiza primero.", "error");
@@ -1373,44 +1450,59 @@ async function handleImportSave() {
   let createdCount = 0;
   let updatedCount = 0;
   let duplicatedCount = 0;
-  for (const card of parsed.cards) {
-    const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-    const result = await upsertCardWithDedupe(db, state.username, {
-      id,
-      folderId,
-      type: card.type || "basic",
-      front: card.front,
-      back: card.back,
-      clozeText: card.clozeText,
-      clozeAnswers: card.clozeAnswers || [],
-      tags: tagsToMap(card.tags || parsed.tags || []),
+  const parsedCount = parsed.cards.length;
+  window.__importing = true;
+  elements.importSave.disabled = true;
+  console.log("IMPORT START", { parsed: parsedCount, folderId });
+  try {
+    for (const card of parsed.cards) {
+      const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
+      const result = await upsertCardWithDedupe(db, state.username, {
+        id,
+        folderId,
+        type: card.type || "basic",
+        front: card.front,
+        back: card.back,
+        clozeText: card.clozeText,
+        clozeAnswers: card.clozeAnswers || [],
+        tags: tagsToMap(card.tags || parsed.tags || []),
+      });
+      if (result.status === "created") {
+        createdCount += 1;
+      } else if (result.status === "updated") {
+        updatedCount += 1;
+      } else {
+        duplicatedCount += 1;
+      }
+    }
+    if (parsed.glossary && parsed.glossary.length) {
+      const entries = parsed.glossary
+        .map((entry) => ({
+          key: normalizeWordKey(entry.word),
+          word: entry.word,
+          meaning: entry.meaning,
+        }))
+        .filter((entry) => entry.key && entry.meaning);
+      if (entries.length) {
+        await upsertGlossaryEntries(db, state.username, entries);
+        entries.forEach((entry) => state.glossaryCache.set(entry.key, entry));
+      }
+    }
+    elements.importText.value = "";
+    const summary = `Creadas: ${createdCount} | Actualizadas: ${updatedCount} | Duplicadas omitidas: ${duplicatedCount}`;
+    elements.importPreview.textContent = summary;
+    showToast(summary);
+    await loadCards(true);
+    console.log("IMPORT END", {
+      parsed: parsedCount,
+      created: createdCount,
+      updated: updatedCount,
+      skipped: duplicatedCount,
     });
-    if (result.status === "created") {
-      createdCount += 1;
-    } else if (result.status === "updated") {
-      updatedCount += 1;
-    } else {
-      duplicatedCount += 1;
-    }
+  } finally {
+    window.__importing = false;
+    elements.importSave.disabled = false;
   }
-  if (parsed.glossary && parsed.glossary.length) {
-    const entries = parsed.glossary
-      .map((entry) => ({
-        key: normalizeWordKey(entry.word),
-        word: entry.word,
-        meaning: entry.meaning,
-      }))
-      .filter((entry) => entry.key && entry.meaning);
-    if (entries.length) {
-      await upsertGlossaryEntries(db, state.username, entries);
-      entries.forEach((entry) => state.glossaryCache.set(entry.key, entry));
-    }
-  }
-  elements.importText.value = "";
-  const summary = `Creadas: ${createdCount} | Actualizadas: ${updatedCount} | Duplicadas omitidas: ${duplicatedCount}`;
-  elements.importPreview.textContent = summary;
-  showToast(summary);
-  await loadCards(true);
 }
 
 function renderWeekChart(daily) {
@@ -1664,6 +1756,13 @@ elements.loadMore.addEventListener("click", () => loadCards());
 
 elements.cardsList.addEventListener("click", handleCardListAction);
 
+if (elements.cardsDupToggle) {
+  elements.cardsDupToggle.addEventListener("click", () => {
+    state.showOnlyDuplicates = !state.showOnlyDuplicates;
+    renderCards();
+  });
+}
+
 if (elements.cardType) {
   elements.cardType.addEventListener("change", (event) => {
     updateCardTypeFields(event.target.value);
@@ -1771,12 +1870,6 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-menu-toggle]")) return;
   closeAllMenus();
 });
-
-window.addEventListener("scroll", () => {
-  if (wordPopover && !wordPopover.classList.contains("hidden")) {
-    closeWordPopover();
-  }
-}, true);
 
 window.addEventListener("resize", () => {
   if (wordPopover && !wordPopover.classList.contains("hidden")) {
