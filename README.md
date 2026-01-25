@@ -2,15 +2,15 @@
 
 CHANKI es una web app estática tipo Anki diseñada para iOS PWA. Funciona con Firebase Realtime Database (sin Auth) y se despliega en GitHub Pages.
 
-## Configurar databaseURL
+## RTDB por defecto
 
-La app intenta conectarse primero a:
+La app se conecta directamente a la RTDB configurada en Firebase:
 
 ```
-https://anki-d6b3b-default-rtdb.firebaseio.com
+https://anki-d6b3b-default-rtdb.europe-west1.firebasedatabase.app
 ```
 
-Si no conecta, aparecerá una pantalla para pegar tu `databaseURL`. También puedes cambiarla desde **Ajustes**. Se guarda en `localStorage` con la clave `chanki_database_url`.
+Al iniciar solo se solicita el nombre de usuario y la app usa esa RTDB sin configuración adicional.
 
 ## Username (sin Auth)
 
