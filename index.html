@@ -93,39 +93,41 @@
               <button id="start-review" class="button">Empezar</button>
             </div>
           </div>
-          <div id="screen-review-player" class="review-player hidden">
-            <div class="review-player__header">
-              <button id="review-exit" class="icon-button" type="button" aria-label="Volver">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M15.5 5.5 9 12l6.5 6.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </button>
-              <div class="review-player__title">
-                <span id="review-player-folder">Todas</span>
-                <span id="review-player-counter">0/0</span>
+          <div id="screen-review-player" class="review-player screen-review-player hidden">
+            <div class="player-inner">
+              <div class="review-player__header">
+                <button id="review-exit" class="icon-button" type="button" aria-label="Volver">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M15.5 5.5 9 12l6.5 6.5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+                <div class="review-player__title">
+                  <span id="review-player-folder">Todas</span>
+                  <span id="review-player-counter">0/0</span>
+                </div>
+                <span id="review-player-bucket" class="chip hidden">Nvo</span>
               </div>
-              <span id="review-player-bucket" class="chip hidden">Nvo</span>
-            </div>
-            <div class="review-player__body">
-              <div id="review-card" class="review-card review-card--large"></div>
-              <button id="flip-card" class="button ghost">Mostrar respuesta</button>
-              <div class="review-actions hidden" id="review-actions">
-                <button data-rating="error" class="button danger">Error</button>
-                <button data-rating="bad" class="button warning">Malo</button>
-                <button data-rating="good" class="button">Bueno</button>
-                <button data-rating="easy" class="button success">Fácil</button>
-              </div>
-              <div id="review-complete" class="review-complete hidden">
-                <h3>Sesión completada</h3>
-                <p class="muted" id="review-complete-summary"></p>
-                <button id="review-finish" class="button" type="button">Volver</button>
+              <div class="review-player__body">
+                <div id="review-card" class="review-card review-card--large"></div>
+                <button id="flip-card" class="button ghost">Mostrar respuesta</button>
+                <div class="review-actions hidden" id="review-actions">
+                  <button data-rating="error" class="button danger">Error</button>
+                  <button data-rating="bad" class="button warning">Malo</button>
+                  <button data-rating="good" class="button">Bueno</button>
+                  <button data-rating="easy" class="button success">Fácil</button>
+                </div>
+                <div id="review-complete" class="review-complete hidden">
+                  <h3>Sesión completada</h3>
+                  <p class="muted" id="review-complete-summary"></p>
+                  <button id="review-finish" class="button" type="button">Volver</button>
+                </div>
               </div>
             </div>
           </div>

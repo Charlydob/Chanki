@@ -9,10 +9,9 @@ import {
   deleteCard,
   moveCardFolder,
   fetchCardsByFolder,
-  fetchQueueKeys,
   fetchCard,
   updateReview,
-  repairIndexesOnce,
+  buildSessionQueue,
   fetchUserData,
   userRoot,
   fetchGlossaryWord,
@@ -154,10 +153,56 @@ const BUCKET_LABELS = {
   week: "<1sem",
   future: "Futuro",
 };
+const BUCKET_ALIASES = {
+  new: "new",
+  nvo: "new",
+  nuevo: "new",
+  immediate: "immediate",
+  ahora: "immediate",
+  lt24h: "lt24h",
+  "<24h": "lt24h",
+  "24h": "lt24h",
+  tomorrow: "tomorrow",
+  "mañana": "tomorrow",
+  manana: "tomorrow",
+  week: "week",
+  "<1sem": "week",
+  "1sem": "week",
+  semana: "week",
+  future: "future",
+  futuro: "future",
+};
 
 let editingCardId = null;
 let activeUnsubscribe = null;
 let editingFolderId = null;
+
+function canonicalizeBucketId(bucket) {
+  if (!bucket) return null;
+  const normalized = String(bucket).trim().toLowerCase();
+  return BUCKET_ALIASES[normalized] || (BUCKET_ORDER.includes(normalized) ? normalized : null);
+}
+
+function normalizeReviewBuckets() {
+  const next = {};
+  Object.entries(state.reviewBuckets).forEach(([bucket, active]) => {
+    const canonical = canonicalizeBucketId(bucket);
+    if (!canonical) return;
+    if (typeof next[canonical] === "undefined") {
+      next[canonical] = Boolean(active);
+    } else {
+      next[canonical] = next[canonical] || Boolean(active);
+    }
+  });
+  BUCKET_ORDER.forEach((bucket) => {
+    if (typeof next[bucket] === "undefined") {
+      next[bucket] = Boolean(state.reviewBuckets[bucket]);
+    }
+  });
+  state.reviewBuckets = next;
+}
+
+normalizeReviewBuckets();
 
 function showOverlay(overlay, show) {
   overlay.classList.toggle("hidden", !show);
@@ -361,7 +406,8 @@ function renderFolderSelects() {
 function renderBucketFilter() {
   if (!elements.reviewBucketChart) return;
   elements.reviewBucketChart.querySelectorAll(".bucket-bar").forEach((bar) => {
-    const bucket = bar.dataset.bucket;
+    const bucket = canonicalizeBucketId(bar.dataset.bucket);
+    if (!bucket) return;
     const active = state.reviewBuckets[bucket];
     bar.classList.toggle("active", Boolean(active));
   });
@@ -830,67 +876,6 @@ function renderReviewCard(card, showBack = false) {
   elements.reviewCard.appendChild(wrapper);
 }
 
-function parseQueueCardId(queueKey) {
-  if (!queueKey) return null;
-  const separatorIndex = queueKey.indexOf("_");
-  if (separatorIndex === -1) return null;
-  return queueKey.slice(separatorIndex + 1) || null;
-}
-
-async function buildSessionQueue({
-  username,
-  folderIdOrAll,
-  buckets,
-  maxCards,
-  maxNew = null,
-  maxReviews = null,
-}) {
-  const db = getDb();
-  const folderId = folderIdOrAll === "all" ? null : folderIdOrAll;
-  const root = userRoot(username);
-  const cardIds = [];
-  const bucketCounts = {};
-  const bucketPaths = {};
-  const seen = new Set();
-
-  for (const bucket of buckets) {
-    if (cardIds.length >= maxCards) break;
-    let needed = maxCards - cardIds.length;
-    if (bucket === "new" && Number.isFinite(maxNew)) {
-      needed = Math.min(needed, maxNew);
-    } else if (bucket !== "new" && Number.isFinite(maxReviews)) {
-      needed = Math.min(needed, maxReviews);
-    }
-    if (needed <= 0) {
-      bucketCounts[bucket] = 0;
-      continue;
-    }
-    const keys = await fetchQueueKeys(db, username, bucket, folderId, needed);
-    bucketCounts[bucket] = keys.length;
-    bucketPaths[bucket] = folderId
-      ? `${root}/folderQueue/${folderId}/${bucket}`
-      : `${root}/queue/${bucket}`;
-    for (const key of keys) {
-      const cardId = parseQueueCardId(key);
-      if (!cardId || seen.has(cardId)) continue;
-      seen.add(cardId);
-      cardIds.push(cardId);
-      if (cardIds.length >= maxCards) break;
-    }
-  }
-
-  if (!cardIds.length) {
-    console.debug("Review queue empty", {
-      folderSelection: folderIdOrAll,
-      activeBuckets: buckets,
-      bucketCounts,
-      bucketPaths,
-    });
-  }
-
-  return cardIds;
-}
-
 async function buildReviewQueue() {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
@@ -903,8 +888,10 @@ async function buildReviewQueue() {
   const folderId = elements.reviewFolder.value === "all" ? null : elements.reviewFolder.value;
   const enabledBuckets = Object.entries(state.reviewBuckets)
     .filter(([, active]) => active)
-    .map(([bucket]) => bucket);
-  if (!enabledBuckets.length) {
+    .map(([bucket]) => canonicalizeBucketId(bucket))
+    .filter(Boolean);
+  const uniqueBuckets = [...new Set(enabledBuckets)];
+  if (!uniqueBuckets.length) {
     showToast("Activa al menos un bucket.", "error");
     state.reviewQueue = [];
     state.currentSessionQueue = [];
@@ -917,30 +904,31 @@ async function buildReviewQueue() {
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
   const maxCards = maxNew + maxReviews;
 
-  const bucketPriority = BUCKET_ORDER.filter((bucket) => enabledBuckets.includes(bucket));
-  let cardIds = await buildSessionQueue({
+  const bucketPriority = BUCKET_ORDER.filter((bucket) => uniqueBuckets.includes(bucket));
+  const sessionResult = await buildSessionQueue({
+    db,
     username: state.username,
     folderIdOrAll: folderId ?? "all",
     buckets: bucketPriority,
     maxCards,
     maxNew,
     maxReviews,
+    tagFilter,
+    allowRepair: !state.repairAttempted,
   });
 
-  if (!cardIds.length && !state.repairAttempted) {
-    const repairResult = await repairIndexesOnce(db, state.username, 200);
+  const { cardIds, bucketCounts, fallbackCount, usedFallback, repaired } = sessionResult;
+  if (usedFallback || repaired) {
     state.repairAttempted = true;
-    if (repairResult.repaired) {
-      cardIds = await buildSessionQueue({
-        username: state.username,
-        folderIdOrAll: folderId ?? "all",
-        buckets: bucketPriority,
-        maxCards,
-        maxNew,
-        maxReviews,
-      });
-    }
   }
+
+  console.debug("Review session init", {
+    username: state.username,
+    folderSelection: folderId ?? "all",
+    activeBuckets: bucketPriority,
+    queueCounts: bucketCounts,
+    fallbackCards: fallbackCount,
+  });
 
   const cards = await Promise.all(
     cardIds.map(async (cardId) => {
@@ -1452,7 +1440,8 @@ if (elements.reviewBucketChart) {
   elements.reviewBucketChart.addEventListener("click", (event) => {
     const bar = event.target.closest(".bucket-bar");
     if (!bar) return;
-    const bucket = bar.dataset.bucket;
+    const bucket = canonicalizeBucketId(bar.dataset.bucket);
+    if (!bucket) return;
     state.reviewBuckets[bucket] = !state.reviewBuckets[bucket];
     renderBucketFilter();
   });

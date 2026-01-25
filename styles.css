@@ -454,6 +454,7 @@ textarea {
   text-align: center;
   font-size: 18px;
   width: 100%;
+  overflow: auto;
 }
 
 .review-card--large {
@@ -517,17 +518,25 @@ textarea {
   gap: 12px;
 }
 
-.review-player {
+.screen-review-player {
   position: fixed;
   inset: 0;
+  overflow: hidden;
+}
+
+.review-player {
   background: radial-gradient(circle at top, rgba(124, 58, 237, 0.18), transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(94, 234, 212, 0.15), transparent 55%),
     var(--bg);
+  z-index: 70;
+}
+
+.player-inner {
+  height: 100%;
+  padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom) 16px;
   display: flex;
   flex-direction: column;
-  padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
   gap: 16px;
-  z-index: 70;
 }
 
 .review-player__header {
@@ -561,6 +570,7 @@ textarea {
   flex-direction: column;
   gap: 16px;
   justify-content: center;
+  overflow: hidden;
 }
 
 .chip {
