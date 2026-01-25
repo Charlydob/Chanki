@@ -1,0 +1,8 @@
+{
+  "name": "CHANKI",
+  "short_name": "CHANKI",
+  "start_url": "/Chanki/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a"
+}
