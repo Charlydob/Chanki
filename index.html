@@ -2,7 +2,10 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>CHANKI</title>
@@ -39,18 +42,39 @@
             <h2>Repasar</h2>
           </div>
           <div class="card settings-block">
+            <div class="bucket-filter">
+              <p class="eyebrow">Buckets</p>
+              <div id="review-bucket-chart" class="bucket-chart">
+                <button class="bucket-bar active" data-bucket="new" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="new">0</span>
+                  <span class="bucket-bar__label">Nvo</span>
+                </button>
+                <button class="bucket-bar active" data-bucket="immediate" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="immediate">0</span>
+                  <span class="bucket-bar__label">Ahora</span>
+                </button>
+                <button class="bucket-bar active" data-bucket="lt24h" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="lt24h">0</span>
+                  <span class="bucket-bar__label">&lt;24h</span>
+                </button>
+                <button class="bucket-bar active" data-bucket="tomorrow" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="tomorrow">0</span>
+                  <span class="bucket-bar__label">Mañana</span>
+                </button>
+                <button class="bucket-bar active" data-bucket="week" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="week">0</span>
+                  <span class="bucket-bar__label">&lt;1sem</span>
+                </button>
+                <button class="bucket-bar active" data-bucket="future" type="button">
+                  <span class="bucket-bar__value" data-bucket-count="future">0</span>
+                  <span class="bucket-bar__label">Futuro</span>
+                </button>
+              </div>
+            </div>
             <label class="field">
               <span>Carpeta</span>
               <select id="review-folder"></select>
             </label>
-            <div class="toggles">
-              <label><input type="checkbox" data-bucket="immediate" checked />Immediate</label>
-              <label><input type="checkbox" data-bucket="lt24h" checked />&lt;24h</label>
-              <label><input type="checkbox" data-bucket="tomorrow" checked />Mañana</label>
-              <label><input type="checkbox" data-bucket="week" checked />Semana</label>
-              <label><input type="checkbox" data-bucket="future" checked />Futuro</label>
-              <label><input type="checkbox" data-bucket="new" checked />Nuevas</label>
-            </div>
             <label class="field">
               <span>Tags (separados por coma)</span>
               <input id="review-tags" type="text" placeholder="a1, verbos" />
@@ -93,59 +117,191 @@
           <div class="screen__header">
             <h2>Estadísticas</h2>
           </div>
-          <div class="stats-grid">
-            <div class="card">
+          <div class="stats-stack">
+            <div class="card stats-card">
               <h3>Hoy</h3>
-              <p id="stats-today">0 repasos</p>
+              <div class="stats-highlight" id="stats-today-count">0 repasos</div>
+              <div class="stats-row">
+                <div>
+                  <p class="muted">Minutos</p>
+                  <p id="stats-today-minutes">0</p>
+                </div>
+                <div>
+                  <p class="muted">Acierto</p>
+                  <p id="stats-today-accuracy">0%</p>
+                </div>
+              </div>
+              <div class="stats-chip-row" id="stats-today-distribution"></div>
             </div>
-            <div class="card">
+            <div class="card stats-card">
               <h3>Semana</h3>
-              <p id="stats-week">0 repasos</p>
+              <div class="stats-row">
+                <div>
+                  <p class="muted">Total</p>
+                  <p id="stats-week-total">0</p>
+                </div>
+                <div>
+                  <p class="muted">Minutos</p>
+                  <p id="stats-week-minutes">0</p>
+                </div>
+                <div>
+                  <p class="muted">Media/día</p>
+                  <p id="stats-week-average">0</p>
+                </div>
+              </div>
+              <div id="stats-week-chart" class="mini-chart"></div>
             </div>
-            <div class="card">
+            <div class="card stats-card">
               <h3>Racha</h3>
-              <p id="stats-streak">0 días</p>
+              <div class="stats-row">
+                <div>
+                  <p class="muted">Actual</p>
+                  <p id="stats-streak-current">0 días</p>
+                </div>
+                <div>
+                  <p class="muted">Mejor</p>
+                  <p id="stats-streak-best">0 días</p>
+                </div>
+              </div>
+            </div>
+            <div class="card stats-card">
+              <h3>Totales</h3>
+              <div class="stats-row">
+                <div>
+                  <p class="muted">Tarjetas</p>
+                  <p id="stats-total-cards">0</p>
+                </div>
+                <div>
+                  <p class="muted">Nuevas</p>
+                  <p id="stats-total-new">0</p>
+                </div>
+                <div>
+                  <p class="muted">No nuevas</p>
+                  <p id="stats-total-learned">0</p>
+                </div>
+              </div>
+              <div id="stats-bucket-counts" class="bucket-counts"></div>
             </div>
           </div>
-          <canvas id="stats-chart" width="320" height="160"></canvas>
         </section>
 
         <section id="screen-settings" class="screen">
           <div class="screen__header">
             <h2>Ajustes</h2>
           </div>
-          <div class="card settings-block">
-            <label class="field">
-              <span>Nombre de usuario</span>
-              <input id="settings-username" type="text" />
-            </label>
-            <label class="field">
-              <span>Database URL</span>
-              <input id="settings-dburl" type="text" />
-            </label>
-            <div class="row">
+          <div class="settings-stack">
+            <div class="card settings-block">
+              <div class="section-header">
+                <h3>Identidad</h3>
+                <p class="muted">Cambiar el username apunta a otra raíz de datos.</p>
+              </div>
               <label class="field">
-                <span>Max nuevas</span>
-                <input id="settings-max-new" type="number" min="0" />
-              </label>
-              <label class="field">
-                <span>Max repasar</span>
-                <input id="settings-max" type="number" min="0" />
+                <span>Nombre de usuario</span>
+                <input id="settings-username" type="text" />
               </label>
             </div>
-            <button id="save-settings" class="button">Guardar</button>
-            <button id="export-json" class="button ghost">Exportar JSON</button>
-            <button id="reset-local" class="button danger">Reset localStorage</button>
+            <div class="card settings-block">
+              <div class="section-header">
+                <h3>Conexión</h3>
+                <p class="muted">URL de tu Firebase RTDB (https://...).</p>
+              </div>
+              <label class="field">
+                <span>Database URL</span>
+                <input id="settings-dburl" type="text" />
+              </label>
+              <button id="test-connection" class="button ghost">Probar conexión</button>
+            </div>
+            <div class="card settings-block">
+              <div class="section-header">
+                <h3>Sesiones por defecto</h3>
+                <p class="muted">Controla la carga máxima por sesión.</p>
+              </div>
+              <div class="row">
+                <label class="field">
+                  <span>Max nuevas</span>
+                  <input id="settings-max-new" type="number" min="0" />
+                </label>
+                <label class="field">
+                  <span>Max repasar</span>
+                  <input id="settings-max" type="number" min="0" />
+                </label>
+              </div>
+              <button id="save-settings" class="button">Guardar ajustes</button>
+            </div>
+            <div class="card settings-block">
+              <div class="section-header">
+                <h3>Datos</h3>
+                <p class="muted">Exporta tu contenido o limpia ajustes locales.</p>
+              </div>
+              <button id="export-json" class="button ghost">Exportar JSON</button>
+              <button id="reset-local" class="button danger">Reset localStorage</button>
+            </div>
           </div>
         </section>
       </main>
 
       <nav class="tabs">
-        <button class="tab active" data-screen="folders">Carpetas</button>
-        <button class="tab" data-screen="review">Repasar</button>
-        <button class="tab" data-screen="import">Importar</button>
-        <button class="tab" data-screen="stats">Estadísticas</button>
-        <button class="tab" data-screen="settings">Ajustes</button>
+        <button class="tab active" data-screen="folders">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+          </svg>
+          <span>Carpetas</span>
+        </button>
+        <button class="tab" data-screen="review">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 12.5c2.5-3 5.5-4.5 8-4.5 2.5 0 5.5 1.5 8 4.5-2.5 3-5.5 4.5-8 4.5s-5.5-1.5-8-4.5Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+            <circle cx="12" cy="12.5" r="2.2" fill="currentColor" />
+          </svg>
+          <span>Repasar</span>
+        </button>
+        <button class="tab" data-screen="import">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 4v10m0 0-3-3m3 3 3-3M5 18h14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span>Importar</span>
+        </button>
+        <button class="tab" data-screen="stats">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 18V6m5 12V10m5 8V8m5 10v-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span>Stats</span>
+        </button>
+        <button class="tab" data-screen="settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm7 4.5-1.6.9.1 1.8-1.5.9-1.4-1.1-1.7.6-.5 1.7H10l-.5-1.7-1.7-.6-1.4 1.1-1.5-.9.1-1.8L5 12l-1.6-.9.7-1.6-.7-1.6L5 7l.1-1.8 1.5-.9 1.4 1.1 1.7-.6.5-1.7h1.9l.5 1.7 1.7.6 1.4-1.1 1.5.9-.1 1.8 1.6.9-.7 1.6Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span>Ajustes</span>
+        </button>
       </nav>
     </div>
 
@@ -193,6 +349,22 @@
         </div>
       </div>
     </div>
+
+    <div id="folder-modal" class="overlay hidden">
+      <div class="modal">
+        <h2 id="folder-modal-title">Nueva carpeta</h2>
+        <label class="field">
+          <span>Nombre</span>
+          <input id="folder-name-input" type="text" placeholder="Ej: Verbos" />
+        </label>
+        <div class="row">
+          <button id="save-folder" class="button">Crear</button>
+          <button id="cancel-folder" class="button ghost">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
 
     <script type="module" src="./app.js"></script>
   </body>
