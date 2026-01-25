@@ -1,4 +1,4 @@
-import { getDb, getDatabaseUrl, testConnection, setDatabaseUrl, ensureDeviceId } from "./lib/firebase.js";
+import { getDb, ensureDeviceId } from "./lib/firebase.js";
 import {
   listenFolders,
   createFolder,
@@ -56,7 +56,6 @@ const elements = {
   screens: document.querySelectorAll(".screen"),
   tabs: document.querySelectorAll(".tab"),
   overlay: document.getElementById("overlay"),
-  dbOverlay: document.getElementById("db-overlay"),
   usernameInput: document.getElementById("username-input"),
   saveUsername: document.getElementById("save-username"),
   folderTree: document.getElementById("folder-tree"),
@@ -108,16 +107,12 @@ const elements = {
   statsTotalLearned: document.getElementById("stats-total-learned"),
   statsBucketCounts: document.getElementById("stats-bucket-counts"),
   settingsUsername: document.getElementById("settings-username"),
-  settingsDbUrl: document.getElementById("settings-dburl"),
   settingsMaxNew: document.getElementById("settings-max-new"),
   settingsMax: document.getElementById("settings-max"),
   settingsClozeCase: document.getElementById("settings-cloze-case"),
   saveSettings: document.getElementById("save-settings"),
-  testConnection: document.getElementById("test-connection"),
   exportJson: document.getElementById("export-json"),
   resetLocal: document.getElementById("reset-local"),
-  dbUrlInput: document.getElementById("dburl-input"),
-  saveDbUrl: document.getElementById("save-dburl"),
   folderModal: document.getElementById("folder-modal"),
   folderModalTitle: document.getElementById("folder-modal-title"),
   folderNameInput: document.getElementById("folder-name-input"),
@@ -989,6 +984,10 @@ function handleResetLocal() {
 
 function handleSaveSettings() {
   const newUsername = elements.settingsUsername.value.trim();
+  if (!newUsername) {
+    showToast("El nombre de usuario es obligatorio.", "error");
+    return;
+  }
   if (newUsername && newUsername !== state.username) {
     if (confirm("Cambiar username cambia la raíz de datos.")) {
       localStorage.setItem("chanki_username", newUsername);
@@ -996,8 +995,6 @@ function handleSaveSettings() {
       return;
     }
   }
-  const dbUrl = elements.settingsDbUrl.value.trim();
-  setDatabaseUrl(dbUrl);
   const maxNew = Number(elements.settingsMaxNew.value);
   const maxReviews = Number(elements.settingsMax.value);
   if (!Number.isNaN(maxNew)) {
@@ -1019,12 +1016,7 @@ function handleSaveSettings() {
 async function initApp() {
   if (!state.username) {
     showOverlay(elements.overlay, true);
-  }
-
-  const connected = await testConnection();
-  if (!connected) {
-    elements.dbUrlInput.value = getDatabaseUrl();
-    showOverlay(elements.dbOverlay, true);
+    setStatus("Define un usuario para empezar.");
     return;
   }
 
@@ -1039,7 +1031,6 @@ function initFirebaseUi() {
   elements.reviewMaxNew.value = state.prefs.maxNew;
   elements.reviewMax.value = state.prefs.maxReviews;
   elements.settingsUsername.value = state.username;
-  elements.settingsDbUrl.value = getDatabaseUrl();
   elements.settingsMaxNew.value = state.prefs.maxNew;
   elements.settingsMax.value = state.prefs.maxReviews;
   elements.settingsClozeCase.checked = state.prefs.clozeCaseInsensitive;
@@ -1059,26 +1050,16 @@ elements.tabs.forEach((tab) => {
 if (elements.saveUsername) {
   elements.saveUsername.addEventListener("click", () => {
     const name = elements.usernameInput.value.trim();
-    if (!name) return;
+    if (!name) {
+      showToast("El nombre de usuario es obligatorio.", "error");
+      return;
+    }
     localStorage.setItem("chanki_username", name);
     state.username = name;
     showOverlay(elements.overlay, false);
     initApp();
   });
 }
-
-elements.saveDbUrl.addEventListener("click", () => {
-  const url = elements.dbUrlInput.value.trim();
-  setDatabaseUrl(url);
-  testConnection(url || getDatabaseUrl()).then((connected) => {
-    if (connected) {
-      showOverlay(elements.dbOverlay, false);
-      initFirebaseUi();
-    } else {
-      showToast("No se pudo conectar.", "error");
-    }
-  });
-});
 
 elements.addFolder.addEventListener("click", handleAddFolder);
 
@@ -1173,18 +1154,6 @@ elements.importParse.addEventListener("click", handleImportPreview);
 elements.importSave.addEventListener("click", handleImportSave);
 
 elements.saveSettings.addEventListener("click", handleSaveSettings);
-
-if (elements.testConnection) {
-  elements.testConnection.addEventListener("click", async () => {
-    const url = elements.settingsDbUrl.value.trim() || getDatabaseUrl();
-    const connected = await testConnection(url);
-    if (connected) {
-      showToast("Conexión correcta.");
-    } else {
-      showToast("No se pudo conectar.", "error");
-    }
-  });
-}
 
 elements.exportJson.addEventListener("click", handleExportJson);
 
