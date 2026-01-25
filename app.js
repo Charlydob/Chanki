@@ -6,6 +6,7 @@ import {
   deleteFolder,
   createCard,
   updateCard,
+  deleteCard,
   moveCardFolder,
   fetchCardsByFolder,
   fetchQueueKeys,
@@ -30,7 +31,12 @@ const state = {
   cardCache: new Map(),
   glossaryCache: new Map(),
   reviewQueue: [],
-  reviewPointer: 0,
+  currentSessionQueue: [],
+  currentIndex: 0,
+  sessionStats: {
+    startTime: null,
+    answeredCount: 0,
+  },
   sessionStart: null,
   lastReviewAt: null,
   bucketCounts: {},
@@ -49,10 +55,13 @@ const state = {
   },
   reviewInputValue: "",
   activeWordKey: null,
+  reviewFolderName: "Todas",
+  reviewShowingBack: false,
 };
 
 const elements = {
   status: document.getElementById("status"),
+  app: document.getElementById("app"),
   screens: document.querySelectorAll(".screen"),
   tabs: document.querySelectorAll(".tab"),
   overlay: document.getElementById("overlay"),
@@ -78,16 +87,24 @@ const elements = {
   saveCard: document.getElementById("save-card"),
   cancelCard: document.getElementById("cancel-card"),
   cardsTitle: document.getElementById("cards-title"),
+  screenReviewConfig: document.getElementById("screen-review-config"),
+  screenReviewPlayer: document.getElementById("screen-review-player"),
   reviewFolder: document.getElementById("review-folder"),
   reviewBucketChart: document.getElementById("review-bucket-chart"),
   reviewTags: document.getElementById("review-tags"),
   reviewMaxNew: document.getElementById("review-max-new"),
   reviewMax: document.getElementById("review-max"),
   startReview: document.getElementById("start-review"),
-  reviewArea: document.getElementById("review-area"),
   reviewCard: document.getElementById("review-card"),
   flipCard: document.getElementById("flip-card"),
   reviewActions: document.getElementById("review-actions"),
+  reviewExit: document.getElementById("review-exit"),
+  reviewPlayerFolder: document.getElementById("review-player-folder"),
+  reviewPlayerCounter: document.getElementById("review-player-counter"),
+  reviewPlayerBucket: document.getElementById("review-player-bucket"),
+  reviewComplete: document.getElementById("review-complete"),
+  reviewCompleteSummary: document.getElementById("review-complete-summary"),
+  reviewFinish: document.getElementById("review-finish"),
   importText: document.getElementById("import-text"),
   importPreview: document.getElementById("import-preview"),
   importParse: document.getElementById("import-parse"),
@@ -166,6 +183,35 @@ function setActiveScreen(name) {
   elements.tabs.forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.screen === name);
   });
+  if (name !== "review") {
+    setReviewMode(false);
+  }
+}
+
+function closeAllMenus() {
+  document.querySelectorAll(".item-menu").forEach((menu) => {
+    menu.classList.add("hidden");
+  });
+}
+
+function toggleMenu(menuId) {
+  const menu = document.querySelector(`[data-menu-id="${menuId}"]`);
+  if (!menu) return;
+  const isHidden = menu.classList.contains("hidden");
+  closeAllMenus();
+  if (isHidden) {
+    menu.classList.remove("hidden");
+  }
+}
+
+function setReviewMode(active) {
+  if (elements.app) {
+    elements.app.classList.toggle("review-mode", active);
+  }
+  if (elements.screenReviewConfig && elements.screenReviewPlayer) {
+    elements.screenReviewConfig.classList.toggle("hidden", active);
+    elements.screenReviewPlayer.classList.toggle("hidden", !active);
+  }
 }
 
 function normalizeTags(text) {
@@ -258,15 +304,40 @@ function renderFolders() {
   folderList.forEach((folder) => {
     const item = document.createElement("div");
     item.className = "list-item";
+    const menuId = `folder-menu-${folder.id}`;
+    const subtitle = typeof folder.cardCount === "number"
+      ? `${folder.cardCount} tarjetas`
+      : folder.path;
     item.innerHTML = `
-      <div>
-        <strong>${folder.name}</strong><br />
-        <small>${folder.path}</small>
-      </div>
-      <div class="row">
-        <button class="button ghost" data-action="select" data-id="${folder.id}">Abrir</button>
-        <button class="button ghost" data-action="rename" data-id="${folder.id}">Renombrar</button>
-        <button class="button danger" data-action="delete" data-id="${folder.id}">Borrar</button>
+      <button class="item-main" data-action="select" data-id="${folder.id}" type="button">
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v8A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+          </svg>
+        </span>
+        <span class="item-text">
+          <span class="item-title">${folder.name}</span>
+          <span class="item-subtitle">${subtitle}</span>
+        </span>
+        <span class="item-chevron" aria-hidden="true">›</span>
+      </button>
+      <div class="item-menu-wrapper">
+        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+          </svg>
+        </button>
+        <div class="item-menu hidden" data-menu-id="${menuId}">
+          <button data-action="rename" data-id="${folder.id}" type="button">Renombrar</button>
+          <button data-action="delete" data-id="${folder.id}" type="button" class="danger">Borrar</button>
+        </div>
       </div>
     `;
     container.appendChild(item);
@@ -310,14 +381,48 @@ function renderCards() {
     const detail = card.type === "cloze"
       ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
       : `${card.back}`;
+    const menuId = `card-menu-${card.id}`;
     item.innerHTML = `
-      <div>
-        <strong>${escapeHtml(summary)}</strong><br />
-        <small>${escapeHtml(detail)}</small>
-      </div>
-      <div class="row">
-        <button class="button ghost" data-action="edit" data-id="${card.id}">Editar</button>
-        <button class="button ghost" data-action="move" data-id="${card.id}">Mover</button>
+      <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <rect
+              x="5"
+              y="4.5"
+              width="14"
+              height="15"
+              rx="2.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+            <path
+              d="M8 9h8M8 12.5h6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="item-text">
+          <span class="item-title">${escapeHtml(summary)}</span>
+          <span class="item-subtitle">${escapeHtml(detail)}</span>
+        </span>
+      </button>
+      <div class="item-menu-wrapper">
+        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+          </svg>
+        </button>
+        <div class="item-menu hidden" data-menu-id="${menuId}">
+          <button data-action="edit" data-id="${card.id}" type="button">Editar</button>
+          <button data-action="move" data-id="${card.id}" type="button">Mover</button>
+          <button data-action="delete" data-id="${card.id}" type="button" class="danger">Borrar</button>
+        </div>
       </div>
     `;
     list.appendChild(item);
@@ -455,9 +560,17 @@ function handleAddFolder() {
 }
 
 async function handleFolderAction(event) {
-  const action = event.target.dataset.action;
-  const folderId = event.target.dataset.id;
+  const menuToggle = event.target.closest("[data-menu-toggle]");
+  if (menuToggle) {
+    toggleMenu(menuToggle.dataset.menuToggle);
+    return;
+  }
+  const actionEl = event.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  const folderId = actionEl.dataset.id;
   if (!action || !folderId) return;
+  closeAllMenus();
   const db = getDb();
   if (action === "select") {
     state.selectedFolderId = folderId;
@@ -518,9 +631,17 @@ async function handleSaveFolder() {
 }
 
 async function handleCardListAction(event) {
-  const action = event.target.dataset.action;
-  const cardId = event.target.dataset.id;
+  const menuToggle = event.target.closest("[data-menu-toggle]");
+  if (menuToggle) {
+    toggleMenu(menuToggle.dataset.menuToggle);
+    return;
+  }
+  const actionEl = event.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  const cardId = actionEl.dataset.id;
   if (!action || !cardId) return;
+  closeAllMenus();
   const card = state.cards.find((item) => item.id === cardId);
   if (!card) return;
   if (action === "edit") {
@@ -535,6 +656,21 @@ async function handleCardListAction(event) {
       const db = getDb();
       await moveCardFolder(db, state.username, card, newFolderId);
       await loadCards(true);
+    }
+  }
+  if (action === "delete") {
+    const confirmDelete = confirm("¿Borrar esta tarjeta?");
+    if (confirmDelete) {
+      const db = getDb();
+      try {
+        await deleteCard(db, state.username, card);
+        showToast("Tarjeta borrada.");
+        await loadCards(true);
+        await loadStats();
+      } catch (error) {
+        console.error("Error al borrar tarjeta", error);
+        showToast("No se pudo borrar la tarjeta.", "error");
+      }
     }
   }
 }
@@ -626,9 +762,15 @@ function renderReviewCard(card, showBack = false) {
   wrapper.className = "review-text";
 
   if (card.type === "cloze") {
-    const textEl = document.createElement("div");
-    textEl.innerHTML = renderTextWithWords(card.clozeText || "");
-    wrapper.appendChild(textEl);
+    const frontSection = document.createElement("div");
+    frontSection.className = "review-section";
+    const frontLabel = document.createElement("span");
+    frontLabel.className = "review-label";
+    frontLabel.textContent = "Frente";
+    const frontText = document.createElement("div");
+    frontText.innerHTML = renderTextWithWords(card.clozeText || "");
+    frontSection.appendChild(frontLabel);
+    frontSection.appendChild(frontText);
 
     const input = document.createElement("input");
     input.type = "text";
@@ -636,30 +778,51 @@ function renderReviewCard(card, showBack = false) {
     input.placeholder = "Escribe la respuesta";
     input.value = state.reviewInputValue;
     input.disabled = showBack;
-    wrapper.appendChild(input);
+    frontSection.appendChild(input);
+    wrapper.appendChild(frontSection);
 
     if (showBack) {
+      const backSection = document.createElement("div");
+      backSection.className = "review-section";
+      const backLabel = document.createElement("span");
+      backLabel.className = "review-label";
+      backLabel.textContent = "Respuesta";
+      const answers = document.createElement("div");
+      answers.textContent = (card.clozeAnswers || []).join(", ") || "-";
+      backSection.appendChild(backLabel);
+      backSection.appendChild(answers);
+      wrapper.appendChild(backSection);
+
       const correct = isClozeCorrect(card, state.reviewInputValue);
       const feedback = document.createElement("div");
       feedback.className = "review-feedback";
       feedback.textContent = correct ? "Respuesta correcta." : "Respuesta incorrecta.";
       wrapper.appendChild(feedback);
-
-      if (!correct) {
-        const answers = document.createElement("div");
-        answers.className = "review-answers";
-        answers.textContent = `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`;
-        wrapper.appendChild(answers);
-      }
     }
   } else {
-    const content = document.createElement("div");
-    const text = showBack ? (card.back || "") : (card.front || "");
-    content.innerHTML = renderTextWithWords(text);
-    wrapper.appendChild(content);
-    const label = document.createElement("small");
-    label.textContent = showBack ? "Reverso" : "Frente";
-    wrapper.appendChild(label);
+    const frontSection = document.createElement("div");
+    frontSection.className = "review-section";
+    const frontLabel = document.createElement("span");
+    frontLabel.className = "review-label";
+    frontLabel.textContent = "Frente";
+    const frontText = document.createElement("div");
+    frontText.innerHTML = renderTextWithWords(card.front || "");
+    frontSection.appendChild(frontLabel);
+    frontSection.appendChild(frontText);
+    wrapper.appendChild(frontSection);
+
+    if (showBack) {
+      const backSection = document.createElement("div");
+      backSection.className = "review-section";
+      const backLabel = document.createElement("span");
+      backLabel.className = "review-label";
+      backLabel.textContent = "Reverso";
+      const backText = document.createElement("div");
+      backText.innerHTML = renderTextWithWords(card.back || "");
+      backSection.appendChild(backLabel);
+      backSection.appendChild(backText);
+      wrapper.appendChild(backSection);
+    }
   }
 
   elements.reviewCard.appendChild(wrapper);
@@ -669,7 +832,8 @@ async function buildReviewQueue() {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
     state.reviewQueue = [];
-    state.reviewPointer = 0;
+    state.currentSessionQueue = [];
+    state.currentIndex = 0;
     return;
   }
   const db = getDb();
@@ -680,7 +844,8 @@ async function buildReviewQueue() {
   if (!enabledBuckets.length) {
     showToast("Activa al menos un bucket.", "error");
     state.reviewQueue = [];
-    state.reviewPointer = 0;
+    state.currentSessionQueue = [];
+    state.currentIndex = 0;
     return;
   }
   const tagFilter = normalizeTags(elements.reviewTags.value);
@@ -720,26 +885,86 @@ async function buildReviewQueue() {
   });
 
   state.reviewQueue = filtered;
-  state.reviewPointer = 0;
+  state.currentSessionQueue = filtered.map((card) => card.id);
+  state.currentIndex = 0;
 }
 
 function showNextReviewCard() {
-  const card = state.reviewQueue[state.reviewPointer];
+  const total = state.reviewQueue.length;
+  const card = state.reviewQueue[state.currentIndex];
   if (!card) {
-    elements.reviewArea.classList.add("hidden");
-    showToast("No hay tarjetas para repasar con esos filtros.", "error");
+    elements.reviewActions.classList.add("hidden");
+    elements.flipCard.classList.add("hidden");
+    elements.reviewCard.classList.add("hidden");
+    if (elements.reviewComplete) {
+      const durationMs = state.sessionStats.startTime
+        ? Date.now() - state.sessionStats.startTime
+        : 0;
+      const minutes = Math.max(0, Math.round(durationMs / 60000));
+      const summary = `Repasos: ${state.sessionStats.answeredCount} · Tiempo: ${minutes} min`;
+      elements.reviewCompleteSummary.textContent = summary;
+      elements.reviewComplete.classList.remove("hidden");
+    }
+    if (elements.reviewPlayerCounter) {
+      const totalCount = state.reviewQueue.length;
+      elements.reviewPlayerCounter.textContent = `${totalCount}/${totalCount}`;
+    }
     return;
   }
-  elements.reviewArea.classList.remove("hidden");
+  elements.reviewComplete?.classList.add("hidden");
+  elements.reviewCard.classList.remove("hidden");
   elements.reviewActions.classList.add("hidden");
   elements.flipCard.classList.remove("hidden");
   state.reviewInputValue = "";
+  state.reviewShowingBack = false;
   elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
   renderReviewCard(card, false);
+  if (elements.reviewPlayerCounter) {
+    elements.reviewPlayerCounter.textContent = `${state.currentIndex + 1}/${total}`;
+  }
+  if (elements.reviewPlayerBucket) {
+    const bucketLabel = BUCKET_LABELS[card.srs?.bucket] || "";
+    elements.reviewPlayerBucket.textContent = bucketLabel;
+    elements.reviewPlayerBucket.classList.toggle("hidden", !bucketLabel);
+  }
+}
+
+function revealReviewAnswer() {
+  const card = state.reviewQueue[state.currentIndex];
+  if (!card) return;
+  const input = elements.reviewCard.querySelector(".cloze-input");
+  state.reviewInputValue = input ? input.value : "";
+  renderReviewCard(card, true);
+  state.reviewShowingBack = true;
+  elements.reviewActions.classList.remove("hidden");
+  elements.flipCard.classList.add("hidden");
+}
+
+function hideReviewAnswer() {
+  const card = state.reviewQueue[state.currentIndex];
+  if (!card) return;
+  renderReviewCard(card, false);
+  state.reviewShowingBack = false;
+  elements.reviewActions.classList.add("hidden");
+  elements.flipCard.classList.remove("hidden");
+}
+
+function exitReviewPlayer() {
+  setReviewMode(false);
+  state.reviewQueue = [];
+  state.currentSessionQueue = [];
+  state.currentIndex = 0;
+  state.reviewShowingBack = false;
+  if (elements.reviewComplete) {
+    elements.reviewComplete.classList.add("hidden");
+  }
+  if (elements.reviewCard) {
+    elements.reviewCard.classList.remove("hidden");
+  }
 }
 
 async function handleReviewRating(rating) {
-  const card = state.reviewQueue[state.reviewPointer];
+  const card = state.reviewQueue[state.currentIndex];
   if (!card) return;
   const db = getDb();
   const nextSrs = computeNextSrs(card.srs, rating);
@@ -765,7 +990,8 @@ async function handleReviewRating(rating) {
     return;
   }
 
-  state.reviewPointer += 1;
+  state.sessionStats.answeredCount += 1;
+  state.currentIndex += 1;
   showNextReviewCard();
   await loadStats();
 }
@@ -1108,18 +1334,41 @@ elements.cancelCard.addEventListener("click", closeCardModal);
 if (elements.reviewCard) {
   elements.reviewCard.addEventListener("click", (event) => {
     const wordEl = event.target.closest(".word");
-    if (!wordEl) return;
-    const word = wordEl.dataset.word;
-    if (word) {
-      openWordModal(word);
+    if (wordEl) {
+      const word = wordEl.dataset.word;
+      if (word) {
+        openWordModal(word);
+      }
+      return;
+    }
+    if (elements.screenReviewPlayer?.classList.contains("hidden")) return;
+    if (state.reviewShowingBack) {
+      hideReviewAnswer();
+    } else {
+      revealReviewAnswer();
     }
   });
 }
 
 elements.startReview.addEventListener("click", async () => {
   await buildReviewQueue();
+  if (!state.reviewQueue.length) {
+    showToast("No hay tarjetas para repasar con esos filtros.", "error");
+    return;
+  }
   state.sessionStart = Date.now();
   state.lastReviewAt = Date.now();
+  state.sessionStats = {
+    startTime: Date.now(),
+    answeredCount: 0,
+  };
+  state.reviewFolderName = elements.reviewFolder.value === "all"
+    ? "Todas"
+    : state.folders[elements.reviewFolder.value]?.name || "Carpeta";
+  if (elements.reviewPlayerFolder) {
+    elements.reviewPlayerFolder.textContent = state.reviewFolderName;
+  }
+  setReviewMode(true);
   showNextReviewCard();
 });
 
@@ -1134,13 +1383,7 @@ if (elements.reviewBucketChart) {
 }
 
 elements.flipCard.addEventListener("click", () => {
-  const card = state.reviewQueue[state.reviewPointer];
-  if (!card) return;
-  const input = elements.reviewCard.querySelector(".cloze-input");
-  state.reviewInputValue = input ? input.value : "";
-  renderReviewCard(card, true);
-  elements.reviewActions.classList.remove("hidden");
-  elements.flipCard.classList.add("hidden");
+  revealReviewAnswer();
 });
 
 elements.reviewActions.addEventListener("click", (event) => {
@@ -1148,6 +1391,14 @@ elements.reviewActions.addEventListener("click", (event) => {
   if (!rating) return;
   handleReviewRating(rating);
 });
+
+if (elements.reviewExit) {
+  elements.reviewExit.addEventListener("click", exitReviewPlayer);
+}
+
+if (elements.reviewFinish) {
+  elements.reviewFinish.addEventListener("click", exitReviewPlayer);
+}
 
 elements.importParse.addEventListener("click", handleImportPreview);
 
@@ -1166,6 +1417,12 @@ if (elements.saveWord) {
 if (elements.cancelWord) {
   elements.cancelWord.addEventListener("click", closeWordModal);
 }
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".item-menu")) return;
+  if (event.target.closest("[data-menu-toggle]")) return;
+  closeAllMenus();
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
