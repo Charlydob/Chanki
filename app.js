@@ -4,7 +4,7 @@ import {
   createFolder,
   updateFolder,
   deleteFolder,
-  createCard,
+  upsertCardWithDedupe,
   updateCard,
   deleteCard,
   moveCardFolder,
@@ -874,7 +874,7 @@ async function handleSaveCard() {
   } else {
     const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
     try {
-      await createCard(db, state.username, {
+      const result = await upsertCardWithDedupe(db, state.username, {
         id,
         folderId: state.selectedFolderId,
         type,
@@ -884,7 +884,13 @@ async function handleSaveCard() {
         clozeAnswers,
         tags: tagsToMap(tags),
       });
-      showToast("Guardado");
+      if (result.status === "duplicate") {
+        showToast("Duplicado omitido.");
+      } else if (result.status === "updated") {
+        showToast("Tarjeta actualizada.");
+      } else {
+        showToast("Guardado");
+      }
     } catch (error) {
       console.error("Error al crear tarjeta", error);
       showToast("Error al crear tarjeta", "error");
@@ -1364,9 +1370,12 @@ async function handleImportSave() {
     showToast("Selecciona una carpeta o define FOLDER: en el import.", "error");
     return;
   }
+  let createdCount = 0;
+  let updatedCount = 0;
+  let duplicatedCount = 0;
   for (const card of parsed.cards) {
     const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-    await createCard(db, state.username, {
+    const result = await upsertCardWithDedupe(db, state.username, {
       id,
       folderId,
       type: card.type || "basic",
@@ -1376,6 +1385,13 @@ async function handleImportSave() {
       clozeAnswers: card.clozeAnswers || [],
       tags: tagsToMap(card.tags || parsed.tags || []),
     });
+    if (result.status === "created") {
+      createdCount += 1;
+    } else if (result.status === "updated") {
+      updatedCount += 1;
+    } else {
+      duplicatedCount += 1;
+    }
   }
   if (parsed.glossary && parsed.glossary.length) {
     const entries = parsed.glossary
@@ -1391,8 +1407,9 @@ async function handleImportSave() {
     }
   }
   elements.importText.value = "";
-  elements.importPreview.textContent = "Importación completada";
-  showToast("Importación completada.");
+  const summary = `Creadas: ${createdCount} | Actualizadas: ${updatedCount} | Duplicadas omitidas: ${duplicatedCount}`;
+  elements.importPreview.textContent = summary;
+  showToast(summary);
   await loadCards(true);
 }
 
