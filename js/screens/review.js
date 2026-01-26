@@ -1,6 +1,6 @@
 import { getDb } from "../../lib/firebase.js";
 import { buildSessionQueue } from "../../lib/rtdb.js";
-import { BUCKET_ORDER, dedupeTags, elements, normalizeTags, state } from "../shared.js";
+import { BUCKET_ORDER, dedupeTags, elements, normalizeTags, resolveFolderSelection, state } from "../shared.js";
 
 // moved from app.js
 export function renderBucketFilterCounts(bucketCounts) {
@@ -29,10 +29,11 @@ export async function refreshReviewBucketCounts() {
     ...normalizeTags(elements.reviewTags.value),
   ]);
   const folderValue = elements.reviewFolder?.value || "all";
+  const selection = resolveFolderSelection(folderValue);
   const result = await buildSessionQueue({
     db,
-    username: state.username,
-    folderIdOrAll: folderValue,
+    username: selection.ownerUid,
+    folderIdOrAll: selection.folderId ?? "all",
     buckets: BUCKET_ORDER,
     maxCards: 0,
     tagFilter,

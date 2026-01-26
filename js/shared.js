@@ -34,6 +34,7 @@ export const state = {
   deviceId: ensureDeviceId(),
   folders: {},
   selectedFolderId: null,
+  activeFolderRef: null,
   cards: [],
   cardsCache: [],
   cardsPageCursor: null,
@@ -43,6 +44,7 @@ export const state = {
   cardsSearchQuery: "",
   cardsSearchPool: [],
   cardsSearchFolderId: null,
+  cardsSearchOwnerUid: null,
   cardsSearchLoading: false,
   cardsLoadedIds: new Set(),
   cardCache: new Map(),
@@ -80,6 +82,9 @@ export const state = {
   activeWordNorm: null,
   activeWordContext: null,
   reviewFolderName: "Todas",
+  reviewFolderOwnerUid: null,
+  reviewFolderRole: null,
+  reviewFolderIsShared: false,
   reviewShowingBack: false,
   repairAttempted: false,
   vocabFolderIds: {
@@ -90,6 +95,9 @@ export const state = {
   allTags: [],
   selectedTags: new Set(),
   reviewSelectedTags: new Set(),
+  sharedFolders: {},
+  sharedFolderRefs: {},
+  usersPublic: {},
 };
 
 export const elements = {
@@ -177,10 +185,49 @@ export const elements = {
   folderNameInput: document.getElementById("folder-name-input"),
   saveFolder: document.getElementById("save-folder"),
   cancelFolder: document.getElementById("cancel-folder"),
+  shareModal: document.getElementById("share-modal"),
+  shareFolderTitle: document.getElementById("share-folder-title"),
+  shareUserSearch: document.getElementById("share-user-search"),
+  shareRoleToggle: document.getElementById("share-role-toggle"),
+  shareResults: document.getElementById("share-results"),
+  shareCurrentList: document.getElementById("share-current-list"),
+  shareClose: document.getElementById("share-close"),
   toastContainer: document.getElementById("toast-container"),
   cardsSearchInput: document.getElementById("cards-search-input"),
   cardsSearchClear: document.getElementById("cards-search-clear"),
 };
+
+export function resolveFolderSelection(value) {
+  if (!value || value === "all") {
+    return {
+      ownerUid: state.username,
+      folderId: null,
+      isShared: false,
+      role: null,
+      shareKey: null,
+    };
+  }
+  if (value.startsWith("shared:")) {
+    const shareKey = value.replace("shared:", "");
+    const shared = state.sharedFolders?.[shareKey];
+    if (shared) {
+      return {
+        ownerUid: shared.ownerUid,
+        folderId: shared.folderId,
+        isShared: true,
+        role: shared.role || "viewer",
+        shareKey,
+      };
+    }
+  }
+  return {
+    ownerUid: state.username,
+    folderId: value,
+    isShared: false,
+    role: "owner",
+    shareKey: null,
+  };
+}
 
 export function canonicalizeBucketId(bucket) {
   if (!bucket) return null;

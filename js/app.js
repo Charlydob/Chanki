@@ -1,6 +1,9 @@
 import { getDb } from "../lib/firebase.js";
 import {
   listenFolders,
+  listenFolderById,
+  listenSharedFoldersByUser,
+  listenFolderShares,
   createFolder,
   updateFolder,
   deleteFolder,
@@ -22,6 +25,10 @@ import {
   userRoot,
   fetchGlossaryWord,
   upsertGlossaryEntries,
+  fetchUsersPublic,
+  upsertUserPublic,
+  shareFolder,
+  unshareFolder,
   migrateCardsFolderIdsOnce,
   migrateDedupeV2Once,
   ensureVocabFolders,
@@ -40,6 +47,7 @@ import {
   normalizeSearchQuery,
   normalizeTags,
   normalizeText,
+  resolveFolderSelection,
   state,
 } from "./shared.js";
 import { refreshReviewBucketCounts } from "./screens/review.js";
@@ -84,6 +92,11 @@ let reviewEditClozeAnswers = null;
 let reviewEditCancel = null;
 let reviewEditSave = null;
 let tagsIndexUnsubscribe = null;
+let sharedFoldersUnsubscribe = null;
+let sharedFolderListeners = new Map();
+let folderSharesUnsubscribe = null;
+let shareContext = null;
+let shareSearchTimer = null;
 const swipeState = {
   active: false,
   startX: 0,
@@ -131,6 +144,53 @@ function normalizeReviewBuckets() {
 }
 
 normalizeReviewBuckets();
+
+function getActiveFolderRef() {
+  if (state.activeFolderRef?.folderId) {
+    return state.activeFolderRef;
+  }
+  if (state.selectedFolderId) {
+    return {
+      ownerUid: state.username,
+      folderId: state.selectedFolderId,
+      role: "owner",
+      isShared: false,
+    };
+  }
+  return null;
+}
+
+function getActiveOwnerUid() {
+  return getActiveFolderRef()?.ownerUid || state.username;
+}
+
+function isActiveFolderReadOnly() {
+  const ref = getActiveFolderRef();
+  if (!ref) return false;
+  if (!ref.isShared) return false;
+  return ref.role !== "editor";
+}
+
+function getFolderLabel(folder, ownerLabel, isShared = false) {
+  if (!folder) return "Carpeta";
+  if (!isShared) return folder.name || folder.path || "Carpeta";
+  return `${folder.name || folder.path || "Carpeta"} · ${ownerLabel}`;
+}
+
+function getActiveFolderInfo() {
+  const ref = getActiveFolderRef();
+  if (!ref?.folderId) return null;
+  if (!ref.isShared) {
+    return state.folders[ref.folderId];
+  }
+  const shareKey = `${ref.ownerUid}_${ref.folderId}`;
+  return state.sharedFolders?.[shareKey] || null;
+}
+
+function getUserLabel(uid) {
+  const entry = state.usersPublic?.[uid];
+  return entry?.displayName || entry?.handle || uid;
+}
 
 function showOverlay(overlay, show) {
   overlay.classList.toggle("hidden", !show);
@@ -249,7 +309,7 @@ function cardMatchesTagFilter(card, tags, mode = "or") {
 }
 
 function escapeHtml(text) {
-  return text
+  return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -257,48 +317,99 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-function renderTextWithWords(text) {
+function formatCardText(value) {
+  return String(value || "").replace(/\s*\|\s*/g, "\n");
+}
+
+function normalizeGlossaryEntries(glossary) {
+  const entries = new Map();
+  if (!glossary) return entries;
+  if (Array.isArray(glossary)) {
+    glossary.forEach((entry) => {
+      const word = entry?.word || entry?.term || entry?.w || "";
+      const meaning = entry?.meaning || entry?.m || "";
+      const norm = normalizeWordCacheKey(word);
+      if (norm && meaning) {
+        entries.set(norm, meaning);
+      }
+    });
+    return entries;
+  }
+  if (typeof glossary === "object") {
+    Object.entries(glossary).forEach(([word, value]) => {
+      const meaning = typeof value === "string" ? value : value?.meaning || value?.m || "";
+      const norm = normalizeWordCacheKey(word);
+      if (norm && meaning) {
+        entries.set(norm, meaning);
+      }
+    });
+  }
+  return entries;
+}
+
+function buildGlossaryMap(card) {
+  return normalizeGlossaryEntries(card?.glossary);
+}
+
+function resolveGlossaryMeaning(word, glossaryMap) {
+  const norm = normalizeWordCacheKey(word);
+  if (!norm) return "";
+  return glossaryMap.get(norm) || state.glossaryCache.get(norm)?.meaning || "";
+}
+
+function buildTextFragment(text, glossaryMap) {
+  const formatted = formatCardText(text);
+  const fragment = document.createDocumentFragment();
   const regex = /[A-Za-zÀ-ÿÄÖÜäöüß]+(?:-[A-Za-zÀ-ÿÄÖÜäöüß]+)*/g;
-  const parts = [];
   let lastIndex = 0;
-  let match = regex.exec(text);
+  let match = regex.exec(formatted);
   while (match) {
     if (match.index > lastIndex) {
-      parts.push({ type: "text", value: text.slice(lastIndex, match.index) });
+      fragment.appendChild(document.createTextNode(formatted.slice(lastIndex, match.index)));
     }
-    parts.push({ type: "word", value: match[0] });
-    lastIndex = match.index + match[0].length;
-    match = regex.exec(text);
+    const word = match[0];
+    const span = document.createElement("span");
+    span.className = "word";
+    const meaning = resolveGlossaryMeaning(word, glossaryMap);
+    if (meaning && meaning.trim()) {
+      span.classList.add("gloss-term", "has-meaning");
+    }
+    span.dataset.word = word;
+    span.textContent = word;
+    fragment.appendChild(span);
+    lastIndex = match.index + word.length;
+    match = regex.exec(formatted);
   }
-  if (lastIndex < text.length) {
-    parts.push({ type: "text", value: text.slice(lastIndex) });
+  if (lastIndex < formatted.length) {
+    fragment.appendChild(document.createTextNode(formatted.slice(lastIndex)));
   }
-  return parts
-    .map((part) => {
-      if (part.type === "word") {
-        const safeWord = escapeHtml(part.value);
-        const wordNorm = normalizeText(part.value);
-        const meaning = wordNorm ? state.glossaryCache.get(wordNorm)?.meaning : "";
-        const hasMeaning = Boolean(meaning && meaning.trim());
-        return `<span class="word${hasMeaning ? " has-meaning" : ""}" data-word="${safeWord}">${safeWord}</span>`;
-      }
-      return escapeHtml(part.value).replace(/\n/g, "<br>");
-    })
-    .join("");
+  return fragment;
 }
 
-function renderTextWithLanguage(text, language) {
-  return `<span class="lang-chunk" data-language="${language}">${renderTextWithWords(text)}</span>`;
+function createLanguageChunk(text, language, glossaryMap) {
+  const chunk = document.createElement("span");
+  chunk.className = "lang-chunk";
+  chunk.dataset.language = language;
+  chunk.appendChild(buildTextFragment(text, glossaryMap));
+  return chunk;
 }
 
-function renderBackWithLanguage(text) {
+function renderTextWithLanguage(text, language, glossaryMap) {
+  return createLanguageChunk(text, language, glossaryMap);
+}
+
+function renderBackWithLanguage(text, glossaryMap) {
+  const fragment = document.createDocumentFragment();
   const markerIndex = text.toLowerCase().indexOf("es:");
   if (markerIndex === -1) {
-    return renderTextWithLanguage(text, "es");
+    fragment.appendChild(renderTextWithLanguage(text, "es", glossaryMap));
+    return fragment;
   }
   const before = text.slice(0, markerIndex);
   const after = text.slice(markerIndex);
-  return `${renderTextWithLanguage(before, "de")}${renderTextWithLanguage(after, "es")}`;
+  fragment.appendChild(renderTextWithLanguage(before, "de", glossaryMap));
+  fragment.appendChild(renderTextWithLanguage(after, "es", glossaryMap));
+  return fragment;
 }
 
 function parseMeaningInput(rawMeaning) {
@@ -351,6 +462,38 @@ function normalizeWordCacheKey(word) {
   return normalizeText(word);
 }
 
+function buildCardGlossaryPayload(card, word, meaning) {
+  const glossaryMap = normalizeGlossaryEntries(card?.glossary);
+  const norm = normalizeWordCacheKey(word);
+  if (norm) {
+    glossaryMap.set(norm, meaning);
+  }
+  const payload = {};
+  glossaryMap.forEach((entryMeaning, entryWord) => {
+    payload[entryWord] = entryMeaning;
+  });
+  return payload;
+}
+
+function updateCardGlossaryLocal(cardId, glossary) {
+  const updateCardLocal = (card) => {
+    if (!card || card.id !== cardId) return card;
+    return {
+      ...card,
+      glossary,
+    };
+  };
+  state.reviewQueue = state.reviewQueue.map(updateCardLocal);
+  state.cards = state.cards.map(updateCardLocal);
+  state.cardsSearchPool = state.cardsSearchPool.map(updateCardLocal);
+  if (state.cardCache.has(cardId)) {
+    state.cardCache.set(cardId, {
+      ...state.cardCache.get(cardId),
+      glossary,
+    });
+  }
+}
+
 async function buildWordKey(word) {
   const norm = normalizeWordCacheKey(word);
   if (!norm) return "";
@@ -394,6 +537,62 @@ function getCardDedupeValues(card) {
     front: card.front || "",
     back: card.back || "",
   };
+}
+
+function buildCardListItem(card, isDuplicate, readOnly) {
+  const item = document.createElement("div");
+  item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
+  const summary = card.type === "cloze"
+    ? `${card.clozeText || "(cloze sin texto)"}`
+    : `${card.front}`;
+  const detail = card.type === "cloze"
+    ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
+    : `${card.back}`;
+  item.innerHTML = `
+      <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <rect
+              x="5"
+              y="4.5"
+              width="14"
+              height="15"
+              rx="2.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+            <path
+              d="M8 9h8M8 12.5h6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="item-text">
+          <span class="item-title-row">
+            <span class="item-title"></span>
+            ${isDuplicate ? "<span class=\"dup-badge\">DUP</span>" : ""}
+          </span>
+          <span class="item-subtitle"></span>
+        </span>
+      </button>
+      <div class="item-actions">
+        <button class="icon-button icon-button--compact" data-action="edit" data-id="${card.id}" type="button" aria-label="Editar">✏️</button>
+        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${card.id}" type="button" aria-label="Borrar">🗑️</button>
+      </div>
+    `;
+  const titleEl = item.querySelector(".item-title");
+  if (titleEl) titleEl.textContent = formatCardText(summary);
+  const subtitleEl = item.querySelector(".item-subtitle");
+  if (subtitleEl) subtitleEl.textContent = formatCardText(detail);
+  if (readOnly) {
+    const actions = item.querySelector(".item-actions");
+    if (actions) actions.remove();
+  }
+  return item;
 }
 
 function renderCards() {
@@ -473,52 +672,10 @@ function renderCards() {
     return;
   }
 
+  const readOnly = isActiveFolderReadOnly();
   visibleCards.forEach((card) => {
-    const item = document.createElement("div");
     const isDuplicate = isDuplicateCard(card);
-    item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
-    const summary = card.type === "cloze"
-      ? `${card.clozeText || "(cloze sin texto)"}`
-      : `${card.front}`;
-    const detail = card.type === "cloze"
-      ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
-      : `${card.back}`;
-    item.innerHTML = `
-      <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <rect
-              x="5"
-              y="4.5"
-              width="14"
-              height="15"
-              rx="2.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-            <path
-              d="M8 9h8M8 12.5h6"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="item-text">
-          <span class="item-title-row">
-            <span class="item-title">${escapeHtml(summary)}</span>
-            ${isDuplicate ? "<span class=\"dup-badge\">DUP</span>" : ""}
-          </span>
-          <span class="item-subtitle">${escapeHtml(detail)}</span>
-        </span>
-      </button>
-      <div class="item-actions">
-        <button class="icon-button icon-button--compact" data-action="edit" data-id="${card.id}" type="button" aria-label="Editar">✏️</button>
-        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${card.id}" type="button" aria-label="Borrar">🗑️</button>
-      </div>
-    `;
+    const item = buildCardListItem(card, isDuplicate, readOnly);
     list.appendChild(item);
   });
   updateLoadMoreVisibility(searching);
@@ -615,52 +772,10 @@ function renderCardsFromList(cards, searching = false) {
     return;
   }
 
+  const readOnly = isActiveFolderReadOnly();
   visibleCards.forEach((card) => {
-    const item = document.createElement("div");
     const isDuplicate = isDuplicateCard(card);
-    item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
-    const summary = card.type === "cloze"
-      ? `${card.clozeText || "(cloze sin texto)"}`
-      : `${card.front}`;
-    const detail = card.type === "cloze"
-      ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
-      : `${card.back}`;
-    item.innerHTML = `
-      <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <rect
-              x="5"
-              y="4.5"
-              width="14"
-              height="15"
-              rx="2.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-            <path
-              d="M8 9h8M8 12.5h6"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="item-text">
-          <span class="item-title-row">
-            <span class="item-title">${escapeHtml(summary)}</span>
-            ${isDuplicate ? "<span class=\"dup-badge\">DUP</span>" : ""}
-          </span>
-          <span class="item-subtitle">${escapeHtml(detail)}</span>
-        </span>
-      </button>
-      <div class="item-actions">
-        <button class="icon-button icon-button--compact" data-action="edit" data-id="${card.id}" type="button" aria-label="Editar">✏️</button>
-        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${card.id}" type="button" aria-label="Borrar">🗑️</button>
-      </div>
-    `;
+    const item = buildCardListItem(card, isDuplicate, readOnly);
     list.appendChild(item);
   });
   updateLoadMoreVisibility(searching);
@@ -774,7 +889,12 @@ function closeReviewEditModal() {
 
 async function handleReviewEditSave() {
   if (!reviewEditCardId || !state.username) return;
+  if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+    showToast("Carpeta compartida en solo lectura.", "error");
+    return;
+  }
   const db = getDb();
+  const ownerUid = state.reviewFolderOwnerUid || state.username;
   const nextFront = reviewEditFront.value.trim();
   const nextBack = reviewEditBack.value.trim();
   const nextClozeText = reviewEditClozeText.value.trim();
@@ -797,7 +917,7 @@ async function handleReviewEditSave() {
     }
   }
   try {
-    const result = await updateCard(db, state.username, reviewEditCardId, {
+    const result = await updateCard(db, ownerUid, reviewEditCardId, {
       type: reviewEditType,
       front: nextFront,
       back: nextBack,
@@ -911,6 +1031,20 @@ function ensureWordPopover() {
           tags,
         });
       }
+      if (state.activeWordContext?.cardId && meaning) {
+        if (state.activeWordContext.isShared && state.activeWordContext.role !== "editor") {
+          showToast("Solo el editor puede guardar glosario en la tarjeta.", "error");
+        } else {
+          const ownerUid = state.activeWordContext.ownerUid || state.username;
+          const activeCard = state.reviewQueue.find((card) => card.id === state.activeWordContext.cardId)
+            || state.cards.find((card) => card.id === state.activeWordContext.cardId);
+          const nextGlossary = buildCardGlossaryPayload(activeCard, wordPopoverTitle.textContent, meaning);
+          await updateCard(db, ownerUid, state.activeWordContext.cardId, {
+            glossary: nextGlossary,
+          });
+          updateCardGlossaryLocal(state.activeWordContext.cardId, nextGlossary);
+        }
+      }
       showToast("Significado guardado.");
       wordPopoverEditing = false;
       wordPopoverEditor.classList.add("hidden");
@@ -1021,14 +1155,16 @@ async function openWordPopover(word, anchorRect) {
 
 async function debugFolderSelection(folderId) {
   if (!state.username || !folderId) return;
-  const folder = state.folders[folderId];
+  const activeRef = getActiveFolderRef();
+  const ownerUid = activeRef?.ownerUid || state.username;
+  const folder = activeRef?.isShared ? getActiveFolderInfo() : state.folders[folderId];
   const folderPath = folder?.path || folder?.name || "";
-  console.log("selectedFolderId", folderId, "selectedFolderPath", folderPath, "username", state.username);
+  console.log("selectedFolderId", folderId, "selectedFolderPath", folderPath, "username", ownerUid);
   try {
     const db = getDb();
     const [sampleCards, folders] = await Promise.all([
-      fetchSampleCards(db, state.username, 5),
-      fetchFolders(db, state.username),
+      fetchSampleCards(db, ownerUid, 5),
+      fetchFolders(db, ownerUid),
     ]);
     sampleCards.forEach((card) => {
       console.log(
@@ -1080,12 +1216,14 @@ async function runDedupeMigration() {
 }
 
 async function loadInitialFolderCards() {
-  if (!state.selectedFolderId) return;
+  const activeRef = getActiveFolderRef();
+  if (!activeRef?.folderId) return;
   const db = getDb();
+  const { ownerUid, folderId } = activeRef;
   const queueResult = await fetchCardsByFolderQueue(
     db,
-    state.username,
-    state.selectedFolderId,
+    ownerUid,
+    folderId,
     2000
   );
   if (queueResult.cards.length) {
@@ -1097,7 +1235,7 @@ async function loadInitialFolderCards() {
     state.cardsLoadMode = "queue";
     return;
   }
-  const fallbackCards = await fetchCardsByFolderId(db, state.username, state.selectedFolderId, 500);
+  const fallbackCards = await fetchCardsByFolderId(db, ownerUid, folderId, 500);
   if (fallbackCards.length) {
     state.cards = fallbackCards;
     state.cardsCache = fallbackCards;
@@ -1112,7 +1250,7 @@ async function loadInitialFolderCards() {
 }
 
 async function loadCards(reset = false) {
-  if (!state.selectedFolderId) return;
+  if (!getActiveFolderRef()?.folderId) return;
   if (state.cardsLoadingMore) return;
   state.cardsLoadingMore = true;
   if (elements.loadMore) {
@@ -1142,8 +1280,18 @@ async function loadCards(reset = false) {
 }
 
 function updateCardsTitle() {
-  const folder = state.folders[state.selectedFolderId];
-  elements.cardsTitle.textContent = folder ? `Tarjetas · ${folder.name}` : "Tarjetas";
+  const activeRef = getActiveFolderRef();
+  const folder = getActiveFolderInfo();
+  if (!folder || !activeRef) {
+    elements.cardsTitle.textContent = "Tarjetas";
+    return;
+  }
+  if (activeRef.isShared) {
+    const ownerLabel = getUserLabel(activeRef.ownerUid);
+    elements.cardsTitle.textContent = `Tarjetas · ${folder.name} (Compartida por ${ownerLabel})`;
+    return;
+  }
+  elements.cardsTitle.textContent = `Tarjetas · ${folder.name}`;
 }
 
 function updateSearchUI() {
@@ -1156,17 +1304,48 @@ function updateSearchUI() {
   elements.cardsSearchClear.classList.toggle("hidden", !query);
 }
 
+function updateFolderAccessUI() {
+  const readOnly = isActiveFolderReadOnly();
+  if (elements.addCard) {
+    elements.addCard.disabled = readOnly;
+  }
+  if (elements.reviewEditCard) {
+    elements.reviewEditCard.disabled = readOnly;
+  }
+}
+
+function updateReviewAccessUI() {
+  const readOnly = state.reviewFolderIsShared && state.reviewFolderRole !== "editor";
+  if (elements.reviewActions) {
+    elements.reviewActions.querySelectorAll("button").forEach((button) => {
+      button.disabled = readOnly;
+    });
+  }
+  if (elements.reviewEditCard) {
+    elements.reviewEditCard.disabled = readOnly;
+  }
+}
+
 async function loadSearchPool() {
   if (!state.username || !state.cardsSearchQuery) return;
   if (state.cardsSearchLoading) return;
-  const selectedFolderId = state.selectedFolderId || null;
-  if (state.cardsSearchPool.length && state.cardsSearchFolderId === selectedFolderId) return;
+  const activeRef = getActiveFolderRef();
+  if (!activeRef) return;
+  const { ownerUid, folderId } = activeRef;
+  if (
+    state.cardsSearchPool.length
+    && state.cardsSearchFolderId === folderId
+    && state.cardsSearchOwnerUid === ownerUid
+  ) {
+    return;
+  }
   state.cardsSearchLoading = true;
   try {
     const db = getDb();
-    const cards = await fetchCardsForSearch(db, state.username, selectedFolderId, 200);
+    const cards = await fetchCardsForSearch(db, ownerUid, folderId, 200);
     state.cardsSearchPool = cards;
-    state.cardsSearchFolderId = selectedFolderId;
+    state.cardsSearchFolderId = folderId;
+    state.cardsSearchOwnerUid = ownerUid;
     renderCards();
   } catch (error) {
     handleErrorToast(error, "No se pudo buscar tarjetas.");
@@ -1180,6 +1359,7 @@ function updateCardsSearch(value) {
   if (!state.cardsSearchQuery) {
     state.cardsSearchPool = [];
     state.cardsSearchFolderId = null;
+    state.cardsSearchOwnerUid = null;
   }
   updateSearchUI();
   renderCardsListFiltered();
@@ -1199,6 +1379,141 @@ async function initFolders() {
     state.folders = folders || {};
     renderFolders();
   });
+}
+
+function cleanupSharedFolderListeners(nextKeys) {
+  sharedFolderListeners.forEach((unsubscribe, key) => {
+    if (!nextKeys.has(key)) {
+      unsubscribe();
+      sharedFolderListeners.delete(key);
+    }
+  });
+}
+
+async function initSharedFolders() {
+  if (sharedFoldersUnsubscribe) {
+    sharedFoldersUnsubscribe();
+    sharedFoldersUnsubscribe = null;
+  }
+  if (!state.username) {
+    state.sharedFolders = {};
+    state.sharedFolderRefs = {};
+    sharedFolderListeners.forEach((unsubscribe) => unsubscribe());
+    sharedFolderListeners.clear();
+    renderFolders();
+    return;
+  }
+  const db = getDb();
+  sharedFoldersUnsubscribe = listenSharedFoldersByUser(db, state.username, (sharedRefs) => {
+    const refs = sharedRefs || {};
+    state.sharedFolderRefs = refs;
+    const nextKeys = new Set(Object.keys(refs));
+    cleanupSharedFolderListeners(nextKeys);
+    Object.keys(state.sharedFolders || {}).forEach((key) => {
+      if (!nextKeys.has(key)) {
+        delete state.sharedFolders[key];
+      }
+    });
+    Object.entries(refs).forEach(([shareKey, entry]) => {
+      if (state.sharedFolders?.[shareKey]) {
+        state.sharedFolders[shareKey] = {
+          ...state.sharedFolders[shareKey],
+          ...entry,
+        };
+      }
+      if (sharedFolderListeners.has(shareKey)) return;
+      const ownerUid = entry?.ownerUid;
+      const folderId = entry?.folderId;
+      if (!ownerUid || !folderId) return;
+      const unsubscribe = listenFolderById(db, ownerUid, folderId, (folder) => {
+        state.sharedFolders[shareKey] = {
+          ...entry,
+          ownerUid,
+          folderId,
+          id: folderId,
+          name: folder?.name || "(Carpeta compartida)",
+          path: folder?.path || "",
+          cardCount: folder?.cardCount,
+          updatedAt: folder?.updatedAt,
+        };
+        renderFolders();
+        if (
+          state.activeFolderRef?.isShared
+          && state.activeFolderRef.ownerUid === ownerUid
+          && state.activeFolderRef.folderId === folderId
+        ) {
+          updateCardsTitle();
+          state.activeFolderRef = {
+            ...state.activeFolderRef,
+            role: entry?.role || state.activeFolderRef.role,
+          };
+          updateFolderAccessUI();
+        }
+      });
+      sharedFolderListeners.set(shareKey, unsubscribe);
+    });
+    nextKeys.forEach((key) => {
+      if (!state.sharedFolders[key]) {
+        state.sharedFolders[key] = {
+          ...refs[key],
+          ownerUid: refs[key]?.ownerUid,
+          folderId: refs[key]?.folderId,
+          id: refs[key]?.folderId,
+          name: "(Carpeta compartida)",
+          path: "",
+        };
+      }
+    });
+    if (state.activeFolderRef?.isShared) {
+      const activeKey = `${state.activeFolderRef.ownerUid}_${state.activeFolderRef.folderId}`;
+      if (!refs[activeKey]) {
+        state.activeFolderRef = null;
+        state.selectedFolderId = null;
+        state.cards = [];
+        state.cardsCache = [];
+        state.cardsSearchQuery = "";
+        state.cardsSearchPool = [];
+        state.cardsSearchFolderId = null;
+        state.cardsSearchOwnerUid = null;
+        updateCardsTitle();
+        updateSearchUI();
+        renderCards();
+      } else if (refs[activeKey]?.role) {
+        state.activeFolderRef = {
+          ...state.activeFolderRef,
+          role: refs[activeKey].role,
+        };
+        updateFolderAccessUI();
+      }
+    }
+    renderFolders();
+  });
+}
+
+async function loadUsersPublic() {
+  if (!state.username) return;
+  const db = getDb();
+  try {
+    const users = await fetchUsersPublic(db);
+    state.usersPublic = users || {};
+    renderFolders();
+  } catch (error) {
+    handleErrorToast(error, "No se pudo cargar usuarios.");
+  }
+}
+
+async function syncUsersPublic() {
+  if (!state.username) return;
+  try {
+    const db = getDb();
+    await upsertUserPublic(db, state.username, {
+      handle: state.username,
+      displayName: state.username,
+    });
+    await loadUsersPublic();
+  } catch (error) {
+    handleErrorToast(error, "No se pudo actualizar el perfil público.");
+  }
 }
 
 function handleAddFolder() {
@@ -1223,24 +1538,43 @@ async function handleFolderAction(event) {
   closeAllMenus();
   const db = getDb();
   if (action === "select") {
+    const ownerUid = actionEl.dataset.ownerUid || state.username;
+    const isShared = actionEl.dataset.shared === "true";
+    const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
     state.selectedFolderId = folderId;
-    updateCardsTitle();
-    updateSearchUI();
+    state.activeFolderRef = {
+      ownerUid,
+      folderId,
+      role,
+      isShared,
+    };
     state.cardsSearchPool = [];
     state.cardsSearchFolderId = null;
+    state.cardsSearchOwnerUid = null;
+    updateCardsTitle();
+    updateSearchUI();
     debugFolderSelection(folderId);
     await loadCards(true);
     if (state.cardsSearchQuery) {
       loadSearchPool();
     }
+    updateFolderAccessUI();
   }
   if (action === "rename") {
+    if (!state.folders[folderId]) {
+      showToast("Solo el owner puede renombrar.", "error");
+      return;
+    }
     const folder = state.folders[folderId];
     if (folder) {
       openFolderModal(folder);
     }
   }
   if (action === "delete") {
+    if (!state.folders[folderId]) {
+      showToast("Solo el owner puede borrar.", "error");
+      return;
+    }
     const confirmDelete = confirm("¿Seguro? Esto no borra tarjetas asociadas.");
     if (confirmDelete) {
       try {
@@ -1248,11 +1582,13 @@ async function handleFolderAction(event) {
         showToast("Guardado");
         if (state.selectedFolderId === folderId) {
           state.selectedFolderId = null;
+          state.activeFolderRef = null;
           state.cards = [];
           state.cardsHasMore = false;
           state.cardsSearchQuery = "";
           state.cardsSearchPool = [];
           state.cardsSearchFolderId = null;
+          state.cardsSearchOwnerUid = null;
           updateSearchUI();
           renderCards();
         }
@@ -1261,6 +1597,131 @@ async function handleFolderAction(event) {
       }
     }
   }
+  if (action === "share") {
+    if (!state.folders[folderId]) {
+      showToast("Solo el owner puede compartir.", "error");
+      return;
+    }
+    const folder = state.folders[folderId];
+    if (folder) {
+      openShareModal(folder);
+    }
+  }
+}
+
+function closeShareModal() {
+  if (!elements.shareModal) return;
+  showOverlay(elements.shareModal, false);
+  if (folderSharesUnsubscribe) {
+    folderSharesUnsubscribe();
+    folderSharesUnsubscribe = null;
+  }
+  if (shareSearchTimer) {
+    clearTimeout(shareSearchTimer);
+    shareSearchTimer = null;
+  }
+  shareContext = null;
+}
+
+function renderShareResults() {
+  if (!elements.shareResults || !shareContext) return;
+  const query = normalizeSearchQuery(elements.shareUserSearch?.value || "");
+  const users = Object.entries(state.usersPublic || {});
+  const currentShares = shareContext.currentShares || {};
+  const filtered = users.filter(([uid, profile]) => {
+    if (uid === state.username) return false;
+    if (currentShares?.[uid]) return false;
+    if (!query) return true;
+    const haystack = normalizeSearchQuery(`${profile?.handle || ""} ${profile?.displayName || ""}`);
+    return haystack.includes(query);
+  });
+  elements.shareResults.innerHTML = "";
+  if (!query) {
+    elements.shareResults.innerHTML = "<div class=\"card\">Empieza a escribir para buscar usuarios.</div>";
+    return;
+  }
+  if (!filtered.length) {
+    elements.shareResults.innerHTML = "<div class=\"card\">Sin resultados.</div>";
+    return;
+  }
+  filtered.slice(0, 20).forEach(([uid, profile]) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "list-item";
+    item.dataset.shareUid = uid;
+    const handle = profile?.handle || uid;
+    const displayName = profile?.displayName || handle;
+    item.innerHTML = `
+      <span class="item-text">
+        <span class="item-title">${escapeHtml(displayName)}</span>
+        <span class="item-subtitle">@${escapeHtml(handle)}</span>
+      </span>
+      <span class="item-chevron" aria-hidden="true">›</span>
+    `;
+    elements.shareResults.appendChild(item);
+  });
+}
+
+function renderShareCurrentList() {
+  if (!elements.shareCurrentList || !shareContext) return;
+  const shares = shareContext.currentShares || {};
+  const entries = Object.entries(shares);
+  elements.shareCurrentList.innerHTML = "";
+  if (!entries.length) {
+    elements.shareCurrentList.innerHTML = "<div class=\"card\">Aún no compartes esta carpeta.</div>";
+    return;
+  }
+  entries.forEach(([uid, share]) => {
+    const profile = state.usersPublic?.[uid] || {};
+    const displayName = profile.displayName || profile.handle || uid;
+    const handle = profile.handle || uid;
+    const roleLabel = share?.role === "editor" ? "Editor" : "Viewer";
+    const item = document.createElement("div");
+    item.className = "list-item";
+    item.innerHTML = `
+      <span class="item-text">
+        <span class="item-title">${escapeHtml(displayName)}</span>
+        <span class="item-subtitle">@${escapeHtml(handle)} · ${roleLabel}</span>
+      </span>
+      <div class="item-actions">
+        <button class="icon-button icon-button--compact icon-button--danger" type="button" data-unshare-uid="${uid}" aria-label="Quitar">✕</button>
+      </div>
+    `;
+    elements.shareCurrentList.appendChild(item);
+  });
+}
+
+function openShareModal(folder) {
+  if (!elements.shareModal) return;
+  shareContext = {
+    ownerUid: state.username,
+    folderId: folder.id,
+    folderName: folder.name,
+    currentShares: {},
+  };
+  if (elements.shareFolderTitle) {
+    elements.shareFolderTitle.textContent = `Carpeta: ${folder.name}`;
+  }
+  if (elements.shareUserSearch) {
+    elements.shareUserSearch.value = "";
+    elements.shareUserSearch.focus();
+  }
+  if (elements.shareRoleToggle) {
+    elements.shareRoleToggle.checked = false;
+  }
+  elements.shareResults.innerHTML = "<div class=\"card\">Empieza a escribir para buscar usuarios.</div>";
+  elements.shareCurrentList.innerHTML = "<div class=\"card\">Cargando...</div>";
+  showOverlay(elements.shareModal, true);
+  const db = getDb();
+  if (folderSharesUnsubscribe) {
+    folderSharesUnsubscribe();
+  }
+  folderSharesUnsubscribe = listenFolderShares(db, state.username, folder.id, (shares) => {
+    if (!shareContext) return;
+    shareContext.currentShares = shares || {};
+    renderShareCurrentList();
+  });
+  loadUsersPublic().then(() => renderShareResults());
 }
 
 async function handleSaveFolder() {
@@ -1298,6 +1759,11 @@ async function handleCardListAction(event) {
   if (!action || !cardId) return;
   const card = state.cards.find((item) => item.id === cardId);
   if (!card) return;
+  if (isActiveFolderReadOnly()) {
+    showToast("Carpeta compartida en solo lectura.", "error");
+    return;
+  }
+  const ownerUid = getActiveOwnerUid();
   if (action === "edit") {
     openCardModal(card);
   }
@@ -1308,7 +1774,7 @@ async function handleCardListAction(event) {
     const newFolderId = prompt(`Mover a carpeta (id:nombre)\n${folderOptions}`);
     if (newFolderId && state.folders[newFolderId]) {
       const db = getDb();
-      await moveCardFolder(db, state.username, card, newFolderId);
+      await moveCardFolder(db, ownerUid, card, newFolderId);
       await loadCards(true);
     }
   }
@@ -1317,7 +1783,7 @@ async function handleCardListAction(event) {
     if (confirmDelete) {
       const db = getDb();
       try {
-        await deleteCard(db, state.username, card);
+        await deleteCard(db, ownerUid, card);
         showToast("Tarjeta borrada.");
         state.cards = state.cards.filter((item) => item.id !== card.id);
         state.cardsLoadedIds.delete(card.id);
@@ -1337,6 +1803,11 @@ async function handleSaveCard() {
     showToast("Selecciona una carpeta primero.", "error");
     return;
   }
+  if (isActiveFolderReadOnly()) {
+    showToast("Carpeta compartida en solo lectura.", "error");
+    return;
+  }
+  const ownerUid = getActiveOwnerUid();
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
@@ -1365,7 +1836,7 @@ async function handleSaveCard() {
   const db = getDb();
   if (editingCardId) {
     try {
-      const result = await updateCard(db, state.username, editingCardId, {
+      const result = await updateCard(db, ownerUid, editingCardId, {
         type,
         front,
         back,
@@ -1385,7 +1856,7 @@ async function handleSaveCard() {
   } else {
     const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
     try {
-      const result = await upsertCardWithDedupe(db, state.username, {
+      const result = await upsertCardWithDedupe(db, ownerUid, {
         id,
         folderId: state.selectedFolderId,
         type,
@@ -1430,6 +1901,7 @@ function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const wrapper = document.createElement("div");
   wrapper.className = showBack ? "review-text review-text--reveal" : "review-text";
+  const glossaryMap = buildGlossaryMap(card);
 
   if (card.type === "cloze") {
     const frontSection = document.createElement("div");
@@ -1439,7 +1911,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.innerHTML = renderTextWithLanguage(card.clozeText || "", "de");
+    frontText.appendChild(renderTextWithLanguage(card.clozeText || "", "de", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
 
@@ -1460,7 +1932,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Respuesta";
       const answers = document.createElement("div");
       answers.className = "review-back";
-      answers.textContent = (card.clozeAnswers || []).join(", ") || "-";
+      answers.textContent = formatCardText((card.clozeAnswers || []).join(" | ")) || "-";
       backSection.appendChild(backLabel);
       backSection.appendChild(answers);
       wrapper.appendChild(backSection);
@@ -1479,7 +1951,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.innerHTML = renderTextWithLanguage(card.front || "", "de");
+    frontText.appendChild(renderTextWithLanguage(card.front || "", "de", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     wrapper.appendChild(frontSection);
@@ -1492,7 +1964,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
       backText.className = "review-back";
-      backText.innerHTML = renderBackWithLanguage(card.back || "");
+      backText.appendChild(renderBackWithLanguage(card.back || "", glossaryMap));
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       wrapper.appendChild(backSection);
@@ -1598,7 +2070,11 @@ async function buildReviewQueue() {
     return;
   }
   const db = getDb();
-  const folderId = elements.reviewFolder.value === "all" ? null : elements.reviewFolder.value;
+  const selection = resolveFolderSelection(elements.reviewFolder.value || "all");
+  const folderId = selection.folderId;
+  state.reviewFolderOwnerUid = selection.ownerUid;
+  state.reviewFolderRole = selection.role;
+  state.reviewFolderIsShared = selection.isShared;
   const enabledBuckets = Object.entries(state.reviewBuckets)
     .filter(([, active]) => active)
     .map(([bucket]) => canonicalizeBucketId(bucket))
@@ -1623,7 +2099,7 @@ async function buildReviewQueue() {
   const bucketPriority = BUCKET_ORDER.filter((bucket) => uniqueBuckets.includes(bucket));
   const sessionResult = await buildSessionQueue({
     db,
-    username: state.username,
+    username: selection.ownerUid,
     folderIdOrAll: folderId ?? "all",
     buckets: bucketPriority,
     maxCards,
@@ -1640,7 +2116,7 @@ async function buildReviewQueue() {
   }
 
   console.debug("Review session init", {
-    username: state.username,
+    username: selection.ownerUid,
     folderSelection: folderId ?? "all",
     activeBuckets: bucketPriority,
     queueCounts: bucketCounts,
@@ -1652,7 +2128,7 @@ async function buildReviewQueue() {
       if (state.cardCache.has(cardId)) {
         return state.cardCache.get(cardId);
       }
-      const card = await fetchCard(db, state.username, cardId);
+      const card = await fetchCard(db, selection.ownerUid, cardId);
       if (card) state.cardCache.set(cardId, card);
       return card;
     })
@@ -1724,9 +2200,7 @@ function showNextReviewCard() {
   elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
   renderReviewCard(card, false);
   resetSwipeVisuals({ animate: false });
-  if (elements.reviewEditCard) {
-    elements.reviewEditCard.disabled = false;
-  }
+  updateReviewAccessUI();
   if (elements.reviewPlayerCounter) {
     elements.reviewPlayerCounter.textContent = `${state.currentIndex + 1}/${total}`;
   }
@@ -1738,7 +2212,8 @@ function showNextReviewCard() {
 }
 
 async function loadMoreCardsPage() {
-  if (!state.selectedFolderId) return;
+  const activeRef = getActiveFolderRef();
+  if (!activeRef?.folderId) return;
   if (state.cardsLoadMode !== "paged") {
     state.cardsHasMore = false;
     return;
@@ -1748,8 +2223,8 @@ async function loadMoreCardsPage() {
   console.log("LOADMORE start", cursor);
   const result = await fetchCardsByFolder(
     db,
-    state.username,
-    state.selectedFolderId,
+    activeRef.ownerUid,
+    activeRef.folderId,
     20,
     cursor
   );
@@ -1772,6 +2247,7 @@ function revealReviewAnswer() {
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
   elements.flipCard.classList.add("hidden");
+  updateReviewAccessUI();
 }
 
 function exitReviewPlayer() {
@@ -1783,6 +2259,9 @@ function exitReviewPlayer() {
   state.sessionTotal = 0;
   state.reviewShowingBack = false;
   state.sessionEnding = false;
+  state.reviewFolderOwnerUid = null;
+  state.reviewFolderRole = null;
+  state.reviewFolderIsShared = false;
   if (elements.reviewCard) {
     elements.reviewCard.classList.remove("hidden");
   }
@@ -1794,10 +2273,18 @@ function exitReviewPlayer() {
 async function handleReviewRating(rating) {
   const card = state.reviewQueue[state.currentIndex];
   if (!card) return;
+  if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+    showToast("Solo lectura: el progreso no se guarda.", "error");
+    state.sessionStats.answeredCount += 1;
+    state.currentIndex += 1;
+    showNextReviewCard();
+    return;
+  }
   const db = getDb();
   const nextSrs = computeNextSrs(card.srs, rating);
+  const ownerUid = state.reviewFolderOwnerUid || state.username;
   try {
-    await updateReview(db, state.username, card, nextSrs);
+    await updateReview(db, ownerUid, card, nextSrs);
     card.srs = nextSrs;
     state.cardCache.set(card.id, card);
 
@@ -1805,7 +2292,7 @@ async function handleReviewRating(rating) {
     const minutesDelta = state.lastReviewAt ? Math.max(0, Math.round((now - state.lastReviewAt) / 60000)) : 0;
     state.lastReviewAt = now;
     const tags = mapToTags(card.tags);
-    await recordReviewStats(db, userRoot(state.username), {
+    await recordReviewStats(db, userRoot(ownerUid), {
       rating,
       folderId: card.folderId,
       tags,
@@ -1908,10 +2395,20 @@ async function handleImportSave() {
     showToast("Define tu usuario antes de importar.", "error");
     return;
   }
+  if (isActiveFolderReadOnly()) {
+    showToast("Carpeta compartida en solo lectura.", "error");
+    return;
+  }
+  const activeRef = getActiveFolderRef();
+  const ownerUid = activeRef?.ownerUid || state.username;
   const db = getDb();
   let folderId = state.selectedFolderId;
   if (parsed.folderPath) {
-    folderId = await getOrCreateFolderByPath(db, state.username, parsed.folderPath, state.folders);
+    if (activeRef?.isShared) {
+      showToast("No puedes crear carpetas en una compartida.", "error");
+      return;
+    }
+    folderId = await getOrCreateFolderByPath(db, ownerUid, parsed.folderPath, state.folders);
   }
   if (!folderId) {
     showToast("Selecciona una carpeta o define FOLDER: en el import.", "error");
@@ -1927,7 +2424,7 @@ async function handleImportSave() {
   try {
     for (const card of parsed.cards) {
       const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-      const result = await upsertCardWithDedupe(db, state.username, {
+      const result = await upsertCardWithDedupe(db, ownerUid, {
         id,
         folderId,
         type: card.type || "basic",
@@ -2200,7 +2697,10 @@ async function initApp() {
 function initFirebaseUi() {
   getDb();
   setStatus(`Usuario: ${state.username}`);
+  syncUsersPublic();
   initFolders();
+  initSharedFolders();
+  state.activeFolderRef = null;
   runFolderIdMigration();
   runDedupeMigration();
   loadStats();
@@ -2265,7 +2765,83 @@ if (elements.folderModal) {
   });
 }
 
-elements.addCard.addEventListener("click", () => openCardModal());
+if (elements.shareModal) {
+  elements.shareModal.addEventListener("click", (event) => {
+    if (event.target === elements.shareModal) {
+      closeShareModal();
+    }
+  });
+}
+
+if (elements.shareClose) {
+  elements.shareClose.addEventListener("click", closeShareModal);
+}
+
+if (elements.shareUserSearch) {
+  elements.shareUserSearch.addEventListener("input", () => {
+    if (shareSearchTimer) {
+      clearTimeout(shareSearchTimer);
+    }
+    shareSearchTimer = setTimeout(() => {
+      renderShareResults();
+    }, 250);
+  });
+}
+
+if (elements.shareResults) {
+  elements.shareResults.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-share-uid]");
+    if (!target || !shareContext) return;
+    const sharedUid = target.dataset.shareUid;
+    if (!sharedUid) return;
+    try {
+      const db = getDb();
+      const role = elements.shareRoleToggle?.checked ? "editor" : "viewer";
+      await shareFolder(db, {
+        ownerUid: shareContext.ownerUid,
+        folderId: shareContext.folderId,
+        sharedUid,
+        role,
+        addedBy: state.username,
+      });
+      showToast("Carpeta compartida.");
+      if (elements.shareUserSearch) {
+        elements.shareUserSearch.value = "";
+      }
+      renderShareResults();
+    } catch (error) {
+      handleErrorToast(error, "No se pudo compartir.");
+    }
+  });
+}
+
+if (elements.shareCurrentList) {
+  elements.shareCurrentList.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-unshare-uid]");
+    if (!target || !shareContext) return;
+    const sharedUid = target.dataset.unshareUid;
+    if (!sharedUid) return;
+    try {
+      const db = getDb();
+      await unshareFolder(db, {
+        ownerUid: shareContext.ownerUid,
+        folderId: shareContext.folderId,
+        sharedUid,
+      });
+      showToast("Acceso revocado.");
+    } catch (error) {
+      handleErrorToast(error, "No se pudo revocar el acceso.");
+    }
+  });
+}
+
+elements.addCard.addEventListener("click", () => {
+  if (isActiveFolderReadOnly()) {
+    showToast("Carpeta compartida en solo lectura.", "error");
+    return;
+  }
+  openCardModal();
+});
 
 elements.cardsList.addEventListener("click", handleCardListAction);
 
@@ -2296,7 +2872,15 @@ if (elements.reviewCard) {
       const langChunk = wordEl.closest(".lang-chunk");
       const language = langChunk?.dataset.language
         || (wordEl.closest(".review-front") ? "de" : "es");
-      state.activeWordContext = { language };
+      const card = state.reviewQueue[state.currentIndex];
+      state.activeWordContext = {
+        language,
+        cardId: card?.id || null,
+        folderId: card?.folderId || null,
+        ownerUid: state.reviewFolderOwnerUid || state.username,
+        role: state.reviewFolderRole,
+        isShared: state.reviewFolderIsShared,
+      };
       openWordPopover(word, wordEl.getBoundingClientRect());
     }
   });
@@ -2322,9 +2906,16 @@ elements.startReview.addEventListener("click", async () => {
   };
   state.sessionActive = true;
   state.sessionTotal = state.reviewQueue.length;
-  state.reviewFolderName = elements.reviewFolder.value === "all"
-    ? "Todas"
-    : state.folders[elements.reviewFolder.value]?.name || "Carpeta";
+  const selection = resolveFolderSelection(elements.reviewFolder.value || "all");
+  if (!selection.folderId) {
+    state.reviewFolderName = "Todas";
+  } else if (selection.isShared) {
+    const sharedFolder = state.sharedFolders?.[selection.shareKey];
+    const ownerLabel = getUserLabel(selection.ownerUid);
+    state.reviewFolderName = getFolderLabel(sharedFolder, ownerLabel, true);
+  } else {
+    state.reviewFolderName = state.folders[selection.folderId]?.name || "Carpeta";
+  }
   if (elements.reviewPlayerFolder) {
     elements.reviewPlayerFolder.textContent = state.reviewFolderName;
   }
@@ -2453,6 +3044,10 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("#review-edit-card")) {
     const card = state.reviewQueue[state.currentIndex];
     if (!card) return;
+    if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+      showToast("Carpeta compartida en solo lectura.", "error");
+      return;
+    }
     openReviewEditModal(card);
     return;
   }
@@ -2472,6 +3067,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (elements.cardModal && !elements.cardModal.classList.contains("hidden")) {
     closeCardModal();
+  }
+  if (elements.shareModal && !elements.shareModal.classList.contains("hidden")) {
+    closeShareModal();
   }
   if (wordPopover && !wordPopover.classList.contains("hidden")) {
     closeWordPopover();
