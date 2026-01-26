@@ -8,15 +8,21 @@ import {
   updateCard,
   deleteCard,
   moveCardFolder,
+  getOrCreateFolderByPath,
   fetchCardsByFolder,
+  fetchCardsByFolderId,
+  fetchCardsByFolderQueue,
   fetchCardsForSearch,
   fetchCard,
+  fetchFolders,
+  fetchSampleCards,
   updateReview,
   buildSessionQueue,
   fetchUserData,
   userRoot,
   fetchGlossaryWord,
   upsertGlossaryEntries,
+  migrateCardsFolderIdsOnce,
   ensureVocabFolders,
   createOrUpdateVocabCard,
   listenTagsIndex,
@@ -34,6 +40,7 @@ const state = {
   cardsCache: [],
   cardsPageCursor: null,
   cardsHasMore: true,
+  cardsLoadMode: "paged",
   cardsLoadingMore: false,
   cardsSearchQuery: "",
   cardsSearchPool: [],
@@ -888,7 +895,10 @@ function renderCardsFromList(cards, searching = false) {
 
 function updateLoadMoreVisibility(searching = false) {
   if (!elements.loadMore) return;
-  const shouldShow = Boolean(state.selectedFolderId) && state.cardsHasMore && !searching;
+  const shouldShow = Boolean(state.selectedFolderId)
+    && state.cardsHasMore
+    && !searching
+    && state.cardsLoadMode === "paged";
   elements.loadMore.classList.toggle("hidden", !shouldShow);
   elements.loadMore.disabled = state.cardsLoadingMore || !shouldShow;
 }
@@ -1216,6 +1226,85 @@ async function openWordPopover(word, anchorRect) {
   }
 }
 
+async function debugFolderSelection(folderId) {
+  if (!state.username || !folderId) return;
+  const folder = state.folders[folderId];
+  const folderPath = folder?.path || folder?.name || "";
+  console.log("selectedFolderId", folderId, "selectedFolderPath", folderPath, "username", state.username);
+  try {
+    const db = getDb();
+    const [sampleCards, folders] = await Promise.all([
+      fetchSampleCards(db, state.username, 5),
+      fetchFolders(db, state.username),
+    ]);
+    sampleCards.forEach((card) => {
+      console.log(
+        "sampleCard",
+        "cardId",
+        card.id,
+        "folderId",
+        card.folderId,
+        "folderPath",
+        card.folderPath,
+        "front",
+        card.front
+      );
+    });
+    const folderEntries = Object.values(folders || {}).map((entry) => ({
+      id: entry.id,
+      path: entry.path,
+    }));
+    console.log("foldersSnapshot", folderEntries);
+  } catch (error) {
+    console.error("DEBUG folder snapshot error", error);
+  }
+}
+
+async function runFolderIdMigration() {
+  if (!state.username) return;
+  if (localStorage.getItem("chanki_migrated_folderIds") === "1") return;
+  try {
+    const db = getDb();
+    const result = await migrateCardsFolderIdsOnce(db, state.username, 2000);
+    console.log("MIGRATE folderIds", result);
+    localStorage.setItem("chanki_migrated_folderIds", "1");
+  } catch (error) {
+    console.error("Error al migrar folderIds", error);
+  }
+}
+
+async function loadInitialFolderCards() {
+  if (!state.selectedFolderId) return;
+  const db = getDb();
+  const queueResult = await fetchCardsByFolderQueue(
+    db,
+    state.username,
+    state.selectedFolderId,
+    2000
+  );
+  if (queueResult.cards.length) {
+    state.cards = queueResult.cards;
+    state.cardsCache = queueResult.cards;
+    state.cardsLoadedIds = new Set(queueResult.cards.map((card) => card.id));
+    state.cardsHasMore = queueResult.hasMore;
+    state.cardsPageCursor = null;
+    state.cardsLoadMode = "queue";
+    return;
+  }
+  const fallbackCards = await fetchCardsByFolderId(db, state.username, state.selectedFolderId, 500);
+  if (fallbackCards.length) {
+    state.cards = fallbackCards;
+    state.cardsCache = fallbackCards;
+    state.cardsLoadedIds = new Set(fallbackCards.map((card) => card.id));
+    state.cardsHasMore = false;
+    state.cardsPageCursor = null;
+    state.cardsLoadMode = "folderId";
+    return;
+  }
+  state.cardsLoadMode = "paged";
+  await loadMoreCardsPage();
+}
+
 async function loadCards(reset = false) {
   if (!state.selectedFolderId) return;
   if (state.cardsLoadingMore) return;
@@ -1229,9 +1318,14 @@ async function loadCards(reset = false) {
     state.cardsPageCursor = null;
     state.cardsHasMore = true;
     state.cardsLoadedIds = new Set();
+    state.cardsLoadMode = "paged";
   }
   try {
-    await loadMoreCardsPage();
+    if (reset) {
+      await loadInitialFolderCards();
+    } else {
+      await loadMoreCardsPage();
+    }
     renderCardsView();
   } finally {
     state.cardsLoadingMore = false;
@@ -1328,6 +1422,7 @@ async function handleFolderAction(event) {
     updateSearchUI();
     state.cardsSearchPool = [];
     state.cardsSearchFolderId = null;
+    debugFolderSelection(folderId);
     await loadCards(true);
     if (state.cardsSearchQuery) {
       loadSearchPool();
@@ -1839,6 +1934,10 @@ function showNextReviewCard() {
 
 async function loadMoreCardsPage() {
   if (!state.selectedFolderId) return;
+  if (state.cardsLoadMode !== "paged") {
+    state.cardsHasMore = false;
+    return;
+  }
   const db = getDb();
   const cursor = state.cardsPageCursor;
   console.log("LOADMORE start", cursor);
@@ -2008,13 +2107,7 @@ async function handleImportSave() {
   const db = getDb();
   let folderId = state.selectedFolderId;
   if (parsed.folderPath) {
-    const folderMatch = Object.values(state.folders).find((folder) => folder.path === parsed.folderPath);
-    if (folderMatch) {
-      folderId = folderMatch.id;
-    } else {
-      const createdId = await createFolder(db, state.username, { name: parsed.folderPath });
-      folderId = createdId;
-    }
+    folderId = await getOrCreateFolderByPath(db, state.username, parsed.folderPath, state.folders);
   }
   if (!folderId) {
     showToast("Selecciona una carpeta o define FOLDER: en el import.", "error");
@@ -2414,6 +2507,7 @@ function initFirebaseUi() {
   getDb();
   setStatus(`Usuario: ${state.username}`);
   initFolders();
+  runFolderIdMigration();
   loadStats();
   updateSearchUI();
   initTagsIndexListener();
