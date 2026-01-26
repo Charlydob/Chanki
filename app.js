@@ -19,6 +19,7 @@ import {
   upsertGlossaryEntries,
   ensureVocabFolders,
   createOrUpdateVocabCard,
+  listenTagsIndex,
 } from "./lib/rtdb.js";
 import { parseImport } from "./lib/parser.js";
 import { computeNextSrs } from "./lib/srs.js";
@@ -30,6 +31,7 @@ const state = {
   folders: {},
   selectedFolderId: null,
   cards: [],
+  cardsCache: [],
   cardsPageCursor: null,
   cardsHasMore: true,
   cardsLoadingMore: false,
@@ -78,6 +80,9 @@ const state = {
     esDe: null,
   },
   vocabFoldersPromise: null,
+  allTags: [],
+  selectedTags: new Set(),
+  reviewSelectedTags: new Set(),
 };
 
 const elements = {
@@ -161,6 +166,23 @@ const elements = {
   cardsSearchClear: document.getElementById("cards-search-clear"),
 };
 
+const APP_VERSION = "0.15.0";
+
+window.onerror = (message, source, lineno, colno, error) => {
+  console.error("JS ERROR", error || message, source, lineno, colno);
+  showToast(`Error JS: ${message}`, "error");
+};
+
+console.log("APP BOOT OK", APP_VERSION);
+console.log(
+  "BIND search:",
+  !!elements.cardsSearchInput,
+  "loadMore:",
+  !!elements.loadMore,
+  "edit:",
+  !!elements.reviewEditCard
+);
+
 const BUCKET_ORDER = ["new", "immediate", "lt24h", "tomorrow", "week", "future"];
 const BUCKET_LABELS = {
   new: "Nvo",
@@ -210,6 +232,7 @@ let reviewEditClozeText = null;
 let reviewEditClozeAnswers = null;
 let reviewEditCancel = null;
 let reviewEditSave = null;
+let tagsIndexUnsubscribe = null;
 const swipeState = {
   active: false,
   startX: 0,
@@ -328,6 +351,10 @@ function normalizeTags(text) {
     .filter(Boolean);
 }
 
+function dedupeTags(list) {
+  return [...new Set(list.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
 function normalizeText(value) {
   return String(value || "")
     .trim()
@@ -358,6 +385,26 @@ function tagsToMap(tags) {
 function mapToTags(map) {
   if (!map) return [];
   return Object.keys(map);
+}
+
+function splitTagInputValue(value) {
+  const raw = String(value || "");
+  const parts = raw.split(",");
+  if (parts.length === 1) {
+    return { tags: [], remainder: raw };
+  }
+  const remainder = parts.pop();
+  const tags = normalizeTags(parts.join(","));
+  return { tags, remainder };
+}
+
+function cardMatchesTagFilter(card, tags, mode = "or") {
+  if (!tags.length) return true;
+  const cardTags = mapToTags(card.tags);
+  if (mode === "and") {
+    return tags.every((tag) => cardTags.includes(tag));
+  }
+  return tags.some((tag) => cardTags.includes(tag));
 }
 
 function escapeHtml(text) {
@@ -697,6 +744,148 @@ function renderCards() {
   updateLoadMoreVisibility(searching);
 }
 
+function renderCardsListFiltered() {
+  const query = normalizeSearchQuery(state.cardsSearchQuery);
+  if (!query) {
+    renderCards();
+    return;
+  }
+  const filtered = state.cardsCache.filter((card) => {
+    const values = getCardDedupeValues(card);
+    const front = normalizeSearchQuery(values.front);
+    const back = normalizeSearchQuery(values.back);
+    return front.includes(query) || back.includes(query);
+  });
+  console.log("SEARCH", query, "matches", filtered.length);
+  renderCardsFromList(filtered, true);
+}
+
+function renderCardsView() {
+  if (state.cardsSearchQuery) {
+    renderCardsListFiltered();
+  } else {
+    renderCards();
+  }
+}
+
+function renderCardsFromList(cards, searching = false) {
+  const list = elements.cardsList;
+  list.innerHTML = "";
+  const filteredCards = cards;
+  if (!filteredCards.length) {
+    if (!searching) {
+      state.showOnlyDuplicates = false;
+    }
+    list.innerHTML = searching
+      ? "<div class=\"card\">No hay tarjetas que coincidan con la búsqueda.</div>"
+      : "<div class=\"card\">No hay tarjetas en esta carpeta.</div>";
+    if (elements.cardsDupCount) {
+      elements.cardsDupCount.textContent = "Duplicadas: 0";
+    }
+    if (elements.cardsDupToggle) {
+      elements.cardsDupToggle.disabled = true;
+      elements.cardsDupToggle.textContent = "Mostrar solo duplicadas";
+    }
+    updateLoadMoreVisibility(searching);
+    return;
+  }
+
+  const frontCount = new Map();
+  const backCount = new Map();
+  filteredCards.forEach((card) => {
+    const values = getCardDedupeValues(card);
+    const normFront = normalizeText(values.front);
+    const normBack = normalizeText(values.back);
+    if (normFront) {
+      frontCount.set(normFront, (frontCount.get(normFront) || 0) + 1);
+    }
+    if (normBack) {
+      backCount.set(normBack, (backCount.get(normBack) || 0) + 1);
+    }
+  });
+
+  const isDuplicateCard = (card) => {
+    const values = getCardDedupeValues(card);
+    const normFront = normalizeText(values.front);
+    const normBack = normalizeText(values.back);
+    return (
+      (normFront && (frontCount.get(normFront) || 0) > 1)
+      || (normBack && (backCount.get(normBack) || 0) > 1)
+    );
+  };
+
+  const duplicateCards = filteredCards.filter((card) => isDuplicateCard(card));
+  const visibleCards = state.showOnlyDuplicates ? duplicateCards : filteredCards;
+  const duplicateCount = duplicateCards.length;
+
+  if (elements.cardsDupCount) {
+    elements.cardsDupCount.textContent = `Duplicadas: ${duplicateCount}`;
+  }
+  if (elements.cardsDupToggle) {
+    elements.cardsDupToggle.disabled = duplicateCount === 0 && !state.showOnlyDuplicates;
+    elements.cardsDupToggle.textContent = state.showOnlyDuplicates
+      ? "Mostrar todas"
+      : "Mostrar solo duplicadas";
+  }
+
+  if (!visibleCards.length) {
+    list.innerHTML = state.showOnlyDuplicates
+      ? "<div class=\"card\">No hay tarjetas duplicadas en esta carpeta.</div>"
+      : "<div class=\"card\">No hay tarjetas en esta carpeta.</div>";
+    return;
+  }
+
+  visibleCards.forEach((card) => {
+    const item = document.createElement("div");
+    const isDuplicate = isDuplicateCard(card);
+    item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
+    const summary = card.type === "cloze"
+      ? `${card.clozeText || "(cloze sin texto)"}`
+      : `${card.front}`;
+    const detail = card.type === "cloze"
+      ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
+      : `${card.back}`;
+    item.innerHTML = `
+      <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <rect
+              x="5"
+              y="4.5"
+              width="14"
+              height="15"
+              rx="2.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+            <path
+              d="M8 9h8M8 12.5h6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="item-text">
+          <span class="item-title-row">
+            <span class="item-title">${escapeHtml(summary)}</span>
+            ${isDuplicate ? "<span class=\"dup-badge\">DUP</span>" : ""}
+          </span>
+          <span class="item-subtitle">${escapeHtml(detail)}</span>
+        </span>
+      </button>
+      <div class="item-actions">
+        <button class="icon-button icon-button--compact" data-action="edit" data-id="${card.id}" type="button" aria-label="Editar">✏️</button>
+        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${card.id}" type="button" aria-label="Borrar">🗑️</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+  updateLoadMoreVisibility(searching);
+}
+
 function updateLoadMoreVisibility(searching = false) {
   if (!elements.loadMore) return;
   const shouldShow = Boolean(state.selectedFolderId) && state.cardsHasMore && !searching;
@@ -713,7 +902,10 @@ function openCardModal(card = null) {
   elements.cardBack.value = card ? card.back || "" : "";
   elements.cardClozeText.value = card ? card.clozeText || "" : "";
   elements.cardClozeAnswers.value = card ? (card.clozeAnswers || []).join(" | ") : "";
-  elements.cardTags.value = card ? mapToTags(card.tags).join(", ") : "";
+  elements.cardTags.value = "";
+  state.selectedTags = new Set(mapToTags(card?.tags || {}));
+  renderTagPanels();
+  updateTagSuggestions("card", "");
   updateCardTypeFields(type);
   showOverlay(elements.cardModal, true);
 }
@@ -771,6 +963,7 @@ function ensureReviewEditModal() {
 function openReviewEditModal(card) {
   if (!card) return;
   ensureReviewEditModal();
+  console.log("EDIT open", card.id);
   reviewEditCardId = card.id;
   reviewEditType = card.type || "basic";
   reviewEditFront.value = card.front || "";
@@ -853,9 +1046,11 @@ async function handleReviewEditSave() {
       });
     }
     refreshCurrentReviewCard();
-    renderCards();
+    state.cardsCache = state.cards;
+    renderCardsView();
     showToast("Tarjeta actualizada.");
     closeReviewEditModal();
+    console.log("EDIT save ok");
   } catch (error) {
     console.error("Error al editar tarjeta", error);
     showToast("No se pudo guardar la tarjeta.", "error");
@@ -1030,36 +1225,14 @@ async function loadCards(reset = false) {
   }
   if (reset) {
     state.cards = [];
+    state.cardsCache = [];
     state.cardsPageCursor = null;
     state.cardsHasMore = true;
     state.cardsLoadedIds = new Set();
   }
   try {
-    const db = getDb();
-    const result = await fetchCardsByFolder(
-      db,
-      state.username,
-      state.selectedFolderId,
-      20,
-      state.cardsPageCursor
-    );
-    const newCards = result.cards.filter((card) => !state.cardsLoadedIds.has(card.id));
-    newCards.forEach((card) => state.cardsLoadedIds.add(card.id));
-    state.cards = reset ? newCards : [...state.cards, ...newCards];
-    state.cardsPageCursor = result.cursor;
-    state.cardsHasMore = result.hasMore;
-    console.debug("Cards page", {
-      pageSize: 20,
-      cursor: result.cursor,
-      results: result.cards.length,
-      hasMore: result.hasMore,
-    });
-    renderCards();
-    if (state.cardsSearchQuery) {
-      state.cardsSearchPool = [];
-      state.cardsSearchFolderId = null;
-      loadSearchPool();
-    }
+    await loadMoreCardsPage();
+    renderCardsView();
   } finally {
     state.cardsLoadingMore = false;
     if (elements.loadMore) {
@@ -1109,10 +1282,7 @@ function updateCardsSearch(value) {
     state.cardsSearchFolderId = null;
   }
   updateSearchUI();
-  renderCards();
-  if (state.cardsSearchQuery) {
-    loadSearchPool();
-  }
+  renderCardsListFiltered();
 }
 
 async function initFolders() {
@@ -1250,12 +1420,13 @@ async function handleCardListAction(event) {
       try {
         await deleteCard(db, state.username, card);
         showToast("Tarjeta borrada.");
-        state.cards = state.cards.filter((item) => item.id !== card.id);
-        state.cardsLoadedIds.delete(card.id);
-        state.cardCache.delete(card.id);
-        renderCards();
-        await loadStats();
-      } catch (error) {
+    state.cards = state.cards.filter((item) => item.id !== card.id);
+    state.cardsLoadedIds.delete(card.id);
+    state.cardCache.delete(card.id);
+    state.cardsCache = state.cards;
+    renderCardsView();
+    await loadStats();
+  } catch (error) {
         console.error("Error al borrar tarjeta", error);
         showToast(`No se pudo borrar: ${error?.message || error?.code || "error"}`, "error");
       }
@@ -1291,6 +1462,8 @@ async function handleSaveCard() {
     }
   }
   const tags = normalizeTags(elements.cardTags.value);
+  const selectedTags = dedupeTags([...state.selectedTags]);
+  const finalTags = dedupeTags([...selectedTags, ...tags]);
   const db = getDb();
   if (editingCardId) {
     try {
@@ -1300,7 +1473,7 @@ async function handleSaveCard() {
         back,
         clozeText,
         clozeAnswers,
-        tags: tagsToMap(tags),
+        tags: tagsToMap(finalTags),
       });
       showToast("Guardado");
     } catch (error) {
@@ -1319,7 +1492,7 @@ async function handleSaveCard() {
         back,
         clozeText,
         clozeAnswers,
-        tags: tagsToMap(tags),
+        tags: tagsToMap(finalTags),
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -1335,6 +1508,9 @@ async function handleSaveCard() {
     }
   }
   closeCardModal();
+  elements.cardTags.value = "";
+  state.selectedTags = new Set();
+  renderTagPanels();
   await loadCards(true);
 }
 
@@ -1535,7 +1711,10 @@ async function buildReviewQueue() {
     state.currentIndex = 0;
     return;
   }
-  const tagFilter = normalizeTags(elements.reviewTags.value);
+  const tagFilter = dedupeTags([
+    ...state.reviewSelectedTags,
+    ...normalizeTags(elements.reviewTags.value),
+  ]);
 
   const maxNew = Number(elements.reviewMaxNew.value || state.prefs.maxNew);
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
@@ -1551,6 +1730,7 @@ async function buildReviewQueue() {
     maxNew,
     maxReviews,
     tagFilter,
+    tagFilterMode: "or",
     allowRepair: !state.repairAttempted,
   });
 
@@ -1580,9 +1760,7 @@ async function buildReviewQueue() {
 
   const filtered = cards.filter((card) => {
     if (!card) return false;
-    if (!tagFilter.length) return true;
-    const cardTags = mapToTags(card.tags);
-    return tagFilter.every((tag) => cardTags.includes(tag));
+    return cardMatchesTagFilter(card, tagFilter, "or");
   });
 
   const bucketed = new Map();
@@ -1657,6 +1835,28 @@ function showNextReviewCard() {
     elements.reviewPlayerBucket.textContent = bucketLabel;
     elements.reviewPlayerBucket.classList.toggle("hidden", !bucketLabel);
   }
+}
+
+async function loadMoreCardsPage() {
+  if (!state.selectedFolderId) return;
+  const db = getDb();
+  const cursor = state.cardsPageCursor;
+  console.log("LOADMORE start", cursor);
+  const result = await fetchCardsByFolder(
+    db,
+    state.username,
+    state.selectedFolderId,
+    20,
+    cursor
+  );
+  const newCards = result.cards.filter((card) => !state.cardsLoadedIds.has(card.id));
+  newCards.forEach((card) => state.cardsLoadedIds.add(card.id));
+  state.cards = [...state.cards, ...newCards];
+  state.cardsCache = state.cards;
+  state.cardsPageCursor = result.cursor;
+  state.cardsHasMore = result.hasMore;
+  console.log("LOADMORE got", newCards.length);
+  return newCards.length;
 }
 
 function revealReviewAnswer() {
@@ -2055,6 +2255,151 @@ function handleSaveSettings() {
   showToast("Preferencias guardadas.");
 }
 
+function ensureTagPanels() {
+  if (elements.cardTags?.dataset.tagsReady) return;
+  const cardField = elements.cardTags?.closest(".field");
+  if (cardField) {
+    const panel = document.createElement("div");
+    panel.className = "tags-panel";
+    panel.dataset.tagsScope = "card";
+    panel.innerHTML = `
+      <div class="tags-panel__section">
+        <p class="tags-panel__label">Tags seleccionados</p>
+        <div class="tags-chip-row" data-tags-selected></div>
+      </div>
+      <div class="tags-panel__section">
+        <p class="tags-panel__label">Tags existentes</p>
+        <div class="tags-chip-row" data-tags-all></div>
+      </div>
+      <div class="tags-suggestions hidden" data-tags-suggestions></div>
+    `;
+    cardField.insertAdjacentElement("afterend", panel);
+    elements.cardTags.dataset.tagsReady = "true";
+  }
+
+  const reviewField = elements.reviewTags?.closest(".field");
+  if (reviewField && !reviewField.dataset.tagsReady) {
+    const panel = document.createElement("div");
+    panel.className = "tags-panel";
+    panel.dataset.tagsScope = "review";
+    panel.innerHTML = `
+      <div class="tags-panel__section">
+        <p class="tags-panel__label">Tags seleccionados</p>
+        <div class="tags-chip-row" data-tags-selected></div>
+      </div>
+      <div class="tags-panel__section">
+        <p class="tags-panel__label">Tags existentes</p>
+        <div class="tags-chip-row" data-tags-all></div>
+      </div>
+      <div class="tags-suggestions hidden" data-tags-suggestions></div>
+    `;
+    reviewField.insertAdjacentElement("afterend", panel);
+    reviewField.dataset.tagsReady = "true";
+  }
+}
+
+function renderTagPanels() {
+  ensureTagPanels();
+  document.querySelectorAll(".tags-panel").forEach((panel) => {
+    const scope = panel.dataset.tagsScope;
+    const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+    const selectedContainer = panel.querySelector("[data-tags-selected]");
+    const allContainer = panel.querySelector("[data-tags-all]");
+    if (!selectedContainer || !allContainer) return;
+    selectedContainer.innerHTML = "";
+    allContainer.innerHTML = "";
+    const selectedTags = Array.from(selected);
+    const allTags = state.allTags.slice().sort();
+    selectedTags.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "tag-chip tag-chip--selected";
+      chip.dataset.tag = tag;
+      chip.dataset.tagScope = scope;
+      chip.textContent = tag;
+      selectedContainer.appendChild(chip);
+    });
+    allTags.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = selected.has(tag) ? "tag-chip tag-chip--selected" : "tag-chip";
+      chip.dataset.tag = tag;
+      chip.dataset.tagScope = scope;
+      chip.textContent = tag;
+      allContainer.appendChild(chip);
+    });
+  });
+}
+
+function updateTagSuggestions(scope, query) {
+  const panel = document.querySelector(`.tags-panel[data-tags-scope="${scope}"]`);
+  if (!panel) return;
+  const suggestionBox = panel.querySelector("[data-tags-suggestions]");
+  if (!suggestionBox) return;
+  const trimmed = normalizeSearchQuery(query);
+  const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+  if (!trimmed) {
+    suggestionBox.classList.add("hidden");
+    suggestionBox.innerHTML = "";
+    return;
+  }
+  const matches = state.allTags.filter((tag) => tag.includes(trimmed) && !selected.has(tag));
+  if (!matches.length) {
+    suggestionBox.classList.add("hidden");
+    suggestionBox.innerHTML = "";
+    return;
+  }
+  suggestionBox.innerHTML = "";
+  matches.slice(0, 6).forEach((tag) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tag-suggestion";
+    button.dataset.tag = tag;
+    button.dataset.tagScope = scope;
+    button.textContent = tag;
+    suggestionBox.appendChild(button);
+  });
+  suggestionBox.classList.remove("hidden");
+}
+
+function addTagsToSelection(scope, tags) {
+  const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+  tags.forEach((tag) => selected.add(tag));
+  renderTagPanels();
+}
+
+function handleTagInput(scope, inputEl, commitAll = false) {
+  if (!inputEl) return;
+  if (commitAll) {
+    const tags = normalizeTags(inputEl.value);
+    if (tags.length) {
+      addTagsToSelection(scope, tags);
+      inputEl.value = "";
+    }
+    updateTagSuggestions(scope, "");
+    return;
+  }
+  const { tags, remainder } = splitTagInputValue(inputEl.value);
+  if (tags.length) {
+    addTagsToSelection(scope, tags);
+    inputEl.value = remainder;
+  }
+  updateTagSuggestions(scope, inputEl.value);
+}
+
+function initTagsIndexListener() {
+  if (tagsIndexUnsubscribe) {
+    tagsIndexUnsubscribe();
+    tagsIndexUnsubscribe = null;
+  }
+  if (!state.username) return;
+  const db = getDb();
+  tagsIndexUnsubscribe = listenTagsIndex(db, state.username, (tags) => {
+    state.allTags = dedupeTags(tags);
+    renderTagPanels();
+  });
+}
+
 async function initApp() {
   if (!state.username) {
     showOverlay(elements.overlay, true);
@@ -2071,6 +2416,9 @@ function initFirebaseUi() {
   initFolders();
   loadStats();
   updateSearchUI();
+  initTagsIndexListener();
+  ensureTagPanels();
+  renderTagPanels();
   if (elements.reviewEditCard) {
     elements.reviewEditCard.disabled = true;
   }
@@ -2128,24 +2476,6 @@ if (elements.folderModal) {
 }
 
 elements.addCard.addEventListener("click", () => openCardModal());
-
-if (elements.cardsSearchInput) {
-  elements.cardsSearchInput.addEventListener("input", (event) => {
-    updateCardsSearch(event.target.value);
-  });
-}
-
-if (elements.cardsSearchClear) {
-  elements.cardsSearchClear.addEventListener("click", () => {
-    updateCardsSearch("");
-    elements.cardsSearchInput?.focus();
-  });
-}
-
-elements.loadMore.addEventListener("click", () => {
-  if (!state.cardsHasMore) return;
-  loadCards();
-});
 
 elements.cardsList.addEventListener("click", handleCardListAction);
 
@@ -2238,11 +2568,7 @@ if (elements.reviewExit) {
 }
 
 if (elements.reviewEditCard) {
-  elements.reviewEditCard.addEventListener("click", () => {
-    const card = state.reviewQueue[state.currentIndex];
-    if (!card) return;
-    openReviewEditModal(card);
-  });
+  elements.reviewEditCard.disabled = true;
 }
 
 elements.importParse.addEventListener("click", handleImportPreview);
@@ -2272,6 +2598,61 @@ document.addEventListener(
 document.addEventListener("click", (event) => {
   if (event.target.closest(".item-menu")) return;
   if (event.target.closest("[data-menu-toggle]")) return;
+  const tagChip = event.target.closest(".tag-chip");
+  if (tagChip) {
+    const tag = tagChip.dataset.tag;
+    const scope = tagChip.dataset.tagScope || "card";
+    const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+    if (selected.has(tag)) {
+      selected.delete(tag);
+    } else {
+      selected.add(tag);
+    }
+    renderTagPanels();
+    return;
+  }
+  const suggestion = event.target.closest(".tag-suggestion");
+  if (suggestion) {
+    const tag = suggestion.dataset.tag;
+    const scope = suggestion.dataset.tagScope || "card";
+    addTagsToSelection(scope, [tag]);
+    const input = scope === "review" ? elements.reviewTags : elements.cardTags;
+    if (input) {
+      input.value = "";
+      updateTagSuggestions(scope, "");
+    }
+    return;
+  }
+  if (event.target.closest("#cards-search-clear")) {
+    updateCardsSearch("");
+    elements.cardsSearchInput?.focus();
+    return;
+  }
+  if (event.target.closest("#load-more")) {
+    if (!state.cardsHasMore) return;
+    if (state.cardsLoadingMore) return;
+    state.cardsLoadingMore = true;
+    if (elements.loadMore) elements.loadMore.disabled = true;
+    loadMoreCardsPage()
+      .then(() => {
+        if (state.cardsSearchQuery) {
+          renderCardsListFiltered();
+        } else {
+          renderCards();
+        }
+      })
+      .finally(() => {
+        state.cardsLoadingMore = false;
+        if (elements.loadMore) elements.loadMore.disabled = false;
+      });
+    return;
+  }
+  if (event.target.closest("#review-edit-card")) {
+    const card = state.reviewQueue[state.currentIndex];
+    if (!card) return;
+    openReviewEditModal(card);
+    return;
+  }
   closeAllMenus();
 });
 
@@ -2291,6 +2672,30 @@ document.addEventListener("keydown", (event) => {
   }
   if (wordPopover && !wordPopover.classList.contains("hidden")) {
     closeWordPopover();
+  }
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target === elements.cardsSearchInput) {
+    updateCardsSearch(event.target.value);
+  }
+  if (event.target === elements.cardTags) {
+    handleTagInput("card", elements.cardTags);
+  }
+  if (event.target === elements.reviewTags) {
+    handleTagInput("review", elements.reviewTags);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  const isCardInput = event.target === elements.cardTags;
+  const isReviewInput = event.target === elements.reviewTags;
+  if (!isCardInput && !isReviewInput) return;
+  if (event.key === "Enter" || event.key === ",") {
+    event.preventDefault();
+    const scope = isReviewInput ? "review" : "card";
+    const input = isReviewInput ? elements.reviewTags : elements.cardTags;
+    handleTagInput(scope, input, true);
   }
 });
 
