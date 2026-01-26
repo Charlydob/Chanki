@@ -1,0 +1,43 @@
+// Firebase RTDB rules (snippet - adapt to your project auth & structure)
+{
+  "rules": {
+    "usersPublic": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "folderShares": {
+      "$ownerUid": {
+        "$folderId": {
+          "$sharedUid": {
+            ".read": "auth != null && (auth.uid === $ownerUid || auth.uid === $sharedUid)",
+            ".write": "auth != null && auth.uid === $ownerUid"
+          }
+        }
+      }
+    },
+    "sharedFoldersByUser": {
+      "$sharedUid": {
+        ".read": "auth != null && auth.uid === $sharedUid",
+        ".write": "auth != null && auth.uid === $sharedUid"
+      }
+    },
+    "u": {
+      "$ownerUid": {
+        "folders": {
+          "$folderId": {
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child($folderId).child(auth.uid).exists())",
+            ".write": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child($folderId).child(auth.uid).child('role').val() === 'editor')"
+          }
+        },
+        "cards": {
+          "$cardId": {
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child(data.child('folderId').val()).child(auth.uid).exists())",
+            ".write": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child(data.child('folderId').val()).child(auth.uid).child('role').val() === 'editor')"
+          }
+        }
+      }
+    }
+  }
+}

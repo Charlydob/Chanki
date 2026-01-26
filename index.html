@@ -480,6 +480,32 @@
       </div>
     </div>
 
+    <div id="share-modal" class="overlay hidden">
+      <div class="modal modal--wide">
+        <h2>Compartir carpeta</h2>
+        <p id="share-folder-title" class="muted"></p>
+        <label class="field">
+          <span>Buscar usuario</span>
+          <input id="share-user-search" type="text" placeholder="handle o nombre" />
+        </label>
+        <label class="field field-inline">
+          <span>Permitir edición</span>
+          <input id="share-role-toggle" type="checkbox" />
+        </label>
+        <div class="share-section">
+          <p class="share-section__title">Resultados</p>
+          <div id="share-results" class="list"></div>
+        </div>
+        <div class="share-section">
+          <p class="share-section__title">Compartido con</p>
+          <div id="share-current-list" class="list"></div>
+        </div>
+        <div class="row">
+          <button id="share-close" class="button ghost" type="button">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toast-container" class="toast-container"></div>
 
     <script type="module" src="./js/app.js"></script>
