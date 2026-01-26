@@ -1,0 +1,75 @@
+/* moved from styles.css (review overrides) */
+.bucket-bar {
+  --bucket-color: var(--bucket-new);
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 8px 12px;
+  gap: 10px;
+}
+
+.bucket-bar[data-bucket="new"] {
+  --bucket-color: var(--bucket-new);
+}
+
+.bucket-bar[data-bucket="immediate"] {
+  --bucket-color: var(--bucket-immediate);
+}
+
+.bucket-bar[data-bucket="lt24h"] {
+  --bucket-color: var(--bucket-lt24h);
+}
+
+.bucket-bar[data-bucket="tomorrow"] {
+  --bucket-color: var(--bucket-tomorrow);
+}
+
+.bucket-bar[data-bucket="week"] {
+  --bucket-color: var(--bucket-week);
+}
+
+.bucket-bar[data-bucket="future"] {
+  --bucket-color: var(--bucket-future);
+}
+
+.bucket-bar.active {
+  border: 1px dashed color-mix(in srgb, var(--bucket-color) 70%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--bucket-color) 70%, transparent);
+  background: color-mix(in srgb, var(--bucket-color) 18%, rgba(12, 16, 28, 0.7));
+}
+
+.bucket-bar__bar {
+  width: 100%;
+  height: 72px;
+  border-radius: 12px;
+  background: rgba(12, 16, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: flex-end;
+  padding: 4px;
+}
+
+.bucket-bar__fill {
+  width: 100%;
+  height: calc(var(--fill, 0) * 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bucket-color) 80%, #ffffff), var(--bucket-color));
+  border-radius: 8px;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--bucket-color) 55%, transparent);
+  transition: height 0.2s ease;
+}
+
+.bucket-bar__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bucket-bar__value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bucket-bar__label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}

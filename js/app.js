@@ -1,4 +1,4 @@
-import { getDb, ensureDeviceId } from "./lib/firebase.js";
+import { getDb } from "../lib/firebase.js";
 import {
   listenFolders,
   createFolder,
@@ -27,153 +27,24 @@ import {
   ensureVocabFolders,
   createOrUpdateVocabCard,
   listenTagsIndex,
-} from "./lib/rtdb.js";
-import { parseImport } from "./lib/parser.js";
-import { computeNextSrs } from "./lib/srs.js";
-import { fetchDailyStats, calcStreak, recordReviewStats, fetchTotalsStats, fetchBucketCounts } from "./lib/stats.js";
-
-const state = {
-  username: localStorage.getItem("chanki_username") || "",
-  deviceId: ensureDeviceId(),
-  folders: {},
-  selectedFolderId: null,
-  cards: [],
-  cardsCache: [],
-  cardsPageCursor: null,
-  cardsHasMore: true,
-  cardsLoadMode: "paged",
-  cardsLoadingMore: false,
-  cardsSearchQuery: "",
-  cardsSearchPool: [],
-  cardsSearchFolderId: null,
-  cardsSearchLoading: false,
-  cardsLoadedIds: new Set(),
-  cardCache: new Map(),
-  glossaryCache: new Map(),
-  reviewQueue: [],
-  currentSessionQueue: [],
-  currentIndex: 0,
-  sessionActive: false,
-  sessionTotal: 0,
-  showOnlyDuplicates: false,
-  sessionEnding: false,
-  sessionStats: {
-    startTime: null,
-    answeredCount: 0,
-  },
-  sessionStart: null,
-  lastReviewAt: null,
-  bucketCounts: {},
-  reviewBuckets: {
-    new: true,
-    immediate: true,
-    lt24h: true,
-    tomorrow: true,
-    week: true,
-    future: true,
-  },
-  prefs: {
-    maxNew: Number(localStorage.getItem("chanki_max_new")) || 10,
-    maxReviews: Number(localStorage.getItem("chanki_max_reviews")) || 50,
-    clozeCaseInsensitive: localStorage.getItem("chanki_cloze_case") !== "false",
-  },
-  reviewInputValue: "",
-  activeWordKey: null,
-  activeWordNorm: null,
-  activeWordContext: null,
-  reviewFolderName: "Todas",
-  reviewShowingBack: false,
-  repairAttempted: false,
-  vocabFolderIds: {
-    deEs: null,
-    esDe: null,
-  },
-  vocabFoldersPromise: null,
-  allTags: [],
-  selectedTags: new Set(),
-  reviewSelectedTags: new Set(),
-};
-
-const elements = {
-  status: document.getElementById("status"),
-  app: document.getElementById("app"),
-  screens: document.querySelectorAll(".screen"),
-  tabs: document.querySelectorAll(".tab"),
-  overlay: document.getElementById("overlay"),
-  usernameInput: document.getElementById("username-input"),
-  saveUsername: document.getElementById("save-username"),
-  folderTree: document.getElementById("folder-tree"),
-  addFolder: document.getElementById("add-folder"),
-  cardsList: document.getElementById("cards-list"),
-  addCard: document.getElementById("add-card"),
-  loadMore: document.getElementById("load-more"),
-  cardModal: document.getElementById("card-modal"),
-  cardModalTitle: document.getElementById("card-modal-title"),
-  cardType: document.getElementById("card-type"),
-  cardFront: document.getElementById("card-front"),
-  cardBack: document.getElementById("card-back"),
-  cardClozeText: document.getElementById("card-cloze-text"),
-  cardClozeAnswers: document.getElementById("card-cloze-answers"),
-  cardBasicFrontField: document.getElementById("card-basic-front-field"),
-  cardBasicBackField: document.getElementById("card-basic-back-field"),
-  cardClozeTextField: document.getElementById("card-cloze-text-field"),
-  cardClozeAnswersField: document.getElementById("card-cloze-answers-field"),
-  cardTags: document.getElementById("card-tags"),
-  saveCard: document.getElementById("save-card"),
-  cancelCard: document.getElementById("cancel-card"),
-  cardsTitle: document.getElementById("cards-title"),
-  cardsDupCount: document.getElementById("cards-dup-count"),
-  cardsDupToggle: document.getElementById("cards-dup-toggle"),
-  screenReviewConfig: document.getElementById("screen-review-config"),
-  screenReviewPlayer: document.getElementById("screen-review-player"),
-  reviewFolder: document.getElementById("review-folder"),
-  reviewBucketChart: document.getElementById("review-bucket-chart"),
-  reviewTags: document.getElementById("review-tags"),
-  reviewMaxNew: document.getElementById("review-max-new"),
-  reviewMax: document.getElementById("review-max"),
-  startReview: document.getElementById("start-review"),
-  reviewCard: document.getElementById("review-card"),
-  flipCard: document.getElementById("flip-card"),
-  reviewActions: document.getElementById("review-actions"),
-  reviewExit: document.getElementById("review-exit"),
-  reviewPlayerFolder: document.getElementById("review-player-folder"),
-  reviewPlayerCounter: document.getElementById("review-player-counter"),
-  reviewPlayerBucket: document.getElementById("review-player-bucket"),
-  reviewEditCard: document.getElementById("review-edit-card"),
-  importText: document.getElementById("import-text"),
-  importPreview: document.getElementById("import-preview"),
-  importParse: document.getElementById("import-parse"),
-  importSave: document.getElementById("import-save"),
-  statsTodayCount: document.getElementById("stats-today-count"),
-  statsTodayMinutes: document.getElementById("stats-today-minutes"),
-  statsTodayAccuracy: document.getElementById("stats-today-accuracy"),
-  statsTodayDistribution: document.getElementById("stats-today-distribution"),
-  statsWeekTotal: document.getElementById("stats-week-total"),
-  statsWeekMinutes: document.getElementById("stats-week-minutes"),
-  statsWeekAverage: document.getElementById("stats-week-average"),
-  statsWeekChart: document.getElementById("stats-week-chart"),
-  statsStreakCurrent: document.getElementById("stats-streak-current"),
-  statsStreakBest: document.getElementById("stats-streak-best"),
-  statsTotalCards: document.getElementById("stats-total-cards"),
-  statsTotalNew: document.getElementById("stats-total-new"),
-  statsTotalLearned: document.getElementById("stats-total-learned"),
-  statsBucketCounts: document.getElementById("stats-bucket-counts"),
-  settingsUsername: document.getElementById("settings-username"),
-  settingsMaxNew: document.getElementById("settings-max-new"),
-  settingsMax: document.getElementById("settings-max"),
-  settingsClozeCase: document.getElementById("settings-cloze-case"),
-  saveSettings: document.getElementById("save-settings"),
-  exportJson: document.getElementById("export-json"),
-  resetLocal: document.getElementById("reset-local"),
-  folderModal: document.getElementById("folder-modal"),
-  folderModalTitle: document.getElementById("folder-modal-title"),
-  folderNameInput: document.getElementById("folder-name-input"),
-  saveFolder: document.getElementById("save-folder"),
-  cancelFolder: document.getElementById("cancel-folder"),
-  toastContainer: document.getElementById("toast-container"),
-  cardsSearchInput: document.getElementById("cards-search-input"),
-  cardsSearchClear: document.getElementById("cards-search-clear"),
-};
+} from "../lib/rtdb.js";
+import { parseImport } from "../lib/parser.js";
+import { computeNextSrs } from "../lib/srs.js";
+import { recordReviewStats } from "../lib/stats.js";
+import {
+  BUCKET_LABELS,
+  BUCKET_ORDER,
+  canonicalizeBucketId,
+  dedupeTags,
+  elements,
+  normalizeSearchQuery,
+  normalizeTags,
+  normalizeText,
+  state,
+} from "./shared.js";
+import { refreshReviewBucketCounts } from "./screens/review.js";
+import { loadStats } from "./screens/stats.js";
+import { renderFolders } from "./screens/folders.js";
 
 const APP_VERSION = "0.15.0";
 
@@ -191,35 +62,6 @@ console.log(
   "edit:",
   !!elements.reviewEditCard
 );
-
-const BUCKET_ORDER = ["new", "immediate", "lt24h", "tomorrow", "week", "future"];
-const BUCKET_LABELS = {
-  new: "Nvo",
-  immediate: "Ahora",
-  lt24h: "<24h",
-  tomorrow: "Mañana",
-  week: "<1sem",
-  future: "Futuro",
-};
-const BUCKET_ALIASES = {
-  new: "new",
-  nvo: "new",
-  nuevo: "new",
-  immediate: "immediate",
-  ahora: "immediate",
-  lt24h: "lt24h",
-  "<24h": "lt24h",
-  "24h": "lt24h",
-  tomorrow: "tomorrow",
-  "mañana": "tomorrow",
-  manana: "tomorrow",
-  week: "week",
-  "<1sem": "week",
-  "1sem": "week",
-  semana: "week",
-  future: "future",
-  futuro: "future",
-};
 
 let editingCardId = null;
 let activeUnsubscribe = null;
@@ -267,12 +109,6 @@ function getSafeAreaInset(side) {
     .trim();
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function canonicalizeBucketId(bucket) {
-  if (!bucket) return null;
-  const normalized = String(bucket).trim().toLowerCase();
-  return BUCKET_ALIASES[normalized] || (BUCKET_ORDER.includes(normalized) ? normalized : null);
 }
 
 function normalizeReviewBuckets() {
@@ -357,32 +193,6 @@ function setReviewMode(active) {
     elements.screenReviewConfig.classList.toggle("hidden", active);
     elements.screenReviewPlayer.classList.toggle("hidden", !active);
   }
-}
-
-function normalizeTags(text) {
-  return text
-    .split(",")
-    .map((tag) => tag.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function dedupeTags(list) {
-  return [...new Set(list.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[.?!…]+$/g, "");
-}
-
-function normalizeSearchQuery(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
 }
 
 function fnv1a32Hex(value) {
@@ -561,73 +371,6 @@ function closeFolderModal() {
   showOverlay(elements.folderModal, false);
   elements.folderNameInput.value = "";
   editingFolderId = null;
-}
-
-function renderFolders() {
-  const container = elements.folderTree;
-  container.innerHTML = "";
-  const folderList = Object.values(state.folders);
-  if (!state.username) {
-    container.innerHTML = "<div class=\"card\">Define tu usuario en Ajustes o al iniciar.</div>";
-    return;
-  }
-  if (!folderList.length) {
-    container.innerHTML = "<div class=\"card\">Crea tu primera carpeta para organizar tus tarjetas.</div>";
-    return;
-  }
-  folderList.forEach((folder) => {
-    const item = document.createElement("div");
-    item.className = "list-item";
-    const menuId = `folder-menu-${folder.id}`;
-    const subtitle = typeof folder.cardCount === "number"
-      ? `${folder.cardCount} tarjetas`
-      : folder.path;
-    item.innerHTML = `
-      <button class="item-main" data-action="select" data-id="${folder.id}" type="button">
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v8A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-          </svg>
-        </span>
-        <span class="item-text">
-          <span class="item-title">${folder.name}</span>
-          <span class="item-subtitle">${subtitle}</span>
-        </span>
-        <span class="item-chevron" aria-hidden="true">›</span>
-      </button>
-      <div class="item-menu-wrapper">
-        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          </svg>
-        </button>
-        <div class="item-menu hidden" data-menu-id="${menuId}">
-          <button data-action="rename" data-id="${folder.id}" type="button">Renombrar</button>
-          <button data-action="delete" data-id="${folder.id}" type="button" class="danger">Borrar</button>
-        </div>
-      </div>
-    `;
-    container.appendChild(item);
-  });
-  renderFolderSelects();
-}
-
-function renderFolderSelects() {
-  const select = elements.reviewFolder;
-  select.innerHTML = "<option value=\"all\">Todas</option>";
-  Object.values(state.folders).forEach((folder) => {
-    const option = document.createElement("option");
-    option.value = folder.id;
-    option.textContent = folder.name;
-    select.appendChild(option);
-  });
 }
 
 function renderBucketFilter() {
@@ -2249,133 +1992,6 @@ async function handleImportSave() {
   }
 }
 
-function renderWeekChart(daily) {
-  const canvas = elements.statsWeekChart;
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth || canvas.width;
-  const height = canvas.clientHeight || canvas.height;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-
-  const values = daily.map((day) => (day.reviews || 0) + (day.new || 0));
-  const maxVal = Math.max(1, ...values);
-  const padding = 16;
-  const chartHeight = height - padding * 2;
-  const barWidth = width / values.length;
-
-  values.forEach((value, index) => {
-    const barHeight = Math.max(6, (value / maxVal) * chartHeight);
-    const x = index * barWidth + barWidth * 0.2;
-    const y = height - padding - barHeight;
-    const w = barWidth * 0.6;
-    const radius = 6;
-    ctx.fillStyle = "rgba(139, 92, 246, 0.8)";
-    ctx.beginPath();
-    ctx.moveTo(x, y + radius);
-    ctx.arcTo(x, y, x + radius, y, radius);
-    ctx.arcTo(x + w, y, x + w, y + radius, radius);
-    ctx.lineTo(x + w, y + barHeight);
-    ctx.lineTo(x, y + barHeight);
-    ctx.closePath();
-    ctx.fill();
-  });
-
-  ctx.fillStyle = "rgba(154, 167, 189, 0.8)";
-  ctx.font = "10px SF Pro Text, system-ui, sans-serif";
-  values.forEach((_, index) => {
-    const label = daily[index].key.slice(6);
-    const x = index * barWidth + barWidth / 2;
-    ctx.fillText(label, x - 6, height - 4);
-  });
-}
-
-function renderBucketCounts(bucketCounts) {
-  const container = elements.statsBucketCounts;
-  if (!container) return;
-  container.innerHTML = "";
-  const maxVal = Math.max(1, ...Object.values(bucketCounts));
-  BUCKET_ORDER.forEach((bucket) => {
-    const count = bucketCounts[bucket] || 0;
-    const row = document.createElement("div");
-    row.className = "bucket-count";
-    row.innerHTML = `
-      <strong>${BUCKET_LABELS[bucket]}</strong>
-      <div class="bar"><span style="width: ${Math.max(8, (count / maxVal) * 100)}%"></span></div>
-      <small>${count} tarjetas</small>
-    `;
-    container.appendChild(row);
-  });
-}
-
-function renderBucketFilterCounts(bucketCounts) {
-  Object.entries(BUCKET_LABELS).forEach(([bucket]) => {
-    const el = document.querySelector(`[data-bucket-count="${bucket}"]`);
-    if (el) {
-      el.textContent = bucketCounts[bucket] || 0;
-    }
-  });
-}
-
-async function loadStats() {
-  if (!state.username) {
-    return;
-  }
-  const db = getDb();
-  const root = userRoot(state.username);
-  const [daily, totals, bucketCounts] = await Promise.all([
-    fetchDailyStats(db, root, 7),
-    fetchTotalsStats(db, root),
-    fetchBucketCounts(db, root),
-  ]);
-  const today = daily[daily.length - 1] || {};
-  const todayTotal = (today.reviews || 0) + (today.new || 0);
-  const todayMinutes = today.minutes || 0;
-  const weekTotal = daily.reduce((sum, day) => sum + (day.reviews || 0) + (day.new || 0), 0);
-  const weekMinutes = daily.reduce((sum, day) => sum + (day.minutes || 0), 0);
-  const accuracyBase = todayTotal || 1;
-  const accuracy = Math.round((((today.good || 0) + (today.easy || 0)) / accuracyBase) * 100);
-
-  elements.statsTodayCount.textContent = `${todayTotal} repasos`;
-  elements.statsTodayMinutes.textContent = `${todayMinutes} min`;
-  elements.statsTodayAccuracy.textContent = `${accuracy}%`;
-
-  elements.statsTodayDistribution.innerHTML = "";
-  ["error", "bad", "good", "easy"].forEach((rating) => {
-    const chip = document.createElement("div");
-    chip.className = "stats-chip";
-    chip.textContent = `${rating}: ${today[rating] || 0}`;
-    elements.statsTodayDistribution.appendChild(chip);
-  });
-
-  elements.statsWeekTotal.textContent = `${weekTotal} repasos`;
-  elements.statsWeekMinutes.textContent = `${weekMinutes} min`;
-  elements.statsWeekAverage.textContent = `${Math.round(weekTotal / 7)} /día`;
-
-  const currentStreak = totals.currentStreak ?? calcStreak(daily);
-  const bestStreak = totals.bestStreak ?? currentStreak;
-  elements.statsStreakCurrent.textContent = `${currentStreak} días`;
-  elements.statsStreakBest.textContent = `${bestStreak} días`;
-
-  const totalCards = totals.totalCards || 0;
-  const newCards = totals.newCards || 0;
-  const learnedCards = totals.learnedCards || Math.max(0, totalCards - newCards);
-  elements.statsTotalCards.textContent = totalCards;
-  elements.statsTotalNew.textContent = newCards;
-  elements.statsTotalLearned.textContent = learnedCards;
-
-  state.bucketCounts = BUCKET_ORDER.reduce((acc, bucket) => {
-    acc[bucket] = bucketCounts?.[bucket] || 0;
-    return acc;
-  }, {});
-  renderBucketCounts(state.bucketCounts);
-  renderBucketFilterCounts(state.bucketCounts);
-  renderWeekChart(daily);
-}
-
 async function handleExportJson() {
   const db = getDb();
   const data = await fetchUserData(db, state.username);
@@ -2602,6 +2218,7 @@ function initFirebaseUi() {
   elements.settingsMax.value = state.prefs.maxReviews;
   elements.settingsClozeCase.checked = state.prefs.clozeCaseInsensitive;
   renderBucketFilter();
+  refreshReviewBucketCounts();
 }
 
 if ("serviceWorker" in navigator) {
@@ -2723,6 +2340,13 @@ if (elements.reviewBucketChart) {
     if (!bucket) return;
     state.reviewBuckets[bucket] = !state.reviewBuckets[bucket];
     renderBucketFilter();
+    refreshReviewBucketCounts();
+  });
+}
+
+if (elements.reviewFolder) {
+  elements.reviewFolder.addEventListener("change", () => {
+    refreshReviewBucketCounts();
   });
 }
 
@@ -2782,6 +2406,9 @@ document.addEventListener("click", (event) => {
       selected.add(tag);
     }
     renderTagPanels();
+    if (scope === "review") {
+      refreshReviewBucketCounts();
+    }
     return;
   }
   const suggestion = event.target.closest(".tag-suggestion");
@@ -2793,6 +2420,9 @@ document.addEventListener("click", (event) => {
     if (input) {
       input.value = "";
       updateTagSuggestions(scope, "");
+    }
+    if (scope === "review") {
+      refreshReviewBucketCounts();
     }
     return;
   }
@@ -2857,6 +2487,7 @@ document.addEventListener("input", (event) => {
   }
   if (event.target === elements.reviewTags) {
     handleTagInput("review", elements.reviewTags);
+    refreshReviewBucketCounts();
   }
 });
 
@@ -2869,6 +2500,9 @@ document.addEventListener("keydown", (event) => {
     const scope = isReviewInput ? "review" : "card";
     const input = isReviewInput ? elements.reviewTags : elements.cardTags;
     handleTagInput(scope, input, true);
+    if (scope === "review") {
+      refreshReviewBucketCounts();
+    }
   }
 });
 

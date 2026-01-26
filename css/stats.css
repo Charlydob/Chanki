@@ -1,0 +1,70 @@
+/* moved from styles.css (stats overrides + additions) */
+.stats-compare {
+  margin: 6px 0 0;
+}
+
+.stats-heatmap {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stats-heatmap__cell {
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.stats-heatmap__cell.is-empty {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.stats-heatmap__cell span {
+  font-weight: 600;
+}
+
+.stats-heatmap__tooltip {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--glass-border);
+  font-size: 12px;
+}
+
+.stats-donut {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stats-donut__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.stats-donut__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats-donut__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}

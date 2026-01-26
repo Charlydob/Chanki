@@ -11,6 +11,12 @@
   --danger: #fb7185;
   --warning: #fbbf24;
   --success: #34d399;
+  --bucket-new: #8b5cf6;
+  --bucket-immediate: #f87171;
+  --bucket-lt24h: #fbbf24;
+  --bucket-tomorrow: #60a5fa;
+  --bucket-week: #7dd3fc;
+  --bucket-future: #34d399;
   --radius: 18px;
   --safe-area-top: env(safe-area-inset-top);
   --safe-area-bottom: env(safe-area-inset-bottom);
