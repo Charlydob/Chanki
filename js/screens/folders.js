@@ -1,0 +1,72 @@
+import { elements, state } from "../shared.js";
+import { refreshReviewBucketCounts } from "./review.js";
+
+// moved from app.js
+export function renderFolderSelects() {
+  const select = elements.reviewFolder;
+  select.innerHTML = "<option value=\"all\">Todas</option>";
+  Object.values(state.folders).forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = folder.name;
+    select.appendChild(option);
+  });
+  refreshReviewBucketCounts();
+}
+
+// moved from app.js
+export function renderFolders() {
+  const container = elements.folderTree;
+  container.innerHTML = "";
+  const folderList = Object.values(state.folders);
+  if (!state.username) {
+    container.innerHTML = "<div class=\"card\">Define tu usuario en Ajustes o al iniciar.</div>";
+    return;
+  }
+  if (!folderList.length) {
+    container.innerHTML = "<div class=\"card\">Crea tu primera carpeta para organizar tus tarjetas.</div>";
+    return;
+  }
+  folderList.forEach((folder) => {
+    const item = document.createElement("div");
+    item.className = "list-item";
+    const menuId = `folder-menu-${folder.id}`;
+    const subtitle = typeof folder.cardCount === "number"
+      ? `${folder.cardCount} tarjetas`
+      : folder.path;
+    item.innerHTML = `
+      <button class="item-main" data-action="select" data-id="${folder.id}" type="button">
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v8A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+          </svg>
+        </span>
+        <span class="item-text">
+          <span class="item-title">${folder.name}</span>
+          <span class="item-subtitle">${subtitle}</span>
+        </span>
+        <span class="item-chevron" aria-hidden="true">›</span>
+      </button>
+      <div class="item-menu-wrapper">
+        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+          </svg>
+        </button>
+        <div class="item-menu hidden" data-menu-id="${menuId}">
+          <button data-action="rename" data-id="${folder.id}" type="button">Renombrar</button>
+          <button data-action="delete" data-id="${folder.id}" type="button" class="danger">Borrar</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(item);
+  });
+  renderFolderSelects();
+}

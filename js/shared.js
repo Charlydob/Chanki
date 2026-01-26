@@ -1,0 +1,215 @@
+import { ensureDeviceId } from "../lib/firebase.js";
+
+export const BUCKET_ORDER = ["new", "immediate", "lt24h", "tomorrow", "week", "future"];
+export const BUCKET_LABELS = {
+  new: "Nvo",
+  immediate: "Ahora",
+  lt24h: "<24h",
+  tomorrow: "Mañana",
+  week: "<1sem",
+  future: "Futuro",
+};
+export const BUCKET_ALIASES = {
+  new: "new",
+  nvo: "new",
+  nuevo: "new",
+  immediate: "immediate",
+  ahora: "immediate",
+  lt24h: "lt24h",
+  "<24h": "lt24h",
+  "24h": "lt24h",
+  tomorrow: "tomorrow",
+  "mañana": "tomorrow",
+  manana: "tomorrow",
+  week: "week",
+  "<1sem": "week",
+  "1sem": "week",
+  semana: "week",
+  future: "future",
+  futuro: "future",
+};
+
+export const state = {
+  username: localStorage.getItem("chanki_username") || "",
+  deviceId: ensureDeviceId(),
+  folders: {},
+  selectedFolderId: null,
+  cards: [],
+  cardsCache: [],
+  cardsPageCursor: null,
+  cardsHasMore: true,
+  cardsLoadMode: "paged",
+  cardsLoadingMore: false,
+  cardsSearchQuery: "",
+  cardsSearchPool: [],
+  cardsSearchFolderId: null,
+  cardsSearchLoading: false,
+  cardsLoadedIds: new Set(),
+  cardCache: new Map(),
+  glossaryCache: new Map(),
+  reviewQueue: [],
+  currentSessionQueue: [],
+  currentIndex: 0,
+  sessionActive: false,
+  sessionTotal: 0,
+  showOnlyDuplicates: false,
+  sessionEnding: false,
+  sessionStats: {
+    startTime: null,
+    answeredCount: 0,
+  },
+  sessionStart: null,
+  lastReviewAt: null,
+  bucketCounts: {},
+  reviewBucketCounts: {},
+  reviewBuckets: {
+    new: true,
+    immediate: true,
+    lt24h: true,
+    tomorrow: true,
+    week: true,
+    future: true,
+  },
+  prefs: {
+    maxNew: Number(localStorage.getItem("chanki_max_new")) || 10,
+    maxReviews: Number(localStorage.getItem("chanki_max_reviews")) || 50,
+    clozeCaseInsensitive: localStorage.getItem("chanki_cloze_case") !== "false",
+  },
+  reviewInputValue: "",
+  activeWordKey: null,
+  activeWordNorm: null,
+  activeWordContext: null,
+  reviewFolderName: "Todas",
+  reviewShowingBack: false,
+  repairAttempted: false,
+  vocabFolderIds: {
+    deEs: null,
+    esDe: null,
+  },
+  vocabFoldersPromise: null,
+  allTags: [],
+  selectedTags: new Set(),
+  reviewSelectedTags: new Set(),
+};
+
+export const elements = {
+  status: document.getElementById("status"),
+  app: document.getElementById("app"),
+  screens: document.querySelectorAll(".screen"),
+  tabs: document.querySelectorAll(".tab"),
+  overlay: document.getElementById("overlay"),
+  usernameInput: document.getElementById("username-input"),
+  saveUsername: document.getElementById("save-username"),
+  folderTree: document.getElementById("folder-tree"),
+  addFolder: document.getElementById("add-folder"),
+  cardsList: document.getElementById("cards-list"),
+  addCard: document.getElementById("add-card"),
+  loadMore: document.getElementById("load-more"),
+  cardModal: document.getElementById("card-modal"),
+  cardModalTitle: document.getElementById("card-modal-title"),
+  cardType: document.getElementById("card-type"),
+  cardFront: document.getElementById("card-front"),
+  cardBack: document.getElementById("card-back"),
+  cardClozeText: document.getElementById("card-cloze-text"),
+  cardClozeAnswers: document.getElementById("card-cloze-answers"),
+  cardBasicFrontField: document.getElementById("card-basic-front-field"),
+  cardBasicBackField: document.getElementById("card-basic-back-field"),
+  cardClozeTextField: document.getElementById("card-cloze-text-field"),
+  cardClozeAnswersField: document.getElementById("card-cloze-answers-field"),
+  cardTags: document.getElementById("card-tags"),
+  saveCard: document.getElementById("save-card"),
+  cancelCard: document.getElementById("cancel-card"),
+  cardsTitle: document.getElementById("cards-title"),
+  cardsDupCount: document.getElementById("cards-dup-count"),
+  cardsDupToggle: document.getElementById("cards-dup-toggle"),
+  screenReviewConfig: document.getElementById("screen-review-config"),
+  screenReviewPlayer: document.getElementById("screen-review-player"),
+  reviewFolder: document.getElementById("review-folder"),
+  reviewBucketChart: document.getElementById("review-bucket-chart"),
+  reviewTags: document.getElementById("review-tags"),
+  reviewMaxNew: document.getElementById("review-max-new"),
+  reviewMax: document.getElementById("review-max"),
+  startReview: document.getElementById("start-review"),
+  reviewCard: document.getElementById("review-card"),
+  flipCard: document.getElementById("flip-card"),
+  reviewActions: document.getElementById("review-actions"),
+  reviewExit: document.getElementById("review-exit"),
+  reviewPlayerFolder: document.getElementById("review-player-folder"),
+  reviewPlayerCounter: document.getElementById("review-player-counter"),
+  reviewPlayerBucket: document.getElementById("review-player-bucket"),
+  reviewEditCard: document.getElementById("review-edit-card"),
+  importText: document.getElementById("import-text"),
+  importPreview: document.getElementById("import-preview"),
+  importParse: document.getElementById("import-parse"),
+  importSave: document.getElementById("import-save"),
+  statsTodayCount: document.getElementById("stats-today-count"),
+  statsTodayMinutes: document.getElementById("stats-today-minutes"),
+  statsTodayAccuracy: document.getElementById("stats-today-accuracy"),
+  statsTodayDistribution: document.getElementById("stats-today-distribution"),
+  statsWeekTotal: document.getElementById("stats-week-total"),
+  statsWeekMinutes: document.getElementById("stats-week-minutes"),
+  statsWeekAverage: document.getElementById("stats-week-average"),
+  statsWeekChart: document.getElementById("stats-week-chart"),
+  statsMonthTotal: document.getElementById("stats-month-total"),
+  statsMonthAverage: document.getElementById("stats-month-average"),
+  statsMonthBest: document.getElementById("stats-month-best"),
+  statsMonthCompare: document.getElementById("stats-month-compare"),
+  statsHeatmap: document.getElementById("stats-heatmap"),
+  statsHeatmapTooltip: document.getElementById("stats-heatmap-tooltip"),
+  statsMonthChart: document.getElementById("stats-month-chart"),
+  statsMonthDonut: document.getElementById("stats-month-donut"),
+  statsMonthLegend: document.getElementById("stats-month-legend"),
+  statsStreakCurrent: document.getElementById("stats-streak-current"),
+  statsStreakBest: document.getElementById("stats-streak-best"),
+  statsTotalCards: document.getElementById("stats-total-cards"),
+  statsTotalNew: document.getElementById("stats-total-new"),
+  statsTotalLearned: document.getElementById("stats-total-learned"),
+  statsBucketCounts: document.getElementById("stats-bucket-counts"),
+  settingsUsername: document.getElementById("settings-username"),
+  settingsMaxNew: document.getElementById("settings-max-new"),
+  settingsMax: document.getElementById("settings-max"),
+  settingsClozeCase: document.getElementById("settings-cloze-case"),
+  saveSettings: document.getElementById("save-settings"),
+  exportJson: document.getElementById("export-json"),
+  resetLocal: document.getElementById("reset-local"),
+  folderModal: document.getElementById("folder-modal"),
+  folderModalTitle: document.getElementById("folder-modal-title"),
+  folderNameInput: document.getElementById("folder-name-input"),
+  saveFolder: document.getElementById("save-folder"),
+  cancelFolder: document.getElementById("cancel-folder"),
+  toastContainer: document.getElementById("toast-container"),
+  cardsSearchInput: document.getElementById("cards-search-input"),
+  cardsSearchClear: document.getElementById("cards-search-clear"),
+};
+
+export function canonicalizeBucketId(bucket) {
+  if (!bucket) return null;
+  const normalized = String(bucket).trim().toLowerCase();
+  return BUCKET_ALIASES[normalized] || (BUCKET_ORDER.includes(normalized) ? normalized : null);
+}
+
+export function normalizeTags(text) {
+  return text
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function dedupeTags(list) {
+  return [...new Set(list.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
+export function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.?!…]+$/g, "");
+}
+
+export function normalizeSearchQuery(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
