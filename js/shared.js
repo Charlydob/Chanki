@@ -49,6 +49,7 @@ export const state = {
   cardsLoadedIds: new Set(),
   cardCache: new Map(),
   glossaryCache: new Map(),
+  lexicon: {},
   reviewQueue: [],
   currentSessionQueue: [],
   currentIndex: 0,
