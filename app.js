@@ -23,6 +23,7 @@ import {
   fetchGlossaryWord,
   upsertGlossaryEntries,
   migrateCardsFolderIdsOnce,
+  migrateDedupeV2Once,
   ensureVocabFolders,
   createOrUpdateVocabCard,
   listenTagsIndex,
@@ -78,6 +79,7 @@ const state = {
   },
   reviewInputValue: "",
   activeWordKey: null,
+  activeWordNorm: null,
   activeWordContext: null,
   reviewFolderName: "Todas",
   reviewShowingBack: false,
@@ -309,6 +311,12 @@ function showToast(message, type = "") {
   }, 2500);
 }
 
+function handleErrorToast(error, fallbackMessage = "Ha ocurrido un error.") {
+  const message = error?.message || String(error);
+  showToast(message || fallbackMessage, "error");
+  console.error(error);
+}
+
 function setStatus(text) {
   elements.status.textContent = text;
 }
@@ -367,8 +375,7 @@ function normalizeText(value) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")
-    .replace(/[.?!…]+$/g, "")
-    .replace(/["“”‘’|]+/g, "");
+    .replace(/[.?!…]+$/g, "");
 }
 
 function normalizeSearchQuery(value) {
@@ -378,8 +385,25 @@ function normalizeSearchQuery(value) {
     .replace(/\s+/g, " ");
 }
 
-function safeKey(value) {
-  return encodeURIComponent(value).slice(0, 240);
+function fnv1a32Hex(value) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+async function hashKey(value, length = 16) {
+  const raw = String(value || "");
+  if (typeof crypto !== "undefined" && crypto.subtle && typeof TextEncoder !== "undefined") {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+    const hex = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    return hex.slice(0, length);
+  }
+  return fnv1a32Hex(raw);
 }
 
 function tagsToMap(tags) {
@@ -443,8 +467,8 @@ function renderTextWithWords(text) {
     .map((part) => {
       if (part.type === "word") {
         const safeWord = escapeHtml(part.value);
-        const wordKey = normalizeWordKey(part.value);
-        const meaning = wordKey ? state.glossaryCache.get(wordKey)?.meaning : "";
+        const wordNorm = normalizeText(part.value);
+        const meaning = wordNorm ? state.glossaryCache.get(wordNorm)?.meaning : "";
         const hasMeaning = Boolean(meaning && meaning.trim());
         return `<span class="word${hasMeaning ? " has-meaning" : ""}" data-word="${safeWord}">${safeWord}</span>`;
       }
@@ -513,8 +537,14 @@ async function ensureVocabFolderIds() {
   }
 }
 
-function normalizeWordKey(word) {
-  return safeKey(normalizeText(word));
+function normalizeWordCacheKey(word) {
+  return normalizeText(word);
+}
+
+async function buildWordKey(word) {
+  const norm = normalizeWordCacheKey(word);
+  if (!norm) return "";
+  return hashKey(norm, 24);
 }
 
 function openFolderModal(folder = null) {
@@ -1024,13 +1054,17 @@ async function handleReviewEditSave() {
     }
   }
   try {
-    await updateCard(db, state.username, reviewEditCardId, {
+    const result = await updateCard(db, state.username, reviewEditCardId, {
       type: reviewEditType,
       front: nextFront,
       back: nextBack,
       clozeText: nextClozeText,
       clozeAnswers: nextClozeAnswers,
     });
+    if (result?.status === "duplicate") {
+      showToast("Duplicado omitido.");
+      return;
+    }
     const updateCardLocal = (card) => {
       if (!card || card.id !== reviewEditCardId) return card;
       return {
@@ -1062,8 +1096,7 @@ async function handleReviewEditSave() {
     closeReviewEditModal();
     console.log("EDIT save ok");
   } catch (error) {
-    console.error("Error al editar tarjeta", error);
-    showToast("No se pudo guardar la tarjeta.", "error");
+    handleErrorToast(error, "No se pudo guardar la tarjeta.");
   }
 }
 
@@ -1113,18 +1146,28 @@ function ensureWordPopover() {
 
   wordPopoverSave.addEventListener("click", async () => {
     const key = state.activeWordKey;
+    const norm = state.activeWordNorm;
     if (!key || !state.username) return;
     const meaning = wordPopoverInput.value.trim();
     const { cleanedMeaning, tags } = parseMeaningInput(meaning);
     try {
       const db = getDb();
       await upsertGlossaryEntries(db, state.username, [
-        { key, word: wordPopoverTitle.textContent, meaning },
+        {
+          key,
+          word: wordPopoverTitle.textContent,
+          meaning,
+          tags: tagsToMap(tags),
+        },
       ]);
-      state.glossaryCache.set(key, {
-        word: wordPopoverTitle.textContent,
-        meaning,
-      });
+      if (norm) {
+        state.glossaryCache.set(norm, {
+          key,
+          word: wordPopoverTitle.textContent,
+          meaning,
+          tags,
+        });
+      }
       showToast("Significado guardado.");
       wordPopoverEditing = false;
       wordPopoverEditor.classList.add("hidden");
@@ -1144,8 +1187,7 @@ function ensureWordPopover() {
       }
       refreshCurrentReviewCard();
     } catch (error) {
-      console.error("Error al guardar glosario", error);
-      showToast(`No se pudo guardar: ${error?.message || error?.code || "error"}`, "error");
+      handleErrorToast(error, "No se pudo guardar el glosario.");
     }
   });
 }
@@ -1185,6 +1227,7 @@ function closeWordPopover() {
   wordPopoverEditor?.classList.add("hidden");
   wordPopoverEditing = false;
   state.activeWordKey = null;
+  state.activeWordNorm = null;
   state.activeWordContext = null;
   wordPopoverAnchor = null;
 }
@@ -1195,8 +1238,10 @@ async function openWordPopover(word, anchorRect) {
     return;
   }
   ensureWordPopover();
-  const key = normalizeWordKey(word);
+  const norm = normalizeWordCacheKey(word);
+  const key = norm ? await buildWordKey(norm) : "";
   state.activeWordKey = key;
+  state.activeWordNorm = norm;
   wordPopoverTitle.textContent = word;
   wordPopoverAnchor = anchorRect;
   wordPopoverEditor.classList.add("hidden");
@@ -1204,8 +1249,8 @@ async function openWordPopover(word, anchorRect) {
   updateWordPopoverMeaning("");
   wordPopover.classList.remove("hidden");
   positionWordPopover();
-  if (state.glossaryCache.has(key)) {
-    const cached = state.glossaryCache.get(key);
+  if (norm && state.glossaryCache.has(norm)) {
+    const cached = state.glossaryCache.get(norm);
     updateWordPopoverMeaning(cached.meaning || "");
     positionWordPopover();
     return;
@@ -1214,15 +1259,20 @@ async function openWordPopover(word, anchorRect) {
     const db = getDb();
     const entry = await fetchGlossaryWord(db, state.username, key);
     if (entry) {
-      state.glossaryCache.set(key, entry);
-      updateWordPopoverMeaning(entry.meaning || "");
+      const normalized = normalizeWordCacheKey(entry.wn || entry.w || word);
+      state.glossaryCache.set(normalized, {
+        key,
+        word: entry.w || word,
+        meaning: entry.m || entry.meaning || "",
+        tags: entry.tags ? Object.keys(entry.tags) : [],
+      });
+      updateWordPopoverMeaning(entry.m || entry.meaning || "");
     } else {
       updateWordPopoverMeaning("");
     }
     positionWordPopover();
   } catch (error) {
-    console.error("Error al cargar glosario", error);
-    showToast("No se pudo cargar la palabra.", "error");
+    handleErrorToast(error, "No se pudo cargar la palabra.");
   }
 }
 
@@ -1256,7 +1306,7 @@ async function debugFolderSelection(folderId) {
     }));
     console.log("foldersSnapshot", folderEntries);
   } catch (error) {
-    console.error("DEBUG folder snapshot error", error);
+    handleErrorToast(error, "No se pudo cargar el diagnóstico.");
   }
 }
 
@@ -1269,7 +1319,20 @@ async function runFolderIdMigration() {
     console.log("MIGRATE folderIds", result);
     localStorage.setItem("chanki_migrated_folderIds", "1");
   } catch (error) {
-    console.error("Error al migrar folderIds", error);
+    handleErrorToast(error, "No se pudo migrar las carpetas.");
+  }
+}
+
+async function runDedupeMigration() {
+  if (!state.username) return;
+  if (localStorage.getItem("chanki_migrated_dedupe_v2") === "1") return;
+  try {
+    const db = getDb();
+    const result = await migrateDedupeV2Once(db, state.username);
+    console.log("MIGRATE dedupe v2", result);
+    localStorage.setItem("chanki_migrated_dedupe_v2", "1");
+  } catch (error) {
+    handleErrorToast(error, "No se pudo migrar los índices de duplicados.");
   }
 }
 
@@ -1363,7 +1426,7 @@ async function loadSearchPool() {
     state.cardsSearchFolderId = selectedFolderId;
     renderCards();
   } catch (error) {
-    console.error("Error al buscar tarjetas", error);
+    handleErrorToast(error, "No se pudo buscar tarjetas.");
   } finally {
     state.cardsSearchLoading = false;
   }
@@ -1451,8 +1514,7 @@ async function handleFolderAction(event) {
           renderCards();
         }
       } catch (error) {
-        console.error("Error al borrar carpeta", error);
-        showToast("Error al borrar carpeta", "error");
+        handleErrorToast(error, "Error al borrar carpeta.");
       }
     }
   }
@@ -1479,8 +1541,7 @@ async function handleSaveFolder() {
     showToast("Guardado");
     closeFolderModal();
   } catch (error) {
-    console.error("Error al guardar carpeta", error);
-    showToast("Error al guardar carpeta", "error");
+    handleErrorToast(error, "Error al guardar carpeta.");
   } finally {
     elements.saveFolder.disabled = false;
   }
@@ -1515,15 +1576,14 @@ async function handleCardListAction(event) {
       try {
         await deleteCard(db, state.username, card);
         showToast("Tarjeta borrada.");
-    state.cards = state.cards.filter((item) => item.id !== card.id);
-    state.cardsLoadedIds.delete(card.id);
-    state.cardCache.delete(card.id);
-    state.cardsCache = state.cards;
-    renderCardsView();
-    await loadStats();
-  } catch (error) {
-        console.error("Error al borrar tarjeta", error);
-        showToast(`No se pudo borrar: ${error?.message || error?.code || "error"}`, "error");
+        state.cards = state.cards.filter((item) => item.id !== card.id);
+        state.cardsLoadedIds.delete(card.id);
+        state.cardCache.delete(card.id);
+        state.cardsCache = state.cards;
+        renderCardsView();
+        await loadStats();
+      } catch (error) {
+        handleErrorToast(error, "No se pudo borrar la tarjeta.");
       }
     }
   }
@@ -1562,7 +1622,7 @@ async function handleSaveCard() {
   const db = getDb();
   if (editingCardId) {
     try {
-      await updateCard(db, state.username, editingCardId, {
+      const result = await updateCard(db, state.username, editingCardId, {
         type,
         front,
         back,
@@ -1570,10 +1630,13 @@ async function handleSaveCard() {
         clozeAnswers,
         tags: tagsToMap(finalTags),
       });
+      if (result?.status === "duplicate") {
+        showToast("Duplicado omitido.");
+        return;
+      }
       showToast("Guardado");
     } catch (error) {
-      console.error("Error al guardar tarjeta", error);
-      showToast("Error al guardar tarjeta", "error");
+      handleErrorToast(error, "Error al guardar tarjeta.");
       return;
     }
   } else {
@@ -1597,8 +1660,7 @@ async function handleSaveCard() {
         showToast("Guardado");
       }
     } catch (error) {
-      console.error("Error al crear tarjeta", error);
-      showToast("Error al crear tarjeta", "error");
+      handleErrorToast(error, "Error al crear tarjeta.");
       return;
     }
   }
@@ -2008,8 +2070,7 @@ async function handleReviewRating(rating) {
       isNew: card.srs.reps <= 1,
     });
   } catch (error) {
-    console.error("Error al guardar repaso", error);
-    showToast("No se pudo guardar el repaso.", "error");
+    handleErrorToast(error, "No se pudo guardar el repaso.");
     return;
   }
 
@@ -2142,16 +2203,31 @@ async function handleImportSave() {
       }
     }
     if (parsed.glossary && parsed.glossary.length) {
-      const entries = parsed.glossary
-        .map((entry) => ({
-          key: normalizeWordKey(entry.word),
-          word: entry.word,
-          meaning: entry.meaning,
-        }))
-        .filter((entry) => entry.key && entry.meaning);
-      if (entries.length) {
-        await upsertGlossaryEntries(db, state.username, entries);
-        entries.forEach((entry) => state.glossaryCache.set(entry.key, entry));
+      const entries = await Promise.all(
+        parsed.glossary.map(async (entry) => {
+          const norm = normalizeWordCacheKey(entry.word);
+          if (!norm) return null;
+          const key = await buildWordKey(norm);
+          return {
+            key,
+            word: entry.word,
+            meaning: entry.meaning,
+            tags: {},
+            norm,
+          };
+        })
+      );
+      const validEntries = entries.filter((entry) => entry && entry.key && entry.meaning);
+      if (validEntries.length) {
+        await upsertGlossaryEntries(db, state.username, validEntries);
+        validEntries.forEach((entry) => {
+          state.glossaryCache.set(entry.norm, {
+            key: entry.key,
+            word: entry.word,
+            meaning: entry.meaning,
+            tags: [],
+          });
+        });
       }
     }
     elements.importText.value = "";
@@ -2165,6 +2241,8 @@ async function handleImportSave() {
       updated: updatedCount,
       skipped: duplicatedCount,
     });
+  } catch (error) {
+    handleErrorToast(error, "No se pudo importar.");
   } finally {
     window.__importing = false;
     elements.importSave.disabled = false;
@@ -2508,6 +2586,7 @@ function initFirebaseUi() {
   setStatus(`Usuario: ${state.username}`);
   initFolders();
   runFolderIdMigration();
+  runDedupeMigration();
   loadStats();
   updateSearchUI();
   initTagsIndexListener();
