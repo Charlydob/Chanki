@@ -33,6 +33,17 @@
             <h3 id="cards-title">Tarjetas</h3>
             <button id="add-card" class="button">Nueva tarjeta</button>
           </div>
+          <div class="cards-search">
+            <input id="cards-search-input" type="text" placeholder="Buscar tarjetas…" />
+            <button
+              id="cards-search-clear"
+              class="icon-button icon-button--compact cards-search__clear hidden"
+              type="button"
+              aria-label="Limpiar búsqueda"
+            >
+              ✕
+            </button>
+          </div>
           <div class="cards-meta">
             <span id="cards-dup-count" class="cards-meta__count">Duplicadas: 0</span>
             <button id="cards-dup-toggle" class="button ghost small" type="button">
@@ -118,7 +129,12 @@
                   <span id="review-player-folder">Todas</span>
                   <span id="review-player-counter">0/0</span>
                 </div>
-                <span id="review-player-bucket" class="chip hidden">Nvo</span>
+                <div class="review-player__actions">
+                  <button id="review-edit-card" class="icon-button" type="button" aria-label="Editar tarjeta">
+                    ✏️
+                  </button>
+                  <span id="review-player-bucket" class="chip hidden">Nvo</span>
+                </div>
               </div>
               <div class="review-player__body">
                 <div id="review-card" class="review-card review-card--large"></div>
@@ -128,11 +144,6 @@
                   <button data-rating="bad" class="button warning">Malo</button>
                   <button data-rating="good" class="button">Bueno</button>
                   <button data-rating="easy" class="button success">Fácil</button>
-                </div>
-                <div id="review-complete" class="review-complete hidden">
-                  <h3>Sesión completada</h3>
-                  <p class="muted" id="review-complete-summary"></p>
-                  <button id="review-finish" class="button" type="button">Volver</button>
                 </div>
               </div>
             </div>
