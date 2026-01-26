@@ -25,6 +25,8 @@ import {
   userRoot,
   fetchGlossaryWord,
   upsertGlossaryEntries,
+  listenLexicon,
+  upsertLexiconEntry,
   fetchUsersPublic,
   upsertUserPublic,
   shareFolder,
@@ -92,6 +94,7 @@ let reviewEditClozeAnswers = null;
 let reviewEditCancel = null;
 let reviewEditSave = null;
 let tagsIndexUnsubscribe = null;
+let lexiconUnsubscribe = null;
 let sharedFoldersUnsubscribe = null;
 let sharedFolderListeners = new Map();
 let folderSharesUnsubscribe = null;
@@ -321,6 +324,16 @@ function formatCardText(value) {
   return String(value || "").replace(/\s*\|\s*/g, "\n");
 }
 
+const TERM_PUNCTUATION_REGEX = /^[.,;:!?()[\]{}"“”'’]+|[.,;:!?()[\]{}"“”'’]+$/g;
+const WORD_TOKEN_REGEX = /[A-Za-zÀ-ÿÄÖÜäöüß]+(?:-[A-Za-zÀ-ÿÄÖÜäöüß]+)*/g;
+
+function normalizeTerm(term) {
+  return String(term || "")
+    .trim()
+    .toLowerCase()
+    .replace(TERM_PUNCTUATION_REGEX, "");
+}
+
 function normalizeGlossaryEntries(glossary) {
   const entries = new Map();
   if (!glossary) return entries;
@@ -347,8 +360,53 @@ function normalizeGlossaryEntries(glossary) {
   return entries;
 }
 
+function getLexiconEntry(termKey) {
+  if (!termKey) return null;
+  const entry = state.lexicon?.[termKey];
+  if (!entry) return null;
+  if (typeof entry === "string") {
+    return { meaning: entry };
+  }
+  return entry;
+}
+
+function resolveLexiconMeaning(termKey) {
+  const entry = getLexiconEntry(termKey);
+  return entry?.meaning || entry?.m || "";
+}
+
+function collectLexiconMatchesFromText(text, matches) {
+  if (!text) return;
+  const formatted = formatCardText(text);
+  const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
+  let match = regex.exec(formatted);
+  while (match) {
+    const termKey = normalizeTerm(match[0]);
+    if (termKey) {
+      const meaning = resolveLexiconMeaning(termKey);
+      if (meaning) {
+        matches.set(termKey, meaning);
+      }
+    }
+    match = regex.exec(formatted);
+  }
+}
+
 function buildGlossaryMap(card) {
-  return normalizeGlossaryEntries(card?.glossary);
+  const lexiconMatches = new Map();
+  const texts = [
+    card?.front,
+    card?.back,
+    card?.clozeText,
+    ...(card?.clozeAnswers || []),
+  ];
+  texts.forEach((text) => collectLexiconMatchesFromText(text, lexiconMatches));
+  const glossaryMap = normalizeGlossaryEntries(card?.glossary);
+  const merged = new Map(lexiconMatches);
+  glossaryMap.forEach((entryMeaning, entryWord) => {
+    merged.set(entryWord, entryMeaning);
+  });
+  return merged;
 }
 
 function resolveGlossaryMeaning(word, glossaryMap) {
@@ -360,7 +418,7 @@ function resolveGlossaryMeaning(word, glossaryMap) {
 function buildTextFragment(text, glossaryMap) {
   const formatted = formatCardText(text);
   const fragment = document.createDocumentFragment();
-  const regex = /[A-Za-zÀ-ÿÄÖÜäöüß]+(?:-[A-Za-zÀ-ÿÄÖÜäöüß]+)*/g;
+  const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
   let lastIndex = 0;
   let match = regex.exec(formatted);
   while (match) {
@@ -459,7 +517,7 @@ async function ensureVocabFolderIds() {
 }
 
 function normalizeWordCacheKey(word) {
-  return normalizeText(word);
+  return normalizeTerm(word);
 }
 
 function buildCardGlossaryPayload(card, word, meaning) {
@@ -1012,6 +1070,7 @@ function ensureWordPopover() {
     const norm = state.activeWordNorm;
     if (!key || !state.username) return;
     const meaning = wordPopoverInput.value.trim();
+    const termKey = normalizeTerm(wordPopoverTitle.textContent);
     const { cleanedMeaning, tags } = parseMeaningInput(meaning);
     try {
       const db = getDb();
@@ -1023,6 +1082,16 @@ function ensureWordPopover() {
           tags: tagsToMap(tags),
         },
       ]);
+      if (termKey) {
+        await upsertLexiconEntry(db, state.username, termKey, meaning);
+        state.lexicon = {
+          ...state.lexicon,
+          [termKey]: {
+            meaning,
+            updatedAt: Date.now(),
+          },
+        };
+      }
       if (norm) {
         state.glossaryCache.set(norm, {
           key,
@@ -1126,6 +1195,12 @@ async function openWordPopover(word, anchorRect) {
   updateWordPopoverMeaning("");
   wordPopover.classList.remove("hidden");
   positionWordPopover();
+  const lexiconMeaning = norm ? resolveLexiconMeaning(norm) : "";
+  if (lexiconMeaning) {
+    updateWordPopoverMeaning(lexiconMeaning);
+    positionWordPopover();
+    return;
+  }
   if (norm && state.glossaryCache.has(norm)) {
     const cached = state.glossaryCache.get(norm);
     updateWordPopoverMeaning(cached.meaning || "");
@@ -2684,6 +2759,22 @@ function initTagsIndexListener() {
   });
 }
 
+function initLexiconListener() {
+  if (lexiconUnsubscribe) {
+    lexiconUnsubscribe();
+    lexiconUnsubscribe = null;
+  }
+  if (!state.username) {
+    state.lexicon = {};
+    return;
+  }
+  const db = getDb();
+  lexiconUnsubscribe = listenLexicon(db, state.username, (lexicon) => {
+    state.lexicon = lexicon || {};
+    refreshCurrentReviewCard();
+  });
+}
+
 async function initApp() {
   if (!state.username) {
     showOverlay(elements.overlay, true);
@@ -2705,6 +2796,7 @@ function initFirebaseUi() {
   runDedupeMigration();
   loadStats();
   updateSearchUI();
+  initLexiconListener();
   initTagsIndexListener();
   ensureTagPanels();
   renderTagPanels();
