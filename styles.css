@@ -111,6 +111,28 @@ body {
   margin-bottom: 6px;
 }
 
+.cards-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+
+.cards-search input {
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px;
+  min-height: 44px;
+  flex: 1;
+}
+
+.cards-search__clear {
+  flex-shrink: 0;
+}
+
 .cards-meta__count {
   font-size: 13px;
   color: var(--muted);
@@ -476,6 +498,10 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+.review-edit-modal {
+  z-index: 90;
+}
+
 .hidden {
   display: none;
 }
@@ -673,6 +699,12 @@ textarea {
   flex: 1;
 }
 
+.review-player__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .review-player__title span:first-child {
   font-size: 16px;
   font-weight: 600;
@@ -698,18 +730,6 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
-}
-
-.review-complete {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-  text-align: center;
-  padding: 24px 16px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--glass-border);
 }
 
 .review-mode .tabs,
