@@ -1,6 +1,13 @@
 import { getDb } from "../../lib/firebase.js";
 import { buildSessionQueue } from "../../lib/rtdb.js";
-import { BUCKET_ORDER, dedupeTags, elements, normalizeTags, resolveFolderSelection, state } from "../shared.js";
+import {
+  BUCKET_ORDER,
+  dedupeTags,
+  elements,
+  getReviewFolderSelections,
+  normalizeTags,
+  state,
+} from "../shared.js";
 
 // moved from app.js
 export function renderBucketFilterCounts(bucketCounts) {
@@ -28,21 +35,26 @@ export async function refreshReviewBucketCounts() {
     ...state.reviewSelectedTags,
     ...normalizeTags(elements.reviewTags.value),
   ]);
-  const folderValue = elements.reviewFolder?.value || "all";
-  const selection = resolveFolderSelection(folderValue);
-  const result = await buildSessionQueue({
-    db,
-    username: selection.ownerUid,
-    folderIdOrAll: selection.folderId ?? "all",
-    buckets: BUCKET_ORDER,
-    maxCards: 0,
-    tagFilter,
-    tagFilterMode: "or",
-    countsOnly: true,
-  });
-  state.reviewBucketCounts = BUCKET_ORDER.reduce((acc, bucket) => {
-    acc[bucket] = result.bucketCounts?.[bucket] || 0;
+  const selections = getReviewFolderSelections();
+  const combinedCounts = BUCKET_ORDER.reduce((acc, bucket) => {
+    acc[bucket] = 0;
     return acc;
   }, {});
+  for (const selection of selections) {
+    const result = await buildSessionQueue({
+      db,
+      username: selection.ownerUid,
+      folderIdOrAll: selection.folderId ?? "all",
+      buckets: BUCKET_ORDER,
+      maxCards: 0,
+      tagFilter,
+      tagFilterMode: "or",
+      countsOnly: true,
+    });
+    BUCKET_ORDER.forEach((bucket) => {
+      combinedCounts[bucket] += result.bucketCounts?.[bucket] || 0;
+    });
+  }
+  state.reviewBucketCounts = combinedCounts;
   renderBucketFilterCounts(state.reviewBucketCounts);
 }

@@ -32,8 +32,25 @@
             <button id="add-folder" class="button">Nueva carpeta</button>
           </div>
           <div id="folder-tree" class="list"></div>
+        </section>
+
+        <section id="screen-cards" class="screen">
           <div class="screen__header">
-            <h3 id="cards-title">Tarjetas</h3>
+            <div class="screen__title-row">
+              <button id="back-to-folders" class="icon-button" type="button" aria-label="Volver a carpetas">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M14.5 6.5 9 12l5.5 5.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <h2 id="cards-title">Tarjetas</h2>
+            </div>
             <button id="add-card" class="button">Nueva tarjeta</button>
           </div>
           <div class="cards-search">
@@ -123,8 +140,11 @@
                 </div>
               </div>
               <label class="field">
-                <span>Carpeta</span>
-                <select id="review-folder"></select>
+                <span>Carpetas</span>
+                <button id="review-folder-trigger" class="review-folder-trigger" type="button">
+                  <span id="review-folder-label">Todas</span>
+                  <span class="review-folder-trigger__icon" aria-hidden="true">▾</span>
+                </button>
               </label>
               <label class="field">
                 <span>Tags (separados por coma)</span>
@@ -502,6 +522,21 @@
         </div>
         <div class="row">
           <button id="share-close" class="button ghost" type="button">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="review-folder-modal" class="overlay hidden">
+      <div class="modal modal--wide">
+        <div class="modal__header">
+          <h2>Seleccionar carpetas</h2>
+          <button id="review-folder-close" class="icon-button" type="button" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div id="review-folder-options" class="list folder-select-list"></div>
+        <div class="row">
+          <button id="review-folder-apply" class="button" type="button">Aplicar</button>
         </div>
       </div>
     </div>
