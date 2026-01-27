@@ -51,7 +51,10 @@
               </button>
               <h2 id="cards-title">Tarjetas</h2>
             </div>
-            <button id="add-card" class="button">Nueva tarjeta</button>
+            <div class="screen__header-actions">
+              <button id="import-folder" class="button ghost" type="button">Importar aquí</button>
+              <button id="add-card" class="button" type="button">Nueva tarjeta</button>
+            </div>
           </div>
           <div class="cards-search">
             <input id="cards-search-input" type="text" placeholder="Buscar tarjetas…" />
@@ -207,10 +210,20 @@
           <div class="screen__header">
             <h2>Importar</h2>
           </div>
+          <div id="import-context" class="card import-context hidden">
+            <div class="import-context__row">
+              <span class="import-context__label">Destino:</span>
+              <span id="import-destination" class="import-context__value">Importadas</span>
+            </div>
+            <p id="import-warning" class="import-context__warning"></p>
+          </div>
           <textarea id="import-text" rows="10" placeholder="Pega aquí tu contenido"></textarea>
-          <div id="import-preview" class="card"></div>
-          <button id="import-parse" class="button" type="button">Previsualizar</button>
-          <button id="import-save" class="button" type="button">Guardar en RTDB</button>
+          <div id="import-preview" class="card import-preview"></div>
+          <div class="import-actions">
+            <button id="import-parse" class="button ghost" type="button">Previsualizar</button>
+            <button id="import-save" class="button" type="button">Importar</button>
+            <button id="import-cancel" class="button ghost" type="button">Cancelar</button>
+          </div>
         </section>
 
         <section id="screen-stats" class="screen">

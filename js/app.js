@@ -36,8 +36,9 @@ import {
   ensureVocabFolders,
   createOrUpdateVocabCard,
   listenTagsIndex,
+  normalizeFolderPath,
 } from "../lib/rtdb.js";
-import { parseImport } from "../lib/parser.js";
+import { parseChankiImport } from "../lib/parser.js";
 import { computeNextSrs } from "../lib/srs.js";
 import { recordReviewStats } from "../lib/stats.js";
 import {
@@ -106,6 +107,12 @@ let menuPortalAnchor = null;
 let menuPortalCleanup = null;
 let shareContext = null;
 let shareSearchTimer = null;
+const importState = {
+  mode: "generic",
+  forcedFolderId: null,
+  forcedFolderLabel: null,
+  sourceScreen: "import",
+};
 const swipeState = {
   active: false,
   startX: 0,
@@ -1498,6 +1505,9 @@ function updateFolderAccessUI() {
   if (elements.addCard) {
     elements.addCard.disabled = readOnly;
   }
+  if (elements.importFolder) {
+    elements.importFolder.disabled = readOnly || !state.selectedFolderId;
+  }
   if (elements.reviewEditCard) {
     elements.reviewEditCard.disabled = readOnly;
   }
@@ -1514,6 +1524,82 @@ function updateReviewAccessUI(card = null) {
   if (elements.reviewEditCard) {
     elements.reviewEditCard.disabled = readOnly;
   }
+}
+
+function resetImportPreview() {
+  if (!elements.importPreview) return;
+  elements.importPreview.textContent = "";
+  elements.importPreview.classList.remove("error");
+  elements.importPreview.dataset.parsed = "";
+}
+
+function setImportContext(mode, options = {}) {
+  importState.mode = mode;
+  importState.forcedFolderId = options.forcedFolderId || null;
+  importState.forcedFolderLabel = options.forcedFolderLabel || null;
+  importState.sourceScreen = options.sourceScreen || "import";
+  if (elements.importContext) {
+    elements.importContext.classList.toggle("hidden", mode !== "folder");
+  }
+  if (elements.importDestination) {
+    elements.importDestination.textContent = importState.forcedFolderLabel
+      ? `${importState.forcedFolderLabel} (bloqueado)`
+      : "Esta carpeta (bloqueado)";
+  }
+  if (elements.importWarning) {
+    elements.importWarning.textContent = mode === "folder"
+      ? "Si el texto contiene FOLDER: se ignorará y se importará aquí."
+      : "";
+  }
+  if (elements.importSave) {
+    elements.importSave.textContent = mode === "folder" ? "Importar aquí" : "Importar";
+  }
+}
+
+function resolveBlockFolderPath(block, fallback) {
+  return normalizeFolderPath(block?.folderPath || "") || fallback;
+}
+
+function buildImportPreview(parsed, options = {}) {
+  const blocks = parsed.blocks || [];
+  const errors = parsed.errors || [];
+  const glossaryCount = parsed.glossary?.length || 0;
+  const cardCount = blocks.reduce((total, block) => total + block.cards.length, 0);
+  if (options.mode === "folder") {
+    const lines = [`Se importarán ${cardCount} tarjetas en esta carpeta.`];
+    if (glossaryCount) {
+      lines.push(`Se añadirán ${glossaryCount} entradas al glosario.`);
+    }
+    if (errors.length) {
+      lines.push("Errores detectados:");
+      errors.forEach((error) => lines.push(`- Línea ${error.line}: ${error.message}`));
+    }
+    return { text: lines.join("\n"), cardCount, folderCount: 0 };
+  }
+  const folderFallback = options.folderFallback || "Importadas";
+  const folderPaths = new Set(
+    blocks.map((block) => resolveBlockFolderPath(block, folderFallback)).filter(Boolean)
+  );
+  const lines = [
+    `Se crearán/actualizarán ${folderPaths.size} carpetas.`,
+    `Se importarán ${cardCount} tarjetas.`,
+  ];
+  if (glossaryCount) {
+    lines.push(`Se añadirán ${glossaryCount} entradas al glosario.`);
+  }
+  if (errors.length) {
+    lines.push("Errores detectados:");
+    errors.forEach((error) => lines.push(`- Línea ${error.line}: ${error.message}`));
+  }
+  return { text: lines.join("\n"), cardCount, folderCount: folderPaths.size };
+}
+
+function findFolderIdByPath(path) {
+  const normalized = normalizeFolderPath(path);
+  if (!normalized) return null;
+  return Object.values(state.folders || {}).find((folder) =>
+    normalizeFolderPath(folder.path || folder.name) === normalized
+  )?.id || null;
 }
 
 function getCardRepetitions(card) {
@@ -2630,18 +2716,80 @@ function finalizeSwipe(event) {
 }
 
 async function handleImportPreview() {
-  const parsed = parseImport(elements.importText.value);
-  const count = parsed.cards.length;
-  const glossaryCount = parsed.glossary?.length || 0;
-  if (!count) {
+  const parsed = parseChankiImport(elements.importText.value);
+  const { text, cardCount } = buildImportPreview(parsed, {
+    mode: importState.mode,
+    folderFallback: "Importadas",
+  });
+  if (!cardCount) {
     elements.importPreview.textContent =
       "No se encontraron tarjetas. Usa TYPE: con FRONT/BACK o líneas \"front :: back\".";
     elements.importPreview.classList.add("error");
   } else {
-    elements.importPreview.textContent = `Se importarán ${count} tarjetas y ${glossaryCount} palabras al glosario.`;
+    elements.importPreview.textContent = text;
     elements.importPreview.classList.remove("error");
   }
   elements.importPreview.dataset.parsed = JSON.stringify(parsed);
+}
+
+async function importBlocks(blocks, options = {}) {
+  const db = getDb();
+  const activeRef = getActiveFolderRef();
+  const ownerUid = activeRef?.ownerUid || state.username;
+  const folderFallback = options.folderFallback || "Importadas";
+  const summary = {
+    created: 0,
+    updated: 0,
+    duplicates: 0,
+    createdFolders: 0,
+    processedCards: 0,
+  };
+  const resolvedFolders = new Map();
+  for (const block of blocks) {
+    const folderPath = options.forcedFolderId
+      ? null
+      : resolveBlockFolderPath(block, folderFallback);
+    let folderId = options.forcedFolderId || null;
+    if (!folderId) {
+      if (activeRef?.isShared) {
+        throw new Error("No puedes crear carpetas en una compartida.");
+      }
+      const normalizedPath = normalizeFolderPath(folderPath);
+      if (resolvedFolders.has(normalizedPath)) {
+        folderId = resolvedFolders.get(normalizedPath);
+      } else {
+        const existingId = findFolderIdByPath(normalizedPath);
+        folderId = await getOrCreateFolderByPath(db, ownerUid, normalizedPath, state.folders);
+        resolvedFolders.set(normalizedPath, folderId);
+        if (!existingId) {
+          summary.createdFolders += 1;
+        }
+      }
+    }
+    if (!folderId) continue;
+    for (const card of block.cards) {
+      const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
+      const result = await upsertCardWithDedupe(db, ownerUid, {
+        id,
+        folderId,
+        type: card.type || "basic",
+        front: card.front,
+        back: card.back,
+        clozeText: card.clozeText,
+        clozeAnswers: card.clozeAnswers || [],
+        tags: tagsToMap(card.tags || block.tags || []),
+      });
+      summary.processedCards += 1;
+      if (result.status === "created") {
+        summary.created += 1;
+      } else if (result.status === "updated") {
+        summary.updated += 1;
+      } else {
+        summary.duplicates += 1;
+      }
+    }
+  }
+  return summary;
 }
 
 async function handleImportSave() {
@@ -2650,8 +2798,13 @@ async function handleImportSave() {
     return;
   }
   const parsed = elements.importPreview.dataset.parsed ? JSON.parse(elements.importPreview.dataset.parsed) : null;
-  if (!parsed || !parsed.cards.length) {
+  if (!parsed || !(parsed.blocks || []).length) {
     showToast("Previsualiza primero.", "error");
+    return;
+  }
+  const totalCards = parsed.blocks.reduce((acc, block) => acc + block.cards.length, 0);
+  if (!totalCards) {
+    showToast("No hay tarjetas para importar.", "error");
     return;
   }
   if (!state.username) {
@@ -2662,49 +2815,20 @@ async function handleImportSave() {
     showToast("Carpeta compartida en solo lectura.", "error");
     return;
   }
-  const activeRef = getActiveFolderRef();
-  const ownerUid = activeRef?.ownerUid || state.username;
   const db = getDb();
-  let folderId = state.selectedFolderId;
-  if (parsed.folderPath) {
-    if (activeRef?.isShared) {
-      showToast("No puedes crear carpetas en una compartida.", "error");
-      return;
-    }
-    folderId = await getOrCreateFolderByPath(db, ownerUid, parsed.folderPath, state.folders);
-  }
-  if (!folderId) {
-    showToast("Selecciona una carpeta o define FOLDER: en el import.", "error");
+  const forcedFolderId = importState.mode === "folder" ? importState.forcedFolderId : null;
+  if (importState.mode === "folder" && !forcedFolderId) {
+    showToast("Selecciona una carpeta antes de importar aquí.", "error");
     return;
   }
-  let createdCount = 0;
-  let updatedCount = 0;
-  let duplicatedCount = 0;
-  const parsedCount = parsed.cards.length;
   window.__importing = true;
   elements.importSave.disabled = true;
-  console.log("IMPORT START", { parsed: parsedCount, folderId });
+  console.log("IMPORT START", { parsed: totalCards, forcedFolderId });
   try {
-    for (const card of parsed.cards) {
-      const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-      const result = await upsertCardWithDedupe(db, ownerUid, {
-        id,
-        folderId,
-        type: card.type || "basic",
-        front: card.front,
-        back: card.back,
-        clozeText: card.clozeText,
-        clozeAnswers: card.clozeAnswers || [],
-        tags: tagsToMap(card.tags || parsed.tags || []),
-      });
-      if (result.status === "created") {
-        createdCount += 1;
-      } else if (result.status === "updated") {
-        updatedCount += 1;
-      } else {
-        duplicatedCount += 1;
-      }
-    }
+    const summary = await importBlocks(parsed.blocks, {
+      forcedFolderId,
+      folderFallback: "Importadas",
+    });
     if (parsed.glossary && parsed.glossary.length) {
       const entries = await Promise.all(
         parsed.glossary.map(async (entry) => {
@@ -2734,21 +2858,38 @@ async function handleImportSave() {
       }
     }
     elements.importText.value = "";
-    const summary = `Creadas: ${createdCount} | Actualizadas: ${updatedCount} | Duplicadas omitidas: ${duplicatedCount}`;
-    elements.importPreview.textContent = summary;
-    showToast(summary);
+    const lines = [
+      `Creadas: ${summary.created} | Actualizadas: ${summary.updated} | Duplicadas omitidas: ${summary.duplicates}`,
+    ];
+    if (importState.mode !== "folder") {
+      lines.push(`Carpetas creadas: ${summary.createdFolders}`);
+    }
+    if (parsed.errors?.length) {
+      lines.push("Errores:");
+      parsed.errors.forEach((error) => lines.push(`- Línea ${error.line}: ${error.message}`));
+    }
+    const message = lines.join("\n");
+    elements.importPreview.textContent = message;
+    showToast(`Importadas: ${summary.created + summary.updated} | Duplicadas: ${summary.duplicates}`);
     await loadCards(true);
-    console.log("IMPORT END", {
-      parsed: parsedCount,
-      created: createdCount,
-      updated: updatedCount,
-      skipped: duplicatedCount,
-    });
+    console.log("IMPORT END", summary);
   } catch (error) {
     handleErrorToast(error, "No se pudo importar.");
   } finally {
     window.__importing = false;
     elements.importSave.disabled = false;
+  }
+}
+
+function handleImportCancel() {
+  if (elements.importText) {
+    elements.importText.value = "";
+  }
+  resetImportPreview();
+  const returnScreen = importState.mode === "folder" ? (importState.sourceScreen || "cards") : "import";
+  setImportContext("generic", { sourceScreen: "import" });
+  if (returnScreen !== "import") {
+    setActiveScreen(returnScreen);
   }
 }
 
@@ -3011,6 +3152,7 @@ function initFirebaseUi() {
   elements.settingsClozeCase.checked = state.prefs.clozeCaseInsensitive;
   renderBucketFilter();
   refreshReviewBucketCounts();
+  setImportContext("generic", { sourceScreen: "import" });
 }
 
 if ("serviceWorker" in navigator) {
@@ -3020,7 +3162,13 @@ if ("serviceWorker" in navigator) {
 }
 
 elements.tabs.forEach((tab) => {
-  tab.addEventListener("click", () => setActiveScreen(tab.dataset.screen));
+  tab.addEventListener("click", () => {
+    if (tab.dataset.screen === "import") {
+      setImportContext("generic", { sourceScreen: "import" });
+      resetImportPreview();
+    }
+    setActiveScreen(tab.dataset.screen);
+  });
 });
 
 if (elements.backToFolders) {
@@ -3138,6 +3286,27 @@ elements.addCard.addEventListener("click", () => {
   }
   openCardModal();
 });
+
+if (elements.importFolder) {
+  elements.importFolder.addEventListener("click", () => {
+    if (isActiveFolderReadOnly()) {
+      showToast("Carpeta compartida en solo lectura.", "error");
+      return;
+    }
+    const folder = getActiveFolderInfo();
+    if (!folder || !state.selectedFolderId) {
+      showToast("Selecciona una carpeta primero.", "error");
+      return;
+    }
+    setImportContext("folder", {
+      forcedFolderId: state.selectedFolderId,
+      forcedFolderLabel: folder.name,
+      sourceScreen: "cards",
+    });
+    resetImportPreview();
+    setActiveScreen("import");
+  });
+}
 
 elements.cardsList.addEventListener("click", handleCardListAction);
 
@@ -3297,6 +3466,16 @@ if (elements.reviewEditCard) {
 elements.importParse.addEventListener("click", handleImportPreview);
 
 elements.importSave.addEventListener("click", handleImportSave);
+
+if (elements.importCancel) {
+  elements.importCancel.addEventListener("click", handleImportCancel);
+}
+
+if (elements.importText) {
+  elements.importText.addEventListener("input", () => {
+    resetImportPreview();
+  });
+}
 
 elements.saveSettings.addEventListener("click", handleSaveSettings);
 
