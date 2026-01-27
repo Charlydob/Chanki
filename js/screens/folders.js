@@ -3,23 +3,72 @@ import { refreshReviewBucketCounts } from "./review.js";
 
 // moved from app.js
 export function renderFolderSelects() {
-  const select = elements.reviewFolder;
-  select.innerHTML = "<option value=\"all\">Todas</option>";
-  Object.values(state.folders).forEach((folder) => {
-    const option = document.createElement("option");
-    option.value = folder.id;
-    option.textContent = folder.name;
-    select.appendChild(option);
-  });
-  Object.entries(state.sharedFolders || {}).forEach(([shareKey, folder]) => {
-    if (!folder?.folderId) return;
-    const ownerInfo = state.usersPublic?.[folder.ownerUid];
-    const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
-    const option = document.createElement("option");
-    option.value = `shared:${shareKey}`;
-    option.textContent = `Compartida · ${folder.name || "Carpeta"} · ${ownerLabel}`;
-    select.appendChild(option);
-  });
+  const options = elements.reviewFolderOptions;
+  if (!options) return;
+  options.innerHTML = "";
+  const selected = new Set(state.reviewSelectedFolderIds || []);
+  const allChecked = selected.size === 0;
+
+  const addOption = (value, label, checked) => {
+    const item = document.createElement("label");
+    item.className = "folder-select-item";
+    item.innerHTML = `
+      <input type="checkbox" value="${value}" ${checked ? "checked" : ""} />
+      <span class="folder-select-item__label">${label}</span>
+    `;
+    options.appendChild(item);
+  };
+
+  addOption("all", "Todas", allChecked);
+
+  const ownedFolders = Object.values(state.folders);
+  if (ownedFolders.length) {
+    const title = document.createElement("div");
+    title.className = "list-section-title";
+    title.textContent = "Mis carpetas";
+    options.appendChild(title);
+    ownedFolders.forEach((folder) => {
+      addOption(folder.id, folder.name, selected.has(folder.id));
+    });
+  }
+
+  const sharedEntries = Object.entries(state.sharedFolders || {});
+  if (sharedEntries.length) {
+    const title = document.createElement("div");
+    title.className = "list-section-title";
+    title.textContent = "Compartidas conmigo";
+    options.appendChild(title);
+    sharedEntries.forEach(([shareKey, folder]) => {
+      if (!folder?.folderId) return;
+      const ownerInfo = state.usersPublic?.[folder.ownerUid];
+      const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
+      addOption(
+        `shared:${shareKey}`,
+        `Compartida · ${folder.name || "Carpeta"} · ${ownerLabel}`,
+        selected.has(`shared:${shareKey}`)
+      );
+    });
+  }
+
+  if (elements.reviewFolderLabel) {
+    if (!selected.size) {
+      elements.reviewFolderLabel.textContent = "Todas";
+    } else if (selected.size === 1) {
+      const value = [...selected][0];
+      if (value.startsWith("shared:")) {
+        const shareKey = value.replace("shared:", "");
+        const folder = state.sharedFolders?.[shareKey];
+        const ownerInfo = state.usersPublic?.[folder?.ownerUid];
+        const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder?.ownerUid || "";
+        elements.reviewFolderLabel.textContent = `Compartida · ${folder?.name || "Carpeta"} · ${ownerLabel}`;
+      } else {
+        elements.reviewFolderLabel.textContent = state.folders[value]?.name || "Carpeta";
+      }
+    } else {
+      elements.reviewFolderLabel.textContent = `${selected.size} carpetas`;
+    }
+  }
+
   refreshReviewBucketCounts();
 }
 

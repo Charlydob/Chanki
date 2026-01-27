@@ -108,6 +108,12 @@ body {
   flex-wrap: wrap;
 }
 
+.screen__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .cards-meta {
   display: flex;
   align-items: center;
@@ -152,6 +158,37 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: 14px;
   padding: 10px 12px;
+}
+
+.tags-panel__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.tags-panel__chevron {
+  transition: transform 0.2s ease;
+}
+
+.tags-panel__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tags-panel.is-collapsed .tags-panel__content {
+  display: none;
+}
+
+.tags-panel.is-collapsed .tags-panel__chevron {
+  transform: rotate(-90deg);
 }
 
 .tags-panel__label {
@@ -215,6 +252,27 @@ body {
   background: rgba(139, 92, 246, 0.2);
 }
 
+.review-folder-trigger {
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 15px;
+  padding: 10px 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.review-folder-trigger__icon {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .button {
   min-height: 44px;
   padding: 10px 16px;
@@ -241,6 +299,10 @@ body {
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+.button.is-disabled {
+  opacity: 0.5;
 }
 
 .button:active {
@@ -312,6 +374,30 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.folder-select-list {
+  gap: 10px;
+}
+
+.folder-select-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+}
+
+.folder-select-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.folder-select-item__label {
+  font-size: 14px;
 }
 
 .list-item {
@@ -496,6 +582,15 @@ body {
   z-index: 5;
 }
 
+.menu-portal {
+  position: fixed;
+  z-index: 9999;
+}
+
+.menu-portal__menu {
+  position: static;
+}
+
 .item-menu button {
   background: transparent;
   border: none;
@@ -634,6 +729,13 @@ textarea {
   transform: translateY(0);
   animation: modal-pop 0.2s ease;
   max-width: 100%;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 @keyframes modal-pop {

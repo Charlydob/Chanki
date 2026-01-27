@@ -46,15 +46,15 @@ import {
   canonicalizeBucketId,
   dedupeTags,
   elements,
+  getReviewFolderSelections,
   normalizeSearchQuery,
   normalizeTags,
   normalizeText,
-  resolveFolderSelection,
   state,
 } from "./shared.js";
 import { refreshReviewBucketCounts } from "./screens/review.js";
 import { loadStats } from "./screens/stats.js";
-import { renderFolders } from "./screens/folders.js";
+import { renderFolders, renderFolderSelects } from "./screens/folders.js";
 
 const APP_VERSION = "0.15.0";
 
@@ -93,11 +93,17 @@ let reviewEditClozeText = null;
 let reviewEditClozeAnswers = null;
 let reviewEditCancel = null;
 let reviewEditSave = null;
+let reviewEditOwnerUid = null;
+let reviewEditRole = null;
+let reviewEditIsShared = false;
 let tagsIndexUnsubscribe = null;
 let lexiconUnsubscribe = null;
 let sharedFoldersUnsubscribe = null;
 let sharedFolderListeners = new Map();
 let folderSharesUnsubscribe = null;
+let menuPortal = null;
+let menuPortalAnchor = null;
+let menuPortalCleanup = null;
 let shareContext = null;
 let shareSearchTimer = null;
 const swipeState = {
@@ -195,6 +201,30 @@ function getUserLabel(uid) {
   return entry?.displayName || entry?.handle || uid;
 }
 
+function getReviewCardContext(card = null) {
+  return {
+    ownerUid: card?._reviewOwnerUid || state.reviewFolderOwnerUid || state.username,
+    role: card?._reviewRole || state.reviewFolderRole,
+    isShared: card?._reviewIsShared || state.reviewFolderIsShared,
+  };
+}
+
+function buildReviewFolderLabel() {
+  const selections = getReviewFolderSelections();
+  if (!selections.length) return "Todas";
+  if (selections.length === 1) {
+    const selection = selections[0];
+    if (!selection.folderId) return "Todas";
+    if (selection.isShared) {
+      const sharedFolder = state.sharedFolders?.[selection.shareKey];
+      const ownerLabel = getUserLabel(selection.ownerUid);
+      return getFolderLabel(sharedFolder, ownerLabel, true);
+    }
+    return state.folders[selection.folderId]?.name || "Carpeta";
+  }
+  return `${selections.length} carpetas`;
+}
+
 function showOverlay(overlay, show) {
   overlay.classList.toggle("hidden", !show);
 }
@@ -221,11 +251,12 @@ function setStatus(text) {
 }
 
 function setActiveScreen(name) {
+  const tabName = name === "cards" ? "folders" : name;
   elements.screens.forEach((screen) => {
     screen.classList.toggle("active", screen.id === `screen-${name}`);
   });
   elements.tabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.screen === name);
+    tab.classList.toggle("active", tab.dataset.screen === tabName);
   });
   if (name !== "review") {
     setReviewMode(false);
@@ -233,19 +264,95 @@ function setActiveScreen(name) {
 }
 
 function closeAllMenus() {
+  closeMenuPortal();
   document.querySelectorAll(".item-menu").forEach((menu) => {
     menu.classList.add("hidden");
   });
 }
 
-function toggleMenu(menuId) {
-  const menu = document.querySelector(`[data-menu-id="${menuId}"]`);
-  if (!menu) return;
-  const isHidden = menu.classList.contains("hidden");
-  closeAllMenus();
-  if (isHidden) {
-    menu.classList.remove("hidden");
+function closeMenuPortal() {
+  if (menuPortalCleanup) {
+    menuPortalCleanup();
+    menuPortalCleanup = null;
   }
+  if (menuPortal) {
+    menuPortal.remove();
+    menuPortal = null;
+  }
+  menuPortalAnchor = null;
+}
+
+function positionMenuPortal(portal, anchorRect) {
+  if (!portal || !anchorRect) return;
+  const menu = portal.querySelector(".menu-portal__menu");
+  if (!menu) return;
+  const menuRect = menu.getBoundingClientRect();
+  const gap = 8;
+  let top = anchorRect.bottom + gap;
+  let left = anchorRect.right - menuRect.width;
+  if (left < 8) left = 8;
+  if (left + menuRect.width > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - menuRect.width - 8);
+  }
+  if (top + menuRect.height > window.innerHeight - 8) {
+    top = anchorRect.top - menuRect.height - gap;
+  }
+  if (top < 8) top = 8;
+  portal.style.top = `${top}px`;
+  portal.style.left = `${left}px`;
+}
+
+function openMenuPortal(anchor, menuId) {
+  const menu = document.querySelector(`[data-menu-id="${menuId}"]`);
+  if (!menu || !anchor) return;
+  closeMenuPortal();
+  const portal = document.createElement("div");
+  portal.className = "menu-portal";
+  portal.dataset.menuId = menuId;
+  const clone = menu.cloneNode(true);
+  clone.classList.remove("hidden");
+  clone.classList.add("menu-portal__menu");
+  portal.appendChild(clone);
+  document.body.appendChild(portal);
+  const anchorRect = anchor.getBoundingClientRect();
+  positionMenuPortal(portal, anchorRect);
+  menuPortal = portal;
+  menuPortalAnchor = anchor;
+  const handleDismiss = (event) => {
+    if (event.target.closest(".menu-portal")) return;
+    if (event.target.closest("[data-menu-toggle]") === anchor) return;
+    closeMenuPortal();
+  };
+  const handleReposition = () => {
+    if (!menuPortalAnchor || !menuPortal) return;
+    positionMenuPortal(menuPortal, menuPortalAnchor.getBoundingClientRect());
+  };
+  const handleScroll = () => closeMenuPortal();
+  portal.addEventListener("click", (event) => {
+    const actionEl = event.target.closest("[data-action]");
+    if (!actionEl) return;
+    const action = actionEl.dataset.action;
+    const folderId = actionEl.dataset.id;
+    if (!action || !folderId) return;
+    handleFolderMenuAction(action, folderId);
+    closeMenuPortal();
+  });
+  document.addEventListener("click", handleDismiss);
+  window.addEventListener("resize", handleReposition);
+  window.addEventListener("scroll", handleScroll, true);
+  menuPortalCleanup = () => {
+    document.removeEventListener("click", handleDismiss);
+    window.removeEventListener("resize", handleReposition);
+    window.removeEventListener("scroll", handleScroll, true);
+  };
+}
+
+function toggleMenu(menuId, anchor) {
+  if (menuPortal && menuPortal.dataset.menuId === menuId) {
+    closeMenuPortal();
+    return;
+  }
+  openMenuPortal(anchor, menuId);
 }
 
 function setReviewMode(active) {
@@ -921,6 +1028,10 @@ function openReviewEditModal(card) {
   ensureReviewEditModal();
   console.log("EDIT open", card.id);
   reviewEditCardId = card.id;
+  const context = getReviewCardContext(card);
+  reviewEditOwnerUid = context.ownerUid;
+  reviewEditRole = context.role;
+  reviewEditIsShared = context.isShared;
   reviewEditType = card.type || "basic";
   reviewEditFront.value = card.front || "";
   reviewEditBack.value = card.back || "";
@@ -943,16 +1054,19 @@ function closeReviewEditModal() {
   if (!reviewEditModal) return;
   reviewEditModal.classList.add("hidden");
   reviewEditCardId = null;
+  reviewEditOwnerUid = null;
+  reviewEditRole = null;
+  reviewEditIsShared = false;
 }
 
 async function handleReviewEditSave() {
   if (!reviewEditCardId || !state.username) return;
-  if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+  if (reviewEditIsShared && reviewEditRole !== "editor") {
     showToast("Carpeta compartida en solo lectura.", "error");
     return;
   }
   const db = getDb();
-  const ownerUid = state.reviewFolderOwnerUid || state.username;
+  const ownerUid = reviewEditOwnerUid || state.username;
   const nextFront = reviewEditFront.value.trim();
   const nextBack = reviewEditBack.value.trim();
   const nextClozeText = reviewEditClozeText.value.trim();
@@ -1389,8 +1503,9 @@ function updateFolderAccessUI() {
   }
 }
 
-function updateReviewAccessUI() {
-  const readOnly = state.reviewFolderIsShared && state.reviewFolderRole !== "editor";
+function updateReviewAccessUI(card = null) {
+  const context = getReviewCardContext(card);
+  const readOnly = context.isShared && context.role !== "editor";
   if (elements.reviewActions) {
     elements.reviewActions.querySelectorAll("button").forEach((button) => {
       button.disabled = readOnly;
@@ -1399,6 +1514,25 @@ function updateReviewAccessUI() {
   if (elements.reviewEditCard) {
     elements.reviewEditCard.disabled = readOnly;
   }
+}
+
+function getCardRepetitions(card) {
+  return card?.srs?.repetitions ?? card?.srs?.reps ?? 0;
+}
+
+function isEasyAllowed(card) {
+  return getCardRepetitions(card) >= 3;
+}
+
+function updateReviewRatingButtons(card) {
+  if (!elements.reviewActions) return;
+  const context = getReviewCardContext(card);
+  const readOnly = context.isShared && context.role !== "editor";
+  const easyButton = elements.reviewActions.querySelector("[data-rating=\"easy\"]");
+  if (!easyButton) return;
+  const allowed = isEasyAllowed(card);
+  easyButton.disabled = readOnly || !allowed;
+  easyButton.classList.toggle("is-disabled", !allowed);
 }
 
 async function loadSearchPool() {
@@ -1599,42 +1733,8 @@ function handleAddFolder() {
   openFolderModal();
 }
 
-async function handleFolderAction(event) {
-  const menuToggle = event.target.closest("[data-menu-toggle]");
-  if (menuToggle) {
-    toggleMenu(menuToggle.dataset.menuToggle);
-    return;
-  }
-  const actionEl = event.target.closest("[data-action]");
-  if (!actionEl) return;
-  const action = actionEl.dataset.action;
-  const folderId = actionEl.dataset.id;
-  if (!action || !folderId) return;
-  closeAllMenus();
+async function handleFolderMenuAction(action, folderId) {
   const db = getDb();
-  if (action === "select") {
-    const ownerUid = actionEl.dataset.ownerUid || state.username;
-    const isShared = actionEl.dataset.shared === "true";
-    const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
-    state.selectedFolderId = folderId;
-    state.activeFolderRef = {
-      ownerUid,
-      folderId,
-      role,
-      isShared,
-    };
-    state.cardsSearchPool = [];
-    state.cardsSearchFolderId = null;
-    state.cardsSearchOwnerUid = null;
-    updateCardsTitle();
-    updateSearchUI();
-    debugFolderSelection(folderId);
-    await loadCards(true);
-    if (state.cardsSearchQuery) {
-      loadSearchPool();
-    }
-    updateFolderAccessUI();
-  }
   if (action === "rename") {
     if (!state.folders[folderId]) {
       showToast("Solo el owner puede renombrar.", "error");
@@ -1666,6 +1766,7 @@ async function handleFolderAction(event) {
           state.cardsSearchOwnerUid = null;
           updateSearchUI();
           renderCards();
+          setActiveScreen("folders");
         }
       } catch (error) {
         handleErrorToast(error, "Error al borrar carpeta.");
@@ -1681,6 +1782,47 @@ async function handleFolderAction(event) {
     if (folder) {
       openShareModal(folder);
     }
+  }
+}
+
+async function handleFolderAction(event) {
+  const menuToggle = event.target.closest("[data-menu-toggle]");
+  if (menuToggle) {
+    toggleMenu(menuToggle.dataset.menuToggle, menuToggle);
+    return;
+  }
+  const actionEl = event.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  const folderId = actionEl.dataset.id;
+  if (!action || !folderId) return;
+  closeAllMenus();
+  if (action === "select") {
+    const ownerUid = actionEl.dataset.ownerUid || state.username;
+    const isShared = actionEl.dataset.shared === "true";
+    const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
+    state.selectedFolderId = folderId;
+    state.activeFolderRef = {
+      ownerUid,
+      folderId,
+      role,
+      isShared,
+    };
+    state.cardsSearchPool = [];
+    state.cardsSearchFolderId = null;
+    state.cardsSearchOwnerUid = null;
+    updateCardsTitle();
+    updateSearchUI();
+    debugFolderSelection(folderId);
+    await loadCards(true);
+    if (state.cardsSearchQuery) {
+      loadSearchPool();
+    }
+    updateFolderAccessUI();
+    setActiveScreen("cards");
+  }
+  if (action === "rename" || action === "delete" || action === "share") {
+    handleFolderMenuAction(action, folderId);
   }
 }
 
@@ -2145,11 +2287,11 @@ async function buildReviewQueue() {
     return;
   }
   const db = getDb();
-  const selection = resolveFolderSelection(elements.reviewFolder.value || "all");
-  const folderId = selection.folderId;
-  state.reviewFolderOwnerUid = selection.ownerUid;
-  state.reviewFolderRole = selection.role;
-  state.reviewFolderIsShared = selection.isShared;
+  const selections = getReviewFolderSelections();
+  const primarySelection = selections.length === 1 ? selections[0] : null;
+  state.reviewFolderOwnerUid = primarySelection?.ownerUid || null;
+  state.reviewFolderRole = primarySelection?.role || null;
+  state.reviewFolderIsShared = Boolean(primarySelection?.isShared);
   const enabledBuckets = Object.entries(state.reviewBuckets)
     .filter(([, active]) => active)
     .map(([bucket]) => canonicalizeBucketId(bucket))
@@ -2172,38 +2314,68 @@ async function buildReviewQueue() {
   const maxCards = maxNew + maxReviews;
 
   const bucketPriority = BUCKET_ORDER.filter((bucket) => uniqueBuckets.includes(bucket));
-  const sessionResult = await buildSessionQueue({
-    db,
-    username: selection.ownerUid,
-    folderIdOrAll: folderId ?? "all",
-    buckets: bucketPriority,
-    maxCards,
-    maxNew,
-    maxReviews,
-    tagFilter,
-    tagFilterMode: "or",
-    allowRepair: !state.repairAttempted,
-  });
+  const combinedCardIds = [];
+  const combinedBucketCounts = BUCKET_ORDER.reduce((acc, bucket) => {
+    acc[bucket] = 0;
+    return acc;
+  }, {});
+  const cardMeta = new Map();
+  let usedFallback = false;
+  let repaired = false;
+  let fallbackCount = 0;
 
-  const { cardIds, bucketCounts, fallbackCount, usedFallback, repaired } = sessionResult;
+  for (const selection of selections) {
+    const sessionResult = await buildSessionQueue({
+      db,
+      username: selection.ownerUid,
+      folderIdOrAll: selection.folderId ?? "all",
+      buckets: bucketPriority,
+      maxCards,
+      maxNew,
+      maxReviews,
+      tagFilter,
+      tagFilterMode: "or",
+      allowRepair: !state.repairAttempted,
+    });
+
+    BUCKET_ORDER.forEach((bucket) => {
+      combinedBucketCounts[bucket] += sessionResult.bucketCounts?.[bucket] || 0;
+    });
+    fallbackCount += sessionResult.fallbackCount || 0;
+    usedFallback = usedFallback || sessionResult.usedFallback;
+    repaired = repaired || sessionResult.repaired;
+
+    sessionResult.cardIds.forEach((cardId) => {
+      if (cardMeta.has(cardId)) return;
+      cardMeta.set(cardId, {
+        ownerUid: selection.ownerUid,
+        role: selection.role,
+        isShared: selection.isShared,
+        shareKey: selection.shareKey,
+      });
+      combinedCardIds.push(cardId);
+    });
+  }
+
   if (usedFallback || repaired) {
     state.repairAttempted = true;
   }
 
   console.debug("Review session init", {
-    username: selection.ownerUid,
-    folderSelection: folderId ?? "all",
+    selections,
     activeBuckets: bucketPriority,
-    queueCounts: bucketCounts,
+    queueCounts: combinedBucketCounts,
     fallbackCards: fallbackCount,
   });
 
   const cards = await Promise.all(
-    cardIds.map(async (cardId) => {
+    combinedCardIds.map(async (cardId) => {
       if (state.cardCache.has(cardId)) {
-        return state.cardCache.get(cardId);
+        const cached = state.cardCache.get(cardId);
+        return { ...cached };
       }
-      const card = await fetchCard(db, selection.ownerUid, cardId);
+      const meta = cardMeta.get(cardId);
+      const card = await fetchCard(db, meta?.ownerUid || state.username, cardId);
       if (card) state.cardCache.set(cardId, card);
       return card;
     })
@@ -2236,8 +2408,17 @@ async function buildReviewQueue() {
     ordered.push(...shuffle(bucketCards));
   });
 
-  state.reviewQueue = ordered;
-  state.currentSessionQueue = ordered.map((card) => card.id);
+  const limited = ordered.slice(0, maxCards);
+  limited.forEach((card) => {
+    const meta = cardMeta.get(card.id);
+    if (!meta) return;
+    card._reviewOwnerUid = meta.ownerUid;
+    card._reviewRole = meta.role;
+    card._reviewIsShared = meta.isShared;
+    card._reviewShareKey = meta.shareKey;
+  });
+  state.reviewQueue = limited;
+  state.currentSessionQueue = limited.map((card) => card.id);
   state.currentIndex = 0;
 }
 
@@ -2275,7 +2456,8 @@ function showNextReviewCard() {
   elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
   renderReviewCard(card, false);
   resetSwipeVisuals({ animate: false });
-  updateReviewAccessUI();
+  updateReviewAccessUI(card);
+  updateReviewRatingButtons(card);
   if (elements.reviewPlayerCounter) {
     elements.reviewPlayerCounter.textContent = `${state.currentIndex + 1}/${total}`;
   }
@@ -2322,7 +2504,8 @@ function revealReviewAnswer() {
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
   elements.flipCard.classList.add("hidden");
-  updateReviewAccessUI();
+  updateReviewAccessUI(card);
+  updateReviewRatingButtons(card);
 }
 
 function exitReviewPlayer() {
@@ -2348,16 +2531,21 @@ function exitReviewPlayer() {
 async function handleReviewRating(rating) {
   const card = state.reviewQueue[state.currentIndex];
   if (!card) return;
-  if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+  const context = getReviewCardContext(card);
+  const readOnly = context.isShared && context.role !== "editor";
+  if (readOnly) {
     showToast("Solo lectura: el progreso no se guarda.", "error");
     state.sessionStats.answeredCount += 1;
     state.currentIndex += 1;
     showNextReviewCard();
     return;
   }
+  if (rating === "easy" && !isEasyAllowed(card)) {
+    rating = "good";
+  }
   const db = getDb();
   const nextSrs = computeNextSrs(card.srs, rating);
-  const ownerUid = state.reviewFolderOwnerUid || state.username;
+  const ownerUid = context.ownerUid || state.username;
   try {
     await updateReview(db, ownerUid, card, nextSrs);
     card.srs = nextSrs;
@@ -2372,7 +2560,7 @@ async function handleReviewRating(rating) {
       folderId: card.folderId,
       tags,
       minutes: minutesDelta,
-      isNew: card.srs.reps <= 1,
+      isNew: (card.srs.repetitions ?? card.srs.reps ?? 0) <= 1,
     });
   } catch (error) {
     handleErrorToast(error, "No se pudo guardar el repaso.");
@@ -2639,18 +2827,25 @@ function ensureTagPanels() {
   const reviewField = elements.reviewTags?.closest(".field");
   if (reviewField && !reviewField.dataset.tagsReady) {
     const panel = document.createElement("div");
-    panel.className = "tags-panel";
+    panel.className = "tags-panel tags-panel--collapsible is-collapsed";
     panel.dataset.tagsScope = "review";
+    panel.dataset.collapsed = "true";
     panel.innerHTML = `
-      <div class="tags-panel__section">
-        <p class="tags-panel__label">Tags seleccionados</p>
-        <div class="tags-chip-row" data-tags-selected></div>
+      <button type="button" class="tags-panel__toggle" data-tags-toggle>
+        <span>Tags existentes / seleccionados</span>
+        <span class="tags-panel__chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="tags-panel__content">
+        <div class="tags-panel__section">
+          <p class="tags-panel__label">Tags seleccionados</p>
+          <div class="tags-chip-row" data-tags-selected></div>
+        </div>
+        <div class="tags-panel__section">
+          <p class="tags-panel__label">Tags existentes</p>
+          <div class="tags-chip-row" data-tags-all></div>
+        </div>
+        <div class="tags-suggestions hidden" data-tags-suggestions></div>
       </div>
-      <div class="tags-panel__section">
-        <p class="tags-panel__label">Tags existentes</p>
-        <div class="tags-chip-row" data-tags-all></div>
-      </div>
-      <div class="tags-suggestions hidden" data-tags-suggestions></div>
     `;
     reviewField.insertAdjacentElement("afterend", panel);
     reviewField.dataset.tagsReady = "true";
@@ -2695,6 +2890,11 @@ function updateTagSuggestions(scope, query) {
   if (!panel) return;
   const suggestionBox = panel.querySelector("[data-tags-suggestions]");
   if (!suggestionBox) return;
+  if (panel.dataset.collapsed === "true") {
+    suggestionBox.classList.add("hidden");
+    suggestionBox.innerHTML = "";
+    return;
+  }
   const trimmed = normalizeSearchQuery(query);
   const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
   if (!trimmed) {
@@ -2822,6 +3022,10 @@ if ("serviceWorker" in navigator) {
 elements.tabs.forEach((tab) => {
   tab.addEventListener("click", () => setActiveScreen(tab.dataset.screen));
 });
+
+if (elements.backToFolders) {
+  elements.backToFolders.addEventListener("click", () => setActiveScreen("folders"));
+}
 
 if (elements.saveUsername) {
   elements.saveUsername.addEventListener("click", () => {
@@ -2960,21 +3164,22 @@ if (elements.reviewCard) {
     if (!wordEl) return;
     event.stopPropagation();
     const word = wordEl.dataset.word;
-    if (word) {
-      const langChunk = wordEl.closest(".lang-chunk");
-      const language = langChunk?.dataset.language
-        || (wordEl.closest(".review-front") ? "de" : "es");
-      const card = state.reviewQueue[state.currentIndex];
-      state.activeWordContext = {
-        language,
-        cardId: card?.id || null,
-        folderId: card?.folderId || null,
-        ownerUid: state.reviewFolderOwnerUid || state.username,
-        role: state.reviewFolderRole,
-        isShared: state.reviewFolderIsShared,
-      };
-      openWordPopover(word, wordEl.getBoundingClientRect());
-    }
+      if (word) {
+        const langChunk = wordEl.closest(".lang-chunk");
+        const language = langChunk?.dataset.language
+          || (wordEl.closest(".review-front") ? "de" : "es");
+        const card = state.reviewQueue[state.currentIndex];
+        const context = getReviewCardContext(card);
+        state.activeWordContext = {
+          language,
+          cardId: card?.id || null,
+          folderId: card?.folderId || null,
+          ownerUid: context.ownerUid || state.username,
+          role: context.role,
+          isShared: context.isShared,
+        };
+        openWordPopover(word, wordEl.getBoundingClientRect());
+      }
   });
   elements.reviewCard.addEventListener("pointerdown", handleReviewPointerDown);
   elements.reviewCard.addEventListener("pointermove", handleReviewPointerMove);
@@ -2998,16 +3203,7 @@ elements.startReview.addEventListener("click", async () => {
   };
   state.sessionActive = true;
   state.sessionTotal = state.reviewQueue.length;
-  const selection = resolveFolderSelection(elements.reviewFolder.value || "all");
-  if (!selection.folderId) {
-    state.reviewFolderName = "Todas";
-  } else if (selection.isShared) {
-    const sharedFolder = state.sharedFolders?.[selection.shareKey];
-    const ownerLabel = getUserLabel(selection.ownerUid);
-    state.reviewFolderName = getFolderLabel(sharedFolder, ownerLabel, true);
-  } else {
-    state.reviewFolderName = state.folders[selection.folderId]?.name || "Carpeta";
-  }
+  state.reviewFolderName = buildReviewFolderLabel();
   if (elements.reviewPlayerFolder) {
     elements.reviewPlayerFolder.textContent = state.reviewFolderName;
   }
@@ -3027,9 +3223,56 @@ if (elements.reviewBucketChart) {
   });
 }
 
-if (elements.reviewFolder) {
-  elements.reviewFolder.addEventListener("change", () => {
+if (elements.reviewFolderTrigger) {
+  elements.reviewFolderTrigger.addEventListener("click", () => {
+    renderFolderSelects();
+    showOverlay(elements.reviewFolderModal, true);
+  });
+}
+
+if (elements.reviewFolderClose) {
+  elements.reviewFolderClose.addEventListener("click", () => {
+    showOverlay(elements.reviewFolderModal, false);
+  });
+}
+
+if (elements.reviewFolderModal) {
+  elements.reviewFolderModal.addEventListener("click", (event) => {
+    if (event.target === elements.reviewFolderModal) {
+      showOverlay(elements.reviewFolderModal, false);
+    }
+  });
+}
+
+if (elements.reviewFolderOptions) {
+  elements.reviewFolderOptions.addEventListener("change", (event) => {
+    const checkbox = event.target.closest("input[type=\"checkbox\"]");
+    if (!checkbox) return;
+    if (checkbox.value === "all" && checkbox.checked) {
+      elements.reviewFolderOptions
+        .querySelectorAll("input[type=\"checkbox\"]:not([value=\"all\"])")
+        .forEach((input) => {
+          input.checked = false;
+        });
+    }
+    if (checkbox.value !== "all" && checkbox.checked) {
+      const allBox = elements.reviewFolderOptions.querySelector("input[value=\"all\"]");
+      if (allBox) allBox.checked = false;
+    }
+  });
+}
+
+if (elements.reviewFolderApply) {
+  elements.reviewFolderApply.addEventListener("click", () => {
+    if (!elements.reviewFolderOptions) return;
+    const checked = Array.from(
+      elements.reviewFolderOptions.querySelectorAll("input[type=\"checkbox\"]:checked")
+    ).map((input) => input.value);
+    const selected = checked.filter((value) => value !== "all");
+    state.reviewSelectedFolderIds = selected.length ? selected : [];
+    renderFolderSelects();
     refreshReviewBucketCounts();
+    showOverlay(elements.reviewFolderModal, false);
   });
 }
 
@@ -3078,6 +3321,17 @@ document.addEventListener(
 document.addEventListener("click", (event) => {
   if (event.target.closest(".item-menu")) return;
   if (event.target.closest("[data-menu-toggle]")) return;
+  const tagsToggle = event.target.closest("[data-tags-toggle]");
+  if (tagsToggle) {
+    const panel = tagsToggle.closest(".tags-panel");
+    if (panel) {
+      const collapsed = panel.dataset.collapsed !== "true";
+      panel.dataset.collapsed = collapsed ? "true" : "false";
+      panel.classList.toggle("is-collapsed", collapsed);
+      updateTagSuggestions(panel.dataset.tagsScope || "review", "");
+    }
+    return;
+  }
   const tagChip = event.target.closest(".tag-chip");
   if (tagChip) {
     const tag = tagChip.dataset.tag;
@@ -3136,7 +3390,8 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("#review-edit-card")) {
     const card = state.reviewQueue[state.currentIndex];
     if (!card) return;
-    if (state.reviewFolderIsShared && state.reviewFolderRole !== "editor") {
+    const context = getReviewCardContext(card);
+    if (context.isShared && context.role !== "editor") {
       showToast("Carpeta compartida en solo lectura.", "error");
       return;
     }
@@ -3162,6 +3417,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (elements.shareModal && !elements.shareModal.classList.contains("hidden")) {
     closeShareModal();
+  }
+  if (elements.reviewFolderModal && !elements.reviewFolderModal.classList.contains("hidden")) {
+    showOverlay(elements.reviewFolderModal, false);
   }
   if (wordPopover && !wordPopover.classList.contains("hidden")) {
     closeWordPopover();

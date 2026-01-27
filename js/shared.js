@@ -86,6 +86,7 @@ export const state = {
   reviewFolderOwnerUid: null,
   reviewFolderRole: null,
   reviewFolderIsShared: false,
+  reviewSelectedFolderIds: [],
   reviewShowingBack: false,
   repairAttempted: false,
   vocabFolderIds: {
@@ -129,11 +130,17 @@ export const elements = {
   saveCard: document.getElementById("save-card"),
   cancelCard: document.getElementById("cancel-card"),
   cardsTitle: document.getElementById("cards-title"),
+  backToFolders: document.getElementById("back-to-folders"),
   cardsDupCount: document.getElementById("cards-dup-count"),
   cardsDupToggle: document.getElementById("cards-dup-toggle"),
   screenReviewConfig: document.getElementById("screen-review-config"),
   screenReviewPlayer: document.getElementById("screen-review-player"),
-  reviewFolder: document.getElementById("review-folder"),
+  reviewFolderTrigger: document.getElementById("review-folder-trigger"),
+  reviewFolderLabel: document.getElementById("review-folder-label"),
+  reviewFolderModal: document.getElementById("review-folder-modal"),
+  reviewFolderOptions: document.getElementById("review-folder-options"),
+  reviewFolderApply: document.getElementById("review-folder-apply"),
+  reviewFolderClose: document.getElementById("review-folder-close"),
   reviewBucketChart: document.getElementById("review-bucket-chart"),
   reviewTags: document.getElementById("review-tags"),
   reviewMaxNew: document.getElementById("review-max-new"),
@@ -228,6 +235,14 @@ export function resolveFolderSelection(value) {
     role: "owner",
     shareKey: null,
   };
+}
+
+export function getReviewFolderSelections() {
+  const selected = state.reviewSelectedFolderIds || [];
+  if (!selected.length) {
+    return [resolveFolderSelection("all")];
+  }
+  return selected.map((value) => resolveFolderSelection(value));
 }
 
 export function canonicalizeBucketId(bucket) {
