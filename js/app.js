@@ -42,6 +42,16 @@ import { parseChankiImport } from "../lib/parser.js";
 import { computeNextSrs } from "../lib/srs.js";
 import { recordReviewStats } from "../lib/stats.js";
 import {
+  buildOrderSolution,
+  buildOrderState,
+  evaluateOrderState,
+  insertFromAvailable,
+  moveOrderToken,
+  moveSelected,
+  resetOrderState,
+  shouldShowOrderSolution,
+} from "./order-utils.js";
+import {
   BUCKET_LABELS,
   BUCKET_ORDER,
   canonicalizeBucketId,
@@ -2606,80 +2616,10 @@ function evaluateClozeAnswers(card, userAnswers, blankCount) {
   return { correct: results.every(Boolean), results };
 }
 
-function normalizeOrderTokens(card) {
-  const tokens = card.orderTokens || [];
-  return tokens.map((token, index) => ({
-    id: token?.id || `t${index}`,
-    text: token?.text || "",
-    label: token?.label || "",
-    originalIndex: index,
-  }));
-}
-
 function ensureOrderState(card) {
   if (state.reviewOrder?.cardId === card.id) return state.reviewOrder;
-  const tokens = normalizeOrderTokens(card);
-  const tokenIds = tokens.map((token) => token.id);
-  const tokenMap = tokens.reduce((acc, token) => {
-    acc[token.id] = token;
-    return acc;
-  }, {});
-  const answerIds = (card.orderAnswer || []).filter((id) => tokenMap[id]);
-  const resolvedAnswer = answerIds.length === tokens.length ? answerIds : tokenIds;
-  state.reviewOrder = {
-    cardId: card.id,
-    tokens,
-    tokenMap,
-    bank: [...tokenIds],
-    selected: [],
-    answer: resolvedAnswer,
-  };
+  state.reviewOrder = buildOrderState(card);
   return state.reviewOrder;
-}
-
-function resetOrderState(orderState) {
-  orderState.bank = [...orderState.tokens.map((token) => token.id)];
-  orderState.selected = [];
-}
-
-function insertOrderToken(orderState, tokenId) {
-  const token = orderState.tokenMap[tokenId];
-  if (!token) return;
-  const insertIndex = orderState.bank.findIndex((id) => {
-    const candidate = orderState.tokenMap[id];
-    return candidate && candidate.originalIndex > token.originalIndex;
-  });
-  if (insertIndex === -1) {
-    orderState.bank.push(tokenId);
-    return;
-  }
-  orderState.bank.splice(insertIndex, 0, tokenId);
-}
-
-function moveOrderToken(orderState, tokenId, destination) {
-  if (!tokenId || !orderState.tokenMap[tokenId]) return;
-  const selectedIndex = orderState.selected.indexOf(tokenId);
-  if (selectedIndex !== -1) {
-    orderState.selected.splice(selectedIndex, 1);
-  }
-  const bankIndex = orderState.bank.indexOf(tokenId);
-  if (bankIndex !== -1) {
-    orderState.bank.splice(bankIndex, 1);
-  }
-  if (destination === "selected") {
-    orderState.selected.push(tokenId);
-  } else {
-    insertOrderToken(orderState, tokenId);
-  }
-}
-
-function evaluateOrderState(orderState) {
-  const expected = orderState.answer || [];
-  const selected = orderState.selected || [];
-  const results = expected.map((id, index) => selected[index] === id);
-  const filled = selected.length === expected.length;
-  const correct = filled && results.every(Boolean);
-  return { correct, results, filled };
 }
 
 function renderReviewCard(card, showBack = false) {
@@ -2822,6 +2762,8 @@ function renderReviewCard(card, showBack = false) {
     orderCard.appendChild(answerSection);
     orderCard.appendChild(bankSection);
 
+    let dragInProgress = false;
+
     const controls = document.createElement("div");
     controls.className = "order-controls";
     const resetButton = document.createElement("button");
@@ -2884,8 +2826,18 @@ function renderReviewCard(card, showBack = false) {
       renderBank();
     };
 
+    const syncOrderStateFromDom = () => {
+      orderState.selected = Array.from(answerRow.querySelectorAll(".order-chip")).map(
+        (chip) => chip.dataset.id
+      );
+      orderState.bank = Array.from(bankRow.querySelectorAll(".order-chip")).map(
+        (chip) => chip.dataset.id
+      );
+    };
+
     const handleChipClick = (event) => {
       if (showBack) return;
+      if (dragInProgress) return;
       const chip = event.target.closest(".order-chip");
       if (!chip) return;
       const tokenId = chip.dataset.id;
@@ -2901,10 +2853,79 @@ function renderReviewCard(card, showBack = false) {
     orderCard.addEventListener("click", handleChipClick);
 
     renderOrderLayout();
+
+    if (!showBack && window.Sortable) {
+      const sharedOptions = {
+        group: { name: "orderTokens", pull: true, put: true },
+        animation: 150,
+        ghostClass: "order-chip--ghost",
+        chosenClass: "order-chip--chosen",
+        dragClass: "order-chip--dragging",
+        fallbackOnBody: true,
+        forceFallback: true,
+        swapThreshold: 0.65,
+        touchStartThreshold: 5,
+        onStart: () => {
+          dragInProgress = true;
+        },
+        onEnd: () => {
+          dragInProgress = false;
+          syncOrderStateFromDom();
+          renderOrderLayout();
+        },
+      };
+      window.Sortable.create(answerRow, {
+        ...sharedOptions,
+        sort: true,
+        onUpdate: (event) => {
+          moveSelected(orderState, event.oldIndex ?? 0, event.newIndex ?? 0);
+          renderOrderLayout();
+        },
+        onAdd: (event) => {
+          const tokenId = event.item?.dataset?.id;
+          insertFromAvailable(orderState, tokenId, event.newIndex ?? orderState.selected.length);
+          renderOrderLayout();
+        },
+      });
+      window.Sortable.create(bankRow, {
+        ...sharedOptions,
+        sort: false,
+      });
+    }
+
     const answerLinesRaw = Number(state.prefs.orderAnswerLines || 2);
     const answerLines = Math.min(3, Math.max(2, answerLinesRaw));
     orderCard.style.setProperty("--order-answer-lines", String(answerLines));
     wrapper.appendChild(orderCard);
+
+    if (showBack && evaluation && shouldShowOrderSolution(evaluation)) {
+      const solution = document.createElement("div");
+      solution.className = "order-solution";
+      const solutionLabel = document.createElement("div");
+      solutionLabel.className = "order-solution__label";
+      solutionLabel.textContent = "Respuesta correcta";
+      const solutionRow = document.createElement("div");
+      solutionRow.className = "order-chip-row order-chip-row--solution";
+      const solutionText = document.createElement("div");
+      solutionText.className = "order-solution__text";
+      const solutionTokens = buildOrderSolution(orderState, evaluation);
+      solutionTokens.forEach(({ token, isCorrectPosition }, index) => {
+        if (!token) return;
+        const chip = buildChip(token, "solution", index);
+        if (typeof isCorrectPosition === "boolean") {
+          chip.classList.add(isCorrectPosition ? "order-chip--correct" : "order-chip--incorrect");
+        }
+        solutionRow.appendChild(chip);
+      });
+      solutionText.textContent = solutionTokens
+        .map(({ token }) => token?.text)
+        .filter(Boolean)
+        .join(" ");
+      solution.appendChild(solutionLabel);
+      solution.appendChild(solutionRow);
+      solution.appendChild(solutionText);
+      wrapper.appendChild(solution);
+    }
 
     if (showBack && evaluation) {
       const feedback = document.createElement("div");
