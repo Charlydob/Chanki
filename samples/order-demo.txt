@@ -1,0 +1,12 @@
+FOLDER: Demo/Order
+TYPE: ORDER
+FRONT: Yo voy a casa.
+TOKENS: ich || gehe || nach Hause
+LABELS: CI || V || CCL
+ANSWER: ich || gehe || nach Hause
+---
+TYPE: ORDER
+FRONT: Yo tengo el libro y el cuaderno.
+TOKENS: ich || habe || das || Buch || und || das || Heft
+LABELS: CI || V || CD || N || CK || CD || N
+ANSWER: 0,1,2,3,4,5,6

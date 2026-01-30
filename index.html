@@ -470,6 +470,7 @@
           <select id="card-type">
             <option value="basic">Basic</option>
             <option value="cloze">Cloze</option>
+            <option value="order">Order</option>
           </select>
         </label>
         <label class="field" id="card-basic-front-field">
@@ -487,6 +488,18 @@
         <label class="field hidden" id="card-cloze-answers-field">
           <span>Respuestas (separa con | )</span>
           <input id="card-cloze-answers" type="text" placeholder="antwort | Antwort2" />
+        </label>
+        <label class="field hidden" id="card-order-tokens-field">
+          <span>Tokens (separa con || )</span>
+          <textarea id="card-order-tokens" rows="3" placeholder="ich || gehe || nach Hause"></textarea>
+        </label>
+        <label class="field hidden" id="card-order-labels-field">
+          <span>Labels (separa con || )</span>
+          <textarea id="card-order-labels" rows="2" placeholder="Suj || V || CCL"></textarea>
+        </label>
+        <label class="field hidden" id="card-order-answer-field">
+          <span>Respuesta (índices o tokens)</span>
+          <input id="card-order-answer" type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
         </label>
         <label class="field">
           <span>Tags (coma)</span>
