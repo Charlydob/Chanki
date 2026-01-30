@@ -2612,6 +2612,7 @@ function normalizeOrderTokens(card) {
     id: token?.id || `t${index}`,
     text: token?.text || "",
     label: token?.label || "",
+    originalIndex: index,
   }));
 }
 
@@ -2629,52 +2630,54 @@ function ensureOrderState(card) {
     cardId: card.id,
     tokens,
     tokenMap,
-    bank: shuffle([...tokenIds]),
-    slots: Array.from({ length: tokens.length }, () => null),
+    bank: [...tokenIds],
+    selected: [],
     answer: resolvedAnswer,
-    lastDroppedSlot: null,
   };
   return state.reviewOrder;
 }
 
 function resetOrderState(orderState) {
-  orderState.bank = shuffle([...orderState.tokens.map((token) => token.id)]);
-  orderState.slots = Array.from({ length: orderState.tokens.length }, () => null);
-  orderState.lastDroppedSlot = null;
+  orderState.bank = [...orderState.tokens.map((token) => token.id)];
+  orderState.selected = [];
 }
 
-function moveOrderToken(orderState, tokenId, destination, targetIndex = null) {
+function insertOrderToken(orderState, tokenId) {
+  const token = orderState.tokenMap[tokenId];
+  if (!token) return;
+  const insertIndex = orderState.bank.findIndex((id) => {
+    const candidate = orderState.tokenMap[id];
+    return candidate && candidate.originalIndex > token.originalIndex;
+  });
+  if (insertIndex === -1) {
+    orderState.bank.push(tokenId);
+    return;
+  }
+  orderState.bank.splice(insertIndex, 0, tokenId);
+}
+
+function moveOrderToken(orderState, tokenId, destination) {
   if (!tokenId || !orderState.tokenMap[tokenId]) return;
-  const slotIndex = orderState.slots.indexOf(tokenId);
-  if (slotIndex !== -1) {
-    orderState.slots[slotIndex] = null;
+  const selectedIndex = orderState.selected.indexOf(tokenId);
+  if (selectedIndex !== -1) {
+    orderState.selected.splice(selectedIndex, 1);
   }
   const bankIndex = orderState.bank.indexOf(tokenId);
   if (bankIndex !== -1) {
     orderState.bank.splice(bankIndex, 1);
   }
-  if (destination === "slot") {
-    if (typeof targetIndex !== "number" || targetIndex < 0 || targetIndex >= orderState.slots.length) return;
-    const existingToken = orderState.slots[targetIndex];
-    if (existingToken && existingToken !== tokenId) {
-      if (slotIndex !== -1 && slotIndex !== targetIndex) {
-        orderState.slots[slotIndex] = existingToken;
-      } else {
-        orderState.bank.push(existingToken);
-      }
-    }
-    orderState.slots[targetIndex] = tokenId;
-    orderState.lastDroppedSlot = targetIndex;
+  if (destination === "selected") {
+    orderState.selected.push(tokenId);
   } else {
-    orderState.bank.push(tokenId);
+    insertOrderToken(orderState, tokenId);
   }
 }
 
 function evaluateOrderState(orderState) {
   const expected = orderState.answer || [];
-  const slots = orderState.slots || [];
-  const results = expected.map((id, index) => slots[index] === id);
-  const filled = slots.length === expected.length && slots.every(Boolean);
+  const selected = orderState.selected || [];
+  const results = expected.map((id, index) => selected[index] === id);
+  const filled = selected.length === expected.length;
   const correct = filled && results.every(Boolean);
   return { correct, results, filled };
 }
@@ -2797,15 +2800,26 @@ function renderReviewCard(card, showBack = false) {
 
     const orderCard = document.createElement("div");
     orderCard.className = `order-card${showBack ? " order-card--locked" : ""}`;
-    const slotsList = document.createElement("div");
-    slotsList.className = "order-slots";
+    const answerSection = document.createElement("div");
+    answerSection.className = "order-zone";
+    const answerLabel = document.createElement("div");
+    answerLabel.className = "order-zone__label";
+    answerLabel.textContent = "Respuesta";
+    const answerRow = document.createElement("div");
+    answerRow.className = "order-chip-row order-chip-row--answer";
+    answerSection.appendChild(answerLabel);
+    answerSection.appendChild(answerRow);
     const bankSection = document.createElement("div");
-    bankSection.className = "order-bank";
+    bankSection.className = "order-zone order-bank";
+    const bankLabel = document.createElement("div");
+    bankLabel.className = "order-zone__label";
+    bankLabel.textContent = "Banco de palabras";
     const bankRow = document.createElement("div");
     bankRow.className = "order-chip-row order-chip-row--bank";
+    bankSection.appendChild(bankLabel);
     bankSection.appendChild(bankRow);
 
-    orderCard.appendChild(slotsList);
+    orderCard.appendChild(answerSection);
     orderCard.appendChild(bankSection);
 
     const controls = document.createElement("div");
@@ -2822,50 +2836,38 @@ function renderReviewCard(card, showBack = false) {
     controls.appendChild(resetButton);
     orderCard.appendChild(controls);
 
-    const buildChip = (token, zone, index) => {
+    const buildChip = (token, zone, index, evaluationResult = null) => {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "order-chip";
       chip.dataset.id = token.id;
       chip.dataset.zone = zone;
       chip.dataset.index = String(index);
-      chip.draggable = !showBack;
       chip.innerHTML = `
         <span class="order-chip__text"></span>
         <span class="order-chip__label"></span>
       `;
       chip.querySelector(".order-chip__text").textContent = token.text;
-      chip.querySelector(".order-chip__label").textContent = token.label;
+      const label = chip.querySelector(".order-chip__label");
+      label.textContent = token.label;
+      if (!token.label) {
+        chip.classList.add("order-chip--no-label");
+      }
+      if (showBack && typeof evaluationResult === "boolean") {
+        chip.classList.add(evaluationResult ? "order-chip--correct" : "order-chip--incorrect");
+      }
       return chip;
     };
 
-    const renderSlots = () => {
-      slotsList.innerHTML = "";
-      orderState.slots.forEach((tokenId, index) => {
-        const slot = document.createElement("div");
-        slot.className = "order-slot";
-        slot.dataset.index = String(index);
-        if (showBack && evaluation) {
-          slot.classList.add(
-            evaluation.results[index] ? "order-slot--correct" : "order-slot--incorrect"
-          );
-        }
-        if (orderState.lastDroppedSlot === index) {
-          slot.classList.add("order-slot--drop");
-        }
-        if (tokenId) {
-          const token = orderState.tokenMap[tokenId];
-          const chip = buildChip(token, "slot", index);
-          slot.appendChild(chip);
-        } else {
-          const placeholder = document.createElement("div");
-          placeholder.className = "order-slot__placeholder";
-          placeholder.textContent = " ";
-          slot.appendChild(placeholder);
-        }
-        slotsList.appendChild(slot);
+    const renderAnswer = () => {
+      answerRow.innerHTML = "";
+      orderState.selected.forEach((tokenId, index) => {
+        const token = orderState.tokenMap[tokenId];
+        if (!token) return;
+        const evaluationResult = showBack && evaluation ? evaluation.results[index] : null;
+        const chip = buildChip(token, "answer", index, evaluationResult);
+        answerRow.appendChild(chip);
       });
-      orderState.lastDroppedSlot = null;
     };
 
     const renderBank = () => {
@@ -2878,7 +2880,7 @@ function renderReviewCard(card, showBack = false) {
     };
 
     const renderOrderLayout = () => {
-      renderSlots();
+      renderAnswer();
       renderBank();
     };
 
@@ -2889,57 +2891,29 @@ function renderReviewCard(card, showBack = false) {
       const tokenId = chip.dataset.id;
       const zone = chip.dataset.zone;
       if (zone === "bank") {
-        const nextIndex = orderState.slots.findIndex((slotId) => !slotId);
-        if (nextIndex === -1) return;
-        moveOrderToken(orderState, tokenId, "slot", nextIndex);
+        moveOrderToken(orderState, tokenId, "selected");
       } else {
         moveOrderToken(orderState, tokenId, "bank");
       }
       renderOrderLayout();
     };
 
-    const handleDragStart = (event) => {
-      if (showBack) return;
-      const chip = event.target.closest(".order-chip");
-      if (!chip) return;
-      event.dataTransfer?.setData("text/plain", chip.dataset.id || "");
-      event.dataTransfer?.setData("text/zone", chip.dataset.zone || "");
-      event.dataTransfer?.setData("text/index", chip.dataset.index || "");
-    };
-
-    const handleDrop = (event, destination, targetIndex = null) => {
-      if (showBack) return;
-      event.preventDefault();
-      const tokenId = event.dataTransfer?.getData("text/plain");
-      if (!tokenId) return;
-      moveOrderToken(orderState, tokenId, destination, targetIndex);
-      renderOrderLayout();
-    };
-
-    const allowDrop = (event) => {
-      if (showBack) return;
-      event.preventDefault();
-    };
-
     orderCard.addEventListener("click", handleChipClick);
-    orderCard.addEventListener("dragstart", handleDragStart);
-    slotsList.addEventListener("dragover", allowDrop);
-    bankRow.addEventListener("dragover", allowDrop);
-    slotsList.addEventListener("drop", (event) => {
-      const slot = event.target.closest(".order-slot");
-      if (!slot) return;
-      const targetIndex = Number(slot.dataset.index);
-      handleDrop(event, "slot", targetIndex);
-    });
-    bankRow.addEventListener("drop", (event) => handleDrop(event, "bank"));
 
     renderOrderLayout();
+    const answerLinesRaw = Number(state.prefs.orderAnswerLines || 2);
+    const answerLines = Math.min(3, Math.max(2, answerLinesRaw));
+    orderCard.style.setProperty("--order-answer-lines", String(answerLines));
     wrapper.appendChild(orderCard);
 
     if (showBack && evaluation) {
       const feedback = document.createElement("div");
       feedback.className = `review-feedback ${evaluation.correct ? "is-correct" : "is-incorrect"}`;
-      feedback.textContent = evaluation.correct ? "Orden correcto." : "Orden incorrecto.";
+      feedback.textContent = evaluation.filled
+        ? evaluation.correct
+          ? "Orden correcto."
+          : "Orden incorrecto."
+        : "Orden incompleto.";
       wrapper.appendChild(feedback);
     }
   } else {
