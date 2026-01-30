@@ -10,3 +10,9 @@ FRONT: Yo tengo el libro y el cuaderno.
 TOKENS: ich || habe || das || Buch || und || das || Heft
 LABELS: CI || V || CD || N || CK || CD || N
 ANSWER: 0,1,2,3,4,5,6
+---
+TYPE: ORDER
+FRONT: Nosotros estudiamos en casa hoy.
+TOKENS: wir || lernen || heute || zu Hause
+LABELS: Sujeto || Verbo || Tiempo || CCL
+ANSWER: wir || lernen || heute || zu Hause
