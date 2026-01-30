@@ -139,6 +139,20 @@
   white-space: nowrap;
 }
 
+.order-chip--ghost {
+  opacity: 0.4;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.order-chip--chosen {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.order-chip--dragging {
+  opacity: 0.2;
+}
+
 .order-chip__label {
   font-size: 11px;
   color: var(--muted);
@@ -162,6 +176,34 @@
 .order-controls {
   display: flex;
   justify-content: flex-end;
+}
+
+.order-solution {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.order-solution__label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.order-chip-row--solution {
+  gap: 6px;
+}
+
+.order-solution__text {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .order-card--locked {
