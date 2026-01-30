@@ -78,7 +78,7 @@ export const state = {
     maxReviews: Number(localStorage.getItem("chanki_max_reviews")) || 50,
     clozeCaseInsensitive: localStorage.getItem("chanki_cloze_case") !== "false",
   },
-  reviewInputValue: "",
+  reviewClozeAnswers: [],
   activeWordKey: null,
   activeWordNorm: null,
   activeWordContext: null,

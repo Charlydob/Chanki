@@ -42,6 +42,20 @@ BACK: llegar
 ---
 ```
 
+## Ejemplos rápidos de cloze (2 huecos)
+
+Para probar la vista de tarjetas cloze con múltiples huecos:
+
+```
+Texto cloze: Ich ____ heute ____.
+Respuestas: gehe | nach Hause
+```
+
+```
+Texto cloze: El ____ está ____ de agua.
+Respuestas: vaso | lleno
+```
+
 ## SRS por buckets
 
 - **Error** → `immediate` (5 min)
