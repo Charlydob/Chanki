@@ -855,6 +855,12 @@ textarea {
   white-space: pre-line;
 }
 
+.review-card .review-front--cloze {
+  display: inline;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
 .review-card .review-back {
   margin-top: 14px;
   opacity: 0.9;
@@ -863,8 +869,37 @@ textarea {
 }
 
 .review-card .cloze-input {
-  width: 100%;
-  margin-top: 4px;
+  font-size: 20px;
+}
+
+.review-card .cloze-input--inline {
+  display: inline-block;
+  width: auto;
+  min-width: 4ch;
+  max-width: 16ch;
+  margin: 0 4px;
+  padding: 2px 6px;
+  border: none;
+  border-bottom: 2px solid var(--text);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.review-card .cloze-input--inline:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.18);
+}
+
+.review-card .cloze-input--correct {
+  border-bottom-color: var(--success);
+}
+
+.review-card .cloze-input--incorrect {
+  border-bottom-color: var(--danger);
 }
 
 .review-feedback {

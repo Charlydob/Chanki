@@ -1086,7 +1086,7 @@ async function handleReviewEditSave() {
     return;
   }
   if (reviewEditType === "cloze") {
-    if (!nextClozeText || !nextClozeText.includes("____")) {
+    if (!nextClozeText || !hasClozeMarker(nextClozeText)) {
       showToast("El cloze debe incluir ____ en el texto.", "error");
       return;
     }
@@ -2124,7 +2124,7 @@ async function handleSaveCard() {
     return;
   }
   if (type === "cloze") {
-    if (!clozeText || !clozeText.includes("____")) {
+    if (!clozeText || !hasClozeMarker(clozeText)) {
       showToast("El cloze debe incluir ____ en el texto.", "error");
       return;
     }
@@ -2200,6 +2200,50 @@ function isClozeCorrect(card, answer) {
   });
 }
 
+function hasClozeMarker(text) {
+  return /_{4,}/.test(text);
+}
+
+function tokenizeClozeText(text) {
+  const tokens = [];
+  const regex = /_{4,}/g;
+  let lastIndex = 0;
+  let match = regex.exec(text);
+  while (match) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    tokens.push({ type: "blank" });
+    lastIndex = match.index + match[0].length;
+    match = regex.exec(text);
+  }
+  if (lastIndex < text.length) {
+    tokens.push({ type: "text", value: text.slice(lastIndex) });
+  }
+  return tokens;
+}
+
+function normalizeClozeEntry(entry) {
+  const trimmed = entry.trim();
+  return state.prefs.clozeCaseInsensitive ? trimmed.toLowerCase() : trimmed;
+}
+
+function evaluateClozeAnswers(card, userAnswers, blankCount) {
+  if (blankCount <= 1) {
+    const correct = isClozeCorrect(card, userAnswers[0] || "");
+    return { correct, results: [correct] };
+  }
+  const expected = card.clozeAnswers || [];
+  const results = Array.from({ length: blankCount }, (_, index) => {
+    const expectedEntry = expected[index];
+    if (!expectedEntry) return false;
+    const userEntry = userAnswers[index] || "";
+    if (!userEntry.trim()) return false;
+    return normalizeClozeEntry(expectedEntry) === normalizeClozeEntry(userEntry);
+  });
+  return { correct: results.every(Boolean), results };
+}
+
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const wrapper = document.createElement("div");
@@ -2213,18 +2257,70 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.className = "review-label";
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
-    frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(card.clozeText || "", "de", glossaryMap));
+    const clozeTokens = tokenizeClozeText(card.clozeText || "");
+    const blankCount = clozeTokens.filter((token) => token.type === "blank").length;
+    frontText.className = blankCount ? "review-front review-front--cloze" : "review-front";
+    const answers = blankCount
+      ? state.reviewClozeAnswers.length === blankCount
+        ? [...state.reviewClozeAnswers]
+        : Array.from({ length: blankCount }, () => "")
+      : [state.reviewClozeAnswers[0] || ""];
+    state.reviewClozeAnswers = answers;
+    const inlineInputs = [];
+    const evaluation = showBack ? evaluateClozeAnswers(card, answers, blankCount) : null;
+    const updateInlineSize = (input) => {
+      const nextSize = Math.min(Math.max(input.value.length, 4), 16);
+      input.size = nextSize;
+    };
+    if (blankCount) {
+      let blankIndex = 0;
+      clozeTokens.forEach((token) => {
+        if (token.type === "text") {
+          frontText.appendChild(renderTextWithLanguage(token.value, "de", glossaryMap));
+          return;
+        }
+        const currentIndex = blankIndex;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "cloze-input cloze-input--inline";
+        input.value = answers[currentIndex] || "";
+        input.disabled = showBack;
+        input.autocomplete = "off";
+        input.autocapitalize = "none";
+        input.spellcheck = false;
+        input.inputMode = "text";
+        input.setAttribute("aria-label", `Hueco ${currentIndex + 1}`);
+        updateInlineSize(input);
+        input.addEventListener("input", () => {
+          state.reviewClozeAnswers[currentIndex] = input.value;
+          updateInlineSize(input);
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          const nextInput = inlineInputs[currentIndex + 1];
+          if (nextInput) {
+            nextInput.focus();
+            return;
+          }
+          if (!showBack) {
+            elements.flipCard.click();
+          }
+        });
+        if (showBack && evaluation) {
+          input.classList.add(
+            evaluation.results[currentIndex] ? "cloze-input--correct" : "cloze-input--incorrect"
+          );
+        }
+        inlineInputs.push(input);
+        frontText.appendChild(input);
+        blankIndex += 1;
+      });
+    } else {
+      frontText.appendChild(renderTextWithLanguage(card.clozeText || "", "de", glossaryMap));
+    }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "cloze-input";
-    input.placeholder = "Escribe la respuesta";
-    input.value = state.reviewInputValue;
-    input.disabled = showBack;
-    frontSection.appendChild(input);
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -2240,7 +2336,9 @@ function renderReviewCard(card, showBack = false) {
       backSection.appendChild(answers);
       wrapper.appendChild(backSection);
 
-      const correct = isClozeCorrect(card, state.reviewInputValue);
+      const correct = blankCount
+        ? evaluation?.correct
+        : isClozeCorrect(card, answers[0] || "");
       const feedback = document.createElement("div");
       feedback.className = "review-feedback";
       feedback.textContent = correct ? "Respuesta correcta." : "Respuesta incorrecta.";
@@ -2537,7 +2635,7 @@ function showNextReviewCard() {
   elements.reviewCard.classList.remove("hidden");
   elements.reviewActions.classList.add("hidden");
   elements.flipCard.classList.remove("hidden");
-  state.reviewInputValue = "";
+  state.reviewClozeAnswers = [];
   state.reviewShowingBack = false;
   elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
   renderReviewCard(card, false);
@@ -2584,8 +2682,10 @@ async function loadMoreCardsPage() {
 function revealReviewAnswer() {
   const card = state.reviewQueue[state.currentIndex];
   if (!card) return;
-  const input = elements.reviewCard.querySelector(".cloze-input");
-  state.reviewInputValue = input ? input.value : "";
+  const inputs = elements.reviewCard.querySelectorAll(".cloze-input");
+  if (inputs.length) {
+    state.reviewClozeAnswers = Array.from(inputs, (input) => input.value);
+  }
   renderReviewCard(card, true);
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
