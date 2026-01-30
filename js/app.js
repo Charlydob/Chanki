@@ -92,6 +92,9 @@ let reviewEditFront = null;
 let reviewEditBack = null;
 let reviewEditClozeText = null;
 let reviewEditClozeAnswers = null;
+let reviewEditOrderTokens = null;
+let reviewEditOrderLabels = null;
+let reviewEditOrderAnswer = null;
 let reviewEditCancel = null;
 let reviewEditSave = null;
 let reviewEditOwnerUid = null;
@@ -129,6 +132,132 @@ function shuffle(list) {
     [list[i], list[j]] = [list[j], list[i]];
   }
   return list;
+}
+
+function parseOrderDelimitedInput(value) {
+  const normalized = String(value || "").replace(/\r?\n/g, "||");
+  return normalized
+    .split("||")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseOrderTokenEntry(entry, index) {
+  const parts = entry.split("::");
+  if (parts.length > 1) {
+    const candidateId = parts[0].trim();
+    const text = parts.slice(1).join("::").trim();
+    if (candidateId && text) {
+      return { id: candidateId, text };
+    }
+  }
+  return { id: `t${index}`, text: entry.trim() };
+}
+
+function buildOrderTokens(tokensInput, labelsInput) {
+  const tokensRaw = parseOrderDelimitedInput(tokensInput);
+  const labelsRaw = parseOrderDelimitedInput(labelsInput);
+  const errors = [];
+  if (!tokensRaw.length) {
+    errors.push("Añade tokens para ordenar.");
+  }
+  if (tokensRaw.length !== labelsRaw.length) {
+    errors.push("TOKENS y LABELS deben tener la misma longitud.");
+  }
+  const tokens = [];
+  const idSet = new Set();
+  tokensRaw.forEach((tokenEntry, index) => {
+    const parsed = parseOrderTokenEntry(tokenEntry, index);
+    const id = parsed.id || `t${index}`;
+    if (idSet.has(id)) {
+      errors.push(`ID de token duplicado: ${id}`);
+      return;
+    }
+    idSet.add(id);
+    tokens.push({
+      id,
+      text: parsed.text || "",
+      label: labelsRaw[index] || "",
+    });
+  });
+  return { tokens, errors };
+}
+
+function buildOrderAnswer(answerInput, tokens) {
+  const errors = [];
+  const trimmed = String(answerInput || "").trim();
+  if (!trimmed) {
+    errors.push("Añade una respuesta para la tarjeta ORDER.");
+    return { answer: [], errors };
+  }
+  if (/^[\d,\s]+$/.test(trimmed)) {
+    const indices = trimmed
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => Number(entry));
+    if (indices.some((index) => !Number.isInteger(index))) {
+      errors.push("ANSWER con índices inválidos.");
+      return { answer: [], errors };
+    }
+    if (indices.length !== tokens.length) {
+      errors.push("ANSWER debe incluir todos los tokens.");
+      return { answer: [], errors };
+    }
+    if (indices.some((index) => index < 0 || index >= tokens.length)) {
+      errors.push("ANSWER contiene índices fuera de rango.");
+      return { answer: [], errors };
+    }
+    return { answer: indices.map((index) => tokens[index].id), errors };
+  }
+  const answerEntries = parseOrderDelimitedInput(trimmed);
+  if (answerEntries.length !== tokens.length) {
+    errors.push("ANSWER debe incluir todos los tokens.");
+    return { answer: [], errors };
+  }
+  const tokensByText = tokens.reduce((acc, token) => {
+    const key = token.text.trim();
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(token.id);
+    return acc;
+  }, {});
+  const idSet = new Set(tokens.map((token) => token.id));
+  const answer = answerEntries.map((entry) => {
+    if (idSet.has(entry)) return entry;
+    const matches = tokensByText[entry] || [];
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      errors.push("ANSWER ambiguo: usa índices cuando hay tokens repetidos.");
+      return null;
+    }
+    errors.push(`ANSWER contiene token desconocido: ${entry}`);
+    return null;
+  });
+  return { answer: answer.filter(Boolean), errors };
+}
+
+function buildOrderAnswerInput(card) {
+  const tokens = card?.orderTokens || [];
+  const hasDuplicates = new Set(tokens.map((token) => token.text)).size !== tokens.length;
+  if (hasDuplicates) {
+    return (card.orderAnswer || [])
+      .map((id) => tokens.findIndex((token) => token.id === id))
+      .filter((index) => index >= 0)
+      .join(",");
+  }
+  const tokenMap = tokens.reduce((acc, token) => {
+    acc[token.id] = token.text;
+    return acc;
+  }, {});
+  return (card.orderAnswer || []).map((id) => tokenMap[id] || id).join(" || ");
+}
+
+function formatOrderTokensInput(card) {
+  return (card?.orderTokens || []).map((token) => token.text).join(" || ");
+}
+
+function formatOrderLabelsInput(card) {
+  return (card?.orderTokens || []).map((token) => token.label || "").join(" || ");
 }
 
 function getSafeAreaInset(side) {
@@ -705,6 +834,18 @@ function getCardDedupeValues(card) {
       back: (card.clozeAnswers || []).join(" | "),
     };
   }
+  if (card.type === "order") {
+    const tokens = card.orderTokens || [];
+    const tokenMap = tokens.reduce((acc, token) => {
+      if (token?.id) acc[token.id] = token.text || "";
+      return acc;
+    }, {});
+    const orderedTokens = (card.orderAnswer || []).map((id) => tokenMap[id] || "");
+    return {
+      front: card.front || "",
+      back: orderedTokens.filter(Boolean).join(" | "),
+    };
+  }
   return {
     front: card.front || "",
     back: card.back || "",
@@ -716,10 +857,14 @@ function buildCardListItem(card, isDuplicate, readOnly) {
   item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
   const summary = card.type === "cloze"
     ? `${card.clozeText || "(cloze sin texto)"}`
-    : `${card.front}`;
+    : card.type === "order"
+      ? `${card.front || "(orden sin frente)"}`
+      : `${card.front}`;
   const detail = card.type === "cloze"
     ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
-    : `${card.back}`;
+    : card.type === "order"
+      ? `Orden: ${getCardDedupeValues(card).back || "-"}`
+      : `${card.back}`;
   item.innerHTML = `
       <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
         <span class="item-icon" aria-hidden="true">
@@ -972,6 +1117,15 @@ function openCardModal(card = null) {
   elements.cardBack.value = card ? card.back || "" : "";
   elements.cardClozeText.value = card ? card.clozeText || "" : "";
   elements.cardClozeAnswers.value = card ? (card.clozeAnswers || []).join(" | ") : "";
+  if (elements.cardOrderTokens) {
+    elements.cardOrderTokens.value = card ? formatOrderTokensInput(card) : "";
+  }
+  if (elements.cardOrderLabels) {
+    elements.cardOrderLabels.value = card ? formatOrderLabelsInput(card) : "";
+  }
+  if (elements.cardOrderAnswer) {
+    elements.cardOrderAnswer.value = card ? buildOrderAnswerInput(card) : "";
+  }
   elements.cardTags.value = "";
   state.selectedTags = new Set(mapToTags(card?.tags || {}));
   renderTagPanels();
@@ -1003,6 +1157,18 @@ function ensureReviewEditModal() {
         <span>Respuestas (separa con | )</span>
         <input type="text" placeholder="antwort | Antwort2" />
       </label>
+      <label class="field hidden" data-review-field="order-tokens">
+        <span>Tokens (separa con || )</span>
+        <textarea rows="3" placeholder="ich || gehe || nach Hause"></textarea>
+      </label>
+      <label class="field hidden" data-review-field="order-labels">
+        <span>Labels (separa con || )</span>
+        <textarea rows="2" placeholder="Suj || V || CCL"></textarea>
+      </label>
+      <label class="field hidden" data-review-field="order-answer">
+        <span>Respuesta (índices o tokens)</span>
+        <input type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
+      </label>
       <div class="row">
         <button class="button ghost" type="button" data-review-action="cancelar">Cancelar</button>
         <button class="button" type="button" data-review-action="guardar">Guardar</button>
@@ -1014,10 +1180,16 @@ function ensureReviewEditModal() {
   const basicBackField = reviewEditModal.querySelector("[data-review-field=\"basic-back\"]");
   const clozeTextField = reviewEditModal.querySelector("[data-review-field=\"cloze-text\"]");
   const clozeAnswersField = reviewEditModal.querySelector("[data-review-field=\"cloze-answers\"]");
+  const orderTokensField = reviewEditModal.querySelector("[data-review-field=\"order-tokens\"]");
+  const orderLabelsField = reviewEditModal.querySelector("[data-review-field=\"order-labels\"]");
+  const orderAnswerField = reviewEditModal.querySelector("[data-review-field=\"order-answer\"]");
   reviewEditFront = basicFrontField.querySelector("textarea");
   reviewEditBack = basicBackField.querySelector("textarea");
   reviewEditClozeText = clozeTextField.querySelector("textarea");
   reviewEditClozeAnswers = clozeAnswersField.querySelector("input");
+  reviewEditOrderTokens = orderTokensField.querySelector("textarea");
+  reviewEditOrderLabels = orderLabelsField.querySelector("textarea");
+  reviewEditOrderAnswer = orderAnswerField.querySelector("input");
   reviewEditCancel = reviewEditModal.querySelector("[data-review-action=\"cancelar\"]");
   reviewEditSave = reviewEditModal.querySelector("[data-review-action=\"guardar\"]");
 
@@ -1044,14 +1216,35 @@ function openReviewEditModal(card) {
   reviewEditBack.value = card.back || "";
   reviewEditClozeText.value = card.clozeText || "";
   reviewEditClozeAnswers.value = (card.clozeAnswers || []).join(" | ");
+  if (reviewEditOrderTokens) {
+    reviewEditOrderTokens.value = formatOrderTokensInput(card);
+  }
+  if (reviewEditOrderLabels) {
+    reviewEditOrderLabels.value = formatOrderLabelsInput(card);
+  }
+  if (reviewEditOrderAnswer) {
+    reviewEditOrderAnswer.value = buildOrderAnswerInput(card);
+  }
   const isCloze = reviewEditType === "cloze";
+  const isOrder = reviewEditType === "order";
   reviewEditFront.closest(".field").classList.toggle("hidden", isCloze);
-  reviewEditBack.closest(".field").classList.toggle("hidden", isCloze);
+  reviewEditBack.closest(".field").classList.toggle("hidden", isCloze || isOrder);
   reviewEditClozeText.closest(".field").classList.toggle("hidden", !isCloze);
   reviewEditClozeAnswers.closest(".field").classList.toggle("hidden", !isCloze);
+  if (reviewEditOrderTokens) {
+    reviewEditOrderTokens.closest(".field").classList.toggle("hidden", !isOrder);
+  }
+  if (reviewEditOrderLabels) {
+    reviewEditOrderLabels.closest(".field").classList.toggle("hidden", !isOrder);
+  }
+  if (reviewEditOrderAnswer) {
+    reviewEditOrderAnswer.closest(".field").classList.toggle("hidden", !isOrder);
+  }
   reviewEditModal.classList.remove("hidden");
   if (isCloze) {
     reviewEditClozeText.focus();
+  } else if (isOrder && reviewEditOrderTokens) {
+    reviewEditOrderTokens.focus();
   } else {
     reviewEditFront.focus();
   }
@@ -1081,6 +1274,9 @@ async function handleReviewEditSave() {
     .split("|")
     .map((entry) => entry.trim())
     .filter(Boolean);
+  const nextOrderTokensInput = reviewEditOrderTokens ? reviewEditOrderTokens.value : "";
+  const nextOrderLabelsInput = reviewEditOrderLabels ? reviewEditOrderLabels.value : "";
+  const nextOrderAnswerInput = reviewEditOrderAnswer ? reviewEditOrderAnswer.value : "";
   if (reviewEditType === "basic" && (!nextFront || !nextBack)) {
     showToast("Completa frente y reverso.", "error");
     return;
@@ -1095,6 +1291,26 @@ async function handleReviewEditSave() {
       return;
     }
   }
+  let orderTokens = [];
+  let orderAnswer = [];
+  if (reviewEditType === "order") {
+    if (!nextFront) {
+      showToast("Completa el frente en español.", "error");
+      return;
+    }
+    const orderTokensResult = buildOrderTokens(nextOrderTokensInput, nextOrderLabelsInput);
+    if (orderTokensResult.errors.length) {
+      showToast(orderTokensResult.errors.join(" "), "error");
+      return;
+    }
+    orderTokens = orderTokensResult.tokens;
+    const orderAnswerResult = buildOrderAnswer(nextOrderAnswerInput, orderTokens);
+    if (orderAnswerResult.errors.length) {
+      showToast(orderAnswerResult.errors.join(" "), "error");
+      return;
+    }
+    orderAnswer = orderAnswerResult.answer;
+  }
   try {
     const result = await updateCard(db, ownerUid, reviewEditCardId, {
       type: reviewEditType,
@@ -1102,6 +1318,8 @@ async function handleReviewEditSave() {
       back: nextBack,
       clozeText: nextClozeText,
       clozeAnswers: nextClozeAnswers,
+      orderTokens,
+      orderAnswer,
     });
     if (result?.status === "duplicate") {
       showToast("Duplicado omitido.");
@@ -1116,6 +1334,8 @@ async function handleReviewEditSave() {
         back: nextBack,
         clozeText: nextClozeText,
         clozeAnswers: nextClozeAnswers,
+        orderTokens,
+        orderAnswer,
       };
     };
     state.reviewQueue = state.reviewQueue.map(updateCardLocal);
@@ -1129,7 +1349,12 @@ async function handleReviewEditSave() {
         back: nextBack,
         clozeText: nextClozeText,
         clozeAnswers: nextClozeAnswers,
+        orderTokens,
+        orderAnswer,
       });
+    }
+    if (reviewEditType === "order") {
+      state.reviewOrder = null;
     }
     refreshCurrentReviewCard();
     state.cardsCache = state.cards;
@@ -1149,10 +1374,20 @@ function closeCardModal() {
 
 function updateCardTypeFields(type) {
   const isCloze = type === "cloze";
+  const isOrder = type === "order";
   elements.cardBasicFrontField.classList.toggle("hidden", isCloze);
-  elements.cardBasicBackField.classList.toggle("hidden", isCloze);
+  elements.cardBasicBackField.classList.toggle("hidden", isCloze || isOrder);
   elements.cardClozeTextField.classList.toggle("hidden", !isCloze);
   elements.cardClozeAnswersField.classList.toggle("hidden", !isCloze);
+  if (elements.cardOrderTokensField) {
+    elements.cardOrderTokensField.classList.toggle("hidden", !isOrder);
+  }
+  if (elements.cardOrderLabelsField) {
+    elements.cardOrderLabelsField.classList.toggle("hidden", !isOrder);
+  }
+  if (elements.cardOrderAnswerField) {
+    elements.cardOrderAnswerField.classList.toggle("hidden", !isOrder);
+  }
 }
 
 function ensureWordPopover() {
@@ -2119,6 +2354,9 @@ async function handleSaveCard() {
     .split("|")
     .map((entry) => entry.trim())
     .filter(Boolean);
+  const orderTokensInput = elements.cardOrderTokens ? elements.cardOrderTokens.value : "";
+  const orderLabelsInput = elements.cardOrderLabels ? elements.cardOrderLabels.value : "";
+  const orderAnswerInput = elements.cardOrderAnswer ? elements.cardOrderAnswer.value : "";
   if (type === "basic" && (!front || !back)) {
     showToast("Completa frente y reverso.", "error");
     return;
@@ -2133,6 +2371,26 @@ async function handleSaveCard() {
       return;
     }
   }
+  let orderTokens = [];
+  let orderAnswer = [];
+  if (type === "order") {
+    if (!front) {
+      showToast("Completa el frente en español.", "error");
+      return;
+    }
+    const orderTokensResult = buildOrderTokens(orderTokensInput, orderLabelsInput);
+    if (orderTokensResult.errors.length) {
+      showToast(orderTokensResult.errors.join(" "), "error");
+      return;
+    }
+    orderTokens = orderTokensResult.tokens;
+    const orderAnswerResult = buildOrderAnswer(orderAnswerInput, orderTokens);
+    if (orderAnswerResult.errors.length) {
+      showToast(orderAnswerResult.errors.join(" "), "error");
+      return;
+    }
+    orderAnswer = orderAnswerResult.answer;
+  }
   const tags = normalizeTags(elements.cardTags.value);
   const selectedTags = dedupeTags([...state.selectedTags]);
   const finalTags = dedupeTags([...selectedTags, ...tags]);
@@ -2145,6 +2403,8 @@ async function handleSaveCard() {
         back,
         clozeText,
         clozeAnswers,
+        orderTokens,
+        orderAnswer,
         tags: tagsToMap(finalTags),
       });
       if (result?.status === "duplicate") {
@@ -2167,6 +2427,8 @@ async function handleSaveCard() {
         back,
         clozeText,
         clozeAnswers,
+        orderTokens,
+        orderAnswer,
         tags: tagsToMap(finalTags),
       });
       if (result.status === "duplicate") {
@@ -2242,6 +2504,70 @@ function evaluateClozeAnswers(card, userAnswers, blankCount) {
     return normalizeClozeEntry(expectedEntry) === normalizeClozeEntry(userEntry);
   });
   return { correct: results.every(Boolean), results };
+}
+
+function normalizeOrderTokens(card) {
+  const tokens = card.orderTokens || [];
+  return tokens.map((token, index) => ({
+    id: token?.id || `t${index}`,
+    text: token?.text || "",
+    label: token?.label || "",
+  }));
+}
+
+function ensureOrderState(card) {
+  if (state.reviewOrder?.cardId === card.id) return state.reviewOrder;
+  const tokens = normalizeOrderTokens(card);
+  const tokenIds = tokens.map((token) => token.id);
+  const tokenMap = tokens.reduce((acc, token) => {
+    acc[token.id] = token;
+    return acc;
+  }, {});
+  const answerIds = (card.orderAnswer || []).filter((id) => tokenMap[id]);
+  const resolvedAnswer = answerIds.length === tokens.length ? answerIds : tokenIds;
+  state.reviewOrder = {
+    cardId: card.id,
+    tokens,
+    tokenMap,
+    bank: shuffle([...tokenIds]),
+    built: [],
+    answer: resolvedAnswer,
+  };
+  return state.reviewOrder;
+}
+
+function resetOrderState(orderState) {
+  orderState.bank = shuffle([...orderState.tokens.map((token) => token.id)]);
+  orderState.built = [];
+}
+
+function moveOrderToken(orderState, tokenId, destination, targetIndex = null) {
+  if (!tokenId || !orderState.tokenMap[tokenId]) return;
+  const removeFrom = (list) => {
+    const index = list.indexOf(tokenId);
+    if (index !== -1) list.splice(index, 1);
+  };
+  removeFrom(orderState.bank);
+  removeFrom(orderState.built);
+  if (destination === "built") {
+    if (typeof targetIndex === "number" && targetIndex >= 0 && targetIndex <= orderState.built.length) {
+      orderState.built.splice(targetIndex, 0, tokenId);
+    } else {
+      orderState.built.push(tokenId);
+    }
+  } else {
+    orderState.bank.push(tokenId);
+  }
+}
+
+function evaluateOrderState(orderState) {
+  const expected = orderState.answer || [];
+  const built = orderState.built || [];
+  const results = expected.map((id, index) => built[index] === id);
+  const correct = results.length === built.length
+    && built.length === expected.length
+    && results.every(Boolean);
+  return { correct, results };
 }
 
 function renderReviewCard(card, showBack = false) {
@@ -2342,6 +2668,158 @@ function renderReviewCard(card, showBack = false) {
       const feedback = document.createElement("div");
       feedback.className = "review-feedback";
       feedback.textContent = correct ? "Respuesta correcta." : "Respuesta incorrecta.";
+      wrapper.appendChild(feedback);
+    }
+  } else if (card.type === "order") {
+    const orderState = ensureOrderState(card);
+    const evaluation = showBack ? evaluateOrderState(orderState) : null;
+    const frontSection = document.createElement("div");
+    frontSection.className = "review-section";
+    const frontLabel = document.createElement("span");
+    frontLabel.className = "review-label";
+    frontLabel.textContent = "Español";
+    const frontText = document.createElement("div");
+    frontText.className = "review-front";
+    frontText.appendChild(renderTextWithLanguage(card.front || "", "es", glossaryMap));
+    frontSection.appendChild(frontLabel);
+    frontSection.appendChild(frontText);
+    wrapper.appendChild(frontSection);
+
+    const orderCard = document.createElement("div");
+    orderCard.className = `order-card${showBack ? " order-card--locked" : ""}`;
+
+    const buildZone = (title, zoneClass) => {
+      const zone = document.createElement("div");
+      zone.className = `order-zone ${zoneClass}`;
+      const label = document.createElement("div");
+      label.className = "order-zone__label";
+      label.textContent = title;
+      const chips = document.createElement("div");
+      chips.className = "order-chip-row";
+      zone.appendChild(label);
+      zone.appendChild(chips);
+      return { zone, chips };
+    };
+
+    const builtZone = buildZone("Construcción", "order-zone--built");
+    const bankZone = buildZone("Banco", "order-zone--bank");
+    orderCard.appendChild(builtZone.zone);
+    orderCard.appendChild(bankZone.zone);
+
+    const controls = document.createElement("div");
+    controls.className = "order-controls";
+    const resetButton = document.createElement("button");
+    resetButton.className = "button ghost small";
+    resetButton.type = "button";
+    resetButton.textContent = "Reiniciar";
+    resetButton.disabled = showBack;
+    resetButton.addEventListener("click", () => {
+      resetOrderState(orderState);
+      renderReviewCard(card, false);
+    });
+    controls.appendChild(resetButton);
+    orderCard.appendChild(controls);
+
+    const renderChips = () => {
+      builtZone.chips.innerHTML = "";
+      bankZone.chips.innerHTML = "";
+      orderState.built.forEach((tokenId, index) => {
+        const token = orderState.tokenMap[tokenId];
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "order-chip";
+        if (showBack && evaluation) {
+          chip.classList.add(
+            evaluation.results[index] ? "order-chip--correct" : "order-chip--incorrect"
+          );
+        }
+        chip.dataset.id = tokenId;
+        chip.dataset.zone = "built";
+        chip.dataset.index = String(index);
+        chip.draggable = !showBack;
+        chip.innerHTML = `
+          <span class="order-chip__text"></span>
+          <span class="order-chip__label"></span>
+        `;
+        chip.querySelector(".order-chip__text").textContent = token.text;
+        chip.querySelector(".order-chip__label").textContent = token.label;
+        builtZone.chips.appendChild(chip);
+      });
+      orderState.bank.forEach((tokenId, index) => {
+        const token = orderState.tokenMap[tokenId];
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "order-chip";
+        chip.dataset.id = tokenId;
+        chip.dataset.zone = "bank";
+        chip.dataset.index = String(index);
+        chip.draggable = !showBack;
+        chip.innerHTML = `
+          <span class="order-chip__text"></span>
+          <span class="order-chip__label"></span>
+        `;
+        chip.querySelector(".order-chip__text").textContent = token.text;
+        chip.querySelector(".order-chip__label").textContent = token.label;
+        bankZone.chips.appendChild(chip);
+      });
+    };
+
+    const handleChipClick = (event) => {
+      if (showBack) return;
+      const chip = event.target.closest(".order-chip");
+      if (!chip) return;
+      const tokenId = chip.dataset.id;
+      const zone = chip.dataset.zone;
+      if (zone === "bank") {
+        moveOrderToken(orderState, tokenId, "built");
+      } else {
+        moveOrderToken(orderState, tokenId, "bank");
+      }
+      renderChips();
+    };
+
+    const handleDragStart = (event) => {
+      if (showBack) return;
+      const chip = event.target.closest(".order-chip");
+      if (!chip) return;
+      event.dataTransfer?.setData("text/plain", chip.dataset.id || "");
+      event.dataTransfer?.setData("text/zone", chip.dataset.zone || "");
+      event.dataTransfer?.setData("text/index", chip.dataset.index || "");
+    };
+
+    const handleDrop = (event, destination) => {
+      if (showBack) return;
+      event.preventDefault();
+      const tokenId = event.dataTransfer?.getData("text/plain");
+      if (!tokenId) return;
+      let targetIndex = null;
+      const targetChip = event.target.closest(".order-chip");
+      if (targetChip && destination === "built") {
+        targetIndex = Number(targetChip.dataset.index);
+      }
+      moveOrderToken(orderState, tokenId, destination, targetIndex);
+      renderChips();
+    };
+
+    const allowDrop = (event) => {
+      if (showBack) return;
+      event.preventDefault();
+    };
+
+    orderCard.addEventListener("click", handleChipClick);
+    orderCard.addEventListener("dragstart", handleDragStart);
+    builtZone.chips.addEventListener("dragover", allowDrop);
+    bankZone.chips.addEventListener("dragover", allowDrop);
+    builtZone.chips.addEventListener("drop", (event) => handleDrop(event, "built"));
+    bankZone.chips.addEventListener("drop", (event) => handleDrop(event, "bank"));
+
+    renderChips();
+    wrapper.appendChild(orderCard);
+
+    if (showBack && evaluation) {
+      const feedback = document.createElement("div");
+      feedback.className = `review-feedback ${evaluation.correct ? "is-correct" : "is-incorrect"}`;
+      feedback.textContent = evaluation.correct ? "Orden correcto." : "Orden incorrecto.";
       wrapper.appendChild(feedback);
     }
   } else {
@@ -2636,8 +3114,11 @@ function showNextReviewCard() {
   elements.reviewActions.classList.add("hidden");
   elements.flipCard.classList.remove("hidden");
   state.reviewClozeAnswers = [];
+  state.reviewOrder = null;
   state.reviewShowingBack = false;
-  elements.flipCard.textContent = card.type === "cloze" ? "Comprobar" : "Mostrar respuesta";
+  elements.flipCard.textContent = card.type === "cloze" || card.type === "order"
+    ? "Comprobar"
+    : "Mostrar respuesta";
   renderReviewCard(card, false);
   resetSwipeVisuals({ animate: false });
   updateReviewAccessUI(card);
@@ -2702,6 +3183,7 @@ function exitReviewPlayer() {
   state.sessionActive = false;
   state.sessionTotal = 0;
   state.reviewShowingBack = false;
+  state.reviewOrder = null;
   state.sessionEnding = false;
   state.reviewFolderOwnerUid = null;
   state.reviewFolderRole = null;
@@ -2877,6 +3359,8 @@ async function importBlocks(blocks, options = {}) {
         back: card.back,
         clozeText: card.clozeText,
         clozeAnswers: card.clozeAnswers || [],
+        orderTokens: card.orderTokens || [],
+        orderAnswer: card.orderAnswer || [],
         tags: tagsToMap(card.tags || block.tags || []),
       });
       summary.processedCards += 1;
