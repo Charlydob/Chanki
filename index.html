@@ -463,51 +463,87 @@
     </div>
 
     <div id="card-modal" class="overlay hidden">
-      <div class="modal">
-        <h2 id="card-modal-title">Nueva tarjeta</h2>
-        <label class="field">
-          <span>Tipo</span>
-          <select id="card-type">
-            <option value="basic">Basic</option>
-            <option value="cloze">Cloze</option>
-            <option value="order">Order</option>
-          </select>
-        </label>
-        <label class="field" id="card-basic-front-field">
-          <span>Frente</span>
-          <textarea id="card-front" rows="3"></textarea>
-        </label>
-        <label class="field" id="card-basic-back-field">
-          <span>Reverso</span>
-          <textarea id="card-back" rows="3"></textarea>
-        </label>
-        <label class="field hidden" id="card-cloze-text-field">
-          <span>Texto cloze (usa ____ para el hueco)</span>
-          <textarea id="card-cloze-text" rows="3"></textarea>
-        </label>
-        <label class="field hidden" id="card-cloze-answers-field">
-          <span>Respuestas (separa con | )</span>
-          <input id="card-cloze-answers" type="text" placeholder="antwort | Antwort2" />
-        </label>
-        <label class="field hidden" id="card-order-tokens-field">
-          <span>Tokens (separa con || )</span>
-          <textarea id="card-order-tokens" rows="3" placeholder="ich || gehe || nach Hause"></textarea>
-        </label>
-        <label class="field hidden" id="card-order-labels-field">
-          <span>Labels (separa con || )</span>
-          <textarea id="card-order-labels" rows="2" placeholder="Suj || V || CCL"></textarea>
-        </label>
-        <label class="field hidden" id="card-order-answer-field">
-          <span>Respuesta (índices o tokens)</span>
-          <input id="card-order-answer" type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
-        </label>
-        <label class="field">
-          <span>Tags (coma)</span>
-          <input id="card-tags" type="text" />
-        </label>
-        <div class="row">
-          <button id="save-card" class="button" type="button">Guardar</button>
-          <button id="cancel-card" class="button ghost" type="button">Cancelar</button>
+      <div class="modal modal-sheet">
+        <div class="modal__header modal__header--sticky">
+          <h2 id="card-modal-title">Nueva tarjeta</h2>
+          <button id="card-modal-close" class="icon-button" type="button" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="modal__body">
+          <label class="field">
+            <span>Tipo</span>
+            <select id="card-type">
+              <option value="basic">Basic</option>
+              <option value="cloze">Cloze</option>
+              <option value="order">Order</option>
+            </select>
+          </label>
+          <label class="field" id="card-basic-front-field">
+            <span>Frente</span>
+            <textarea id="card-front" rows="3"></textarea>
+          </label>
+          <label class="field" id="card-basic-back-field">
+            <span>Reverso</span>
+            <textarea id="card-back" rows="3"></textarea>
+          </label>
+          <label class="field hidden" id="card-cloze-text-field">
+            <span>Texto cloze (usa ____ para el hueco)</span>
+            <textarea id="card-cloze-text" rows="3"></textarea>
+          </label>
+          <label class="field hidden" id="card-cloze-answers-field">
+            <span>Respuestas (separa con | )</span>
+            <input id="card-cloze-answers" type="text" placeholder="antwort | Antwort2" />
+          </label>
+          <label class="field hidden" id="card-order-tokens-field">
+            <span>Tokens (separa con || )</span>
+            <textarea id="card-order-tokens" rows="3" placeholder="ich || gehe || nach Hause"></textarea>
+          </label>
+          <label class="field hidden" id="card-order-labels-field">
+            <span>Labels (separa con || )</span>
+            <textarea id="card-order-labels" rows="2" placeholder="Suj || V || CCL"></textarea>
+          </label>
+          <label class="field hidden" id="card-order-answer-field">
+            <span>Respuesta (índices o tokens)</span>
+            <input id="card-order-answer" type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
+          </label>
+          <details class="order-help hidden" id="card-order-help">
+            <summary>Ayuda: formato de ORDER</summary>
+            <div class="order-help__content">
+              <p><strong>Tokens</strong>: separados por <code>||</code>.</p>
+              <p><strong>Labels</strong>: misma cantidad que tokens.</p>
+              <p><strong>Answer</strong>: índices (0,1,2) o tokens en el orden correcto.</p>
+              <p>Ejemplo:</p>
+              <pre>ich || gehe || nach Hause</pre>
+              <pre>Suj || V || CCL</pre>
+              <pre>0,1,2</pre>
+            </div>
+          </details>
+          <div class="tags-panel tags-panel--collapsible is-collapsed" data-tags-scope="card" data-collapsed="true">
+            <div class="tags-panel__section">
+              <p class="tags-panel__label">Tags seleccionados</p>
+              <div class="tags-chip-row" data-tags-selected></div>
+            </div>
+            <button type="button" class="tags-panel__toggle" data-tags-toggle>
+              <span>Tags</span>
+              <span class="tags-panel__chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="tags-panel__content">
+              <label class="field tags-panel__search">
+                <span>Buscar / añadir</span>
+                <input id="card-tags" type="text" placeholder="escribe o busca tags" />
+              </label>
+              <div class="tags-panel__section">
+                <p class="tags-panel__label">Tags existentes</p>
+                <div class="tags-chip-row" data-tags-all></div>
+              </div>
+              <div class="tags-suggestions hidden" data-tags-suggestions></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer modal__footer--sticky">
+          <div class="row row--end">
+            <button id="save-card" class="button" type="button">Guardar</button>
+            <button id="cancel-card" class="button ghost" type="button">Cancelar</button>
+          </div>
         </div>
       </div>
     </div>

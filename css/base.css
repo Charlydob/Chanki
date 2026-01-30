@@ -771,11 +771,77 @@ textarea {
   max-width: 100%;
 }
 
+.modal-sheet {
+  padding: 0;
+  gap: 0;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 .modal__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.modal__header--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 16px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 20px;
+}
+
+.modal__footer--sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 18px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--glass-border);
+}
+
+.row--end {
+  justify-content: flex-end;
+}
+
+.order-help {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.35);
+  font-size: 14px;
+}
+
+.order-help summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.order-help__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.order-help pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
 }
 
 @keyframes modal-pop {
@@ -793,6 +859,26 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .overlay {
+    padding: 12px;
+  }
+
+  .modal-sheet {
+    border-radius: 18px;
+  }
+
+  .modal__header--sticky,
+  .modal__body,
+  .modal__footer--sticky {
+    padding: 12px 14px;
+  }
+
+  .modal__body {
+    gap: 10px;
+  }
 }
 
 .review-card {

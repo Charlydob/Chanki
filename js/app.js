@@ -95,7 +95,9 @@ let reviewEditClozeAnswers = null;
 let reviewEditOrderTokens = null;
 let reviewEditOrderLabels = null;
 let reviewEditOrderAnswer = null;
+let reviewEditOrderHelp = null;
 let reviewEditCancel = null;
+let reviewEditClose = null;
 let reviewEditSave = null;
 let reviewEditOwnerUid = null;
 let reviewEditRole = null;
@@ -140,6 +142,72 @@ function parseOrderDelimitedInput(value) {
     .split("||")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function extractLanguageSegment(text, code) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  const regex = new RegExp(`${code}\\s*:\\s*`, "i");
+  const match = normalized.match(regex);
+  if (!match || match.index === undefined) return "";
+  const startIndex = match.index + match[0].length;
+  const rest = normalized.slice(startIndex).trim();
+  if (!rest) return "";
+  const nextMatch = rest.match(/\b[A-Z]{2}\s*:/);
+  if (nextMatch && nextMatch.index !== undefined) {
+    return rest.slice(0, nextMatch.index).trim();
+  }
+  return rest;
+}
+
+function parseLegacyOrderTokens(front) {
+  const normalized = String(front || "").replace(/\s+/g, " ").trim();
+  if (!/^order\s*:/i.test(normalized)) return [];
+  const tokenSection = normalized.replace(/^order\s*:\s*/i, "");
+  return tokenSection
+    .split("|")
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function guessLegacyOrderAnswer(tokens, phrase) {
+  const normalizedPhrase = String(phrase || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalizedPhrase) return null;
+  const positions = tokens.map((token) => {
+    const text = String(token.text || "").replace(/\s+/g, " ").trim().toLowerCase();
+    return { id: token.id, index: normalizedPhrase.indexOf(text) };
+  });
+  if (positions.some((entry) => entry.index === -1)) return null;
+  const uniquePositions = new Set(positions.map((entry) => entry.index));
+  if (uniquePositions.size !== positions.length) return null;
+  return positions.sort((a, b) => a.index - b.index).map((entry) => entry.id);
+}
+
+function buildLegacyOrderCard(card) {
+  if (!card || card.type !== "basic") return null;
+  const tokenTexts = parseLegacyOrderTokens(card.front || "");
+  if (!tokenTexts.length) return null;
+  const tokens = tokenTexts.map((text, index) => ({
+    id: `t${index}`,
+    text,
+    label: "—",
+  }));
+  const spanish = extractLanguageSegment(card.back || "", "ES") || String(card.back || "").trim();
+  const german = extractLanguageSegment(card.back || "", "DE");
+  const guessedAnswer = guessLegacyOrderAnswer(tokens, german);
+  const answer = guessedAnswer || tokens.map((token) => token.id);
+  return {
+    ...card,
+    type: "order",
+    front: spanish,
+    orderTokens: tokens,
+    orderAnswer: answer,
+    orderLegacy: !guessedAnswer,
+  };
+}
+
+function resolveLegacyOrderCard(card) {
+  return buildLegacyOrderCard(card) || card;
 }
 
 function parseOrderTokenEntry(entry, index) {
@@ -735,7 +803,7 @@ function parseMeaningInput(rawMeaning) {
 function refreshCurrentReviewCard() {
   const card = state.reviewQueue[state.currentIndex];
   if (!card) return;
-  renderReviewCard(card, state.reviewShowingBack);
+  renderReviewCard(resolveLegacyOrderCard(card), state.reviewShowingBack);
 }
 
 async function ensureVocabFolderIds() {
@@ -828,43 +896,45 @@ function renderBucketFilter() {
 }
 
 function getCardDedupeValues(card) {
-  if (card.type === "cloze") {
+  const resolvedCard = resolveLegacyOrderCard(card);
+  if (resolvedCard.type === "cloze") {
     return {
-      front: card.clozeText || "",
-      back: (card.clozeAnswers || []).join(" | "),
+      front: resolvedCard.clozeText || "",
+      back: (resolvedCard.clozeAnswers || []).join(" | "),
     };
   }
-  if (card.type === "order") {
-    const tokens = card.orderTokens || [];
+  if (resolvedCard.type === "order") {
+    const tokens = resolvedCard.orderTokens || [];
     const tokenMap = tokens.reduce((acc, token) => {
       if (token?.id) acc[token.id] = token.text || "";
       return acc;
     }, {});
-    const orderedTokens = (card.orderAnswer || []).map((id) => tokenMap[id] || "");
+    const orderedTokens = (resolvedCard.orderAnswer || []).map((id) => tokenMap[id] || "");
     return {
-      front: card.front || "",
+      front: resolvedCard.front || "",
       back: orderedTokens.filter(Boolean).join(" | "),
     };
   }
   return {
-    front: card.front || "",
-    back: card.back || "",
+    front: resolvedCard.front || "",
+    back: resolvedCard.back || "",
   };
 }
 
 function buildCardListItem(card, isDuplicate, readOnly) {
   const item = document.createElement("div");
   item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
-  const summary = card.type === "cloze"
-    ? `${card.clozeText || "(cloze sin texto)"}`
-    : card.type === "order"
-      ? `${card.front || "(orden sin frente)"}`
-      : `${card.front}`;
-  const detail = card.type === "cloze"
-    ? `Respuestas: ${(card.clozeAnswers || []).join(", ") || "-"}`
-    : card.type === "order"
-      ? `Orden: ${getCardDedupeValues(card).back || "-"}`
-      : `${card.back}`;
+  const resolvedCard = resolveLegacyOrderCard(card);
+  const summary = resolvedCard.type === "cloze"
+    ? `${resolvedCard.clozeText || "(cloze sin texto)"}`
+    : resolvedCard.type === "order"
+      ? `${resolvedCard.front || "(orden sin frente)"}`
+      : `${resolvedCard.front}`;
+  const detail = resolvedCard.type === "cloze"
+    ? `Respuestas: ${(resolvedCard.clozeAnswers || []).join(", ") || "-"}`
+    : resolvedCard.type === "order"
+      ? `Orden: ${getCardDedupeValues(resolvedCard).back || "-"}`
+      : `${resolvedCard.back}`;
   item.innerHTML = `
       <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
         <span class="item-icon" aria-hidden="true">
@@ -1109,25 +1179,26 @@ function updateLoadMoreVisibility(searching = false) {
 }
 
 function openCardModal(card = null) {
-  editingCardId = card ? card.id : null;
-  elements.cardModalTitle.textContent = card ? "Editar tarjeta" : "Nueva tarjeta";
-  const type = card?.type || "basic";
+  const resolvedCard = resolveLegacyOrderCard(card);
+  editingCardId = resolvedCard ? resolvedCard.id : null;
+  elements.cardModalTitle.textContent = resolvedCard ? "Editar tarjeta" : "Nueva tarjeta";
+  const type = resolvedCard?.type || "basic";
   elements.cardType.value = type;
-  elements.cardFront.value = card ? card.front || "" : "";
-  elements.cardBack.value = card ? card.back || "" : "";
-  elements.cardClozeText.value = card ? card.clozeText || "" : "";
-  elements.cardClozeAnswers.value = card ? (card.clozeAnswers || []).join(" | ") : "";
+  elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
+  elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
+  elements.cardClozeText.value = resolvedCard ? resolvedCard.clozeText || "" : "";
+  elements.cardClozeAnswers.value = resolvedCard ? (resolvedCard.clozeAnswers || []).join(" | ") : "";
   if (elements.cardOrderTokens) {
-    elements.cardOrderTokens.value = card ? formatOrderTokensInput(card) : "";
+    elements.cardOrderTokens.value = resolvedCard ? formatOrderTokensInput(resolvedCard) : "";
   }
   if (elements.cardOrderLabels) {
-    elements.cardOrderLabels.value = card ? formatOrderLabelsInput(card) : "";
+    elements.cardOrderLabels.value = resolvedCard ? formatOrderLabelsInput(resolvedCard) : "";
   }
   if (elements.cardOrderAnswer) {
-    elements.cardOrderAnswer.value = card ? buildOrderAnswerInput(card) : "";
+    elements.cardOrderAnswer.value = resolvedCard ? buildOrderAnswerInput(resolvedCard) : "";
   }
   elements.cardTags.value = "";
-  state.selectedTags = new Set(mapToTags(card?.tags || {}));
+  state.selectedTags = new Set(mapToTags(resolvedCard?.tags || {}));
   renderTagPanels();
   updateTagSuggestions("card", "");
   updateCardTypeFields(type);
@@ -1139,39 +1210,58 @@ function ensureReviewEditModal() {
   reviewEditModal = document.createElement("div");
   reviewEditModal.className = "overlay review-edit-modal hidden";
   reviewEditModal.innerHTML = `
-    <div class="modal">
-      <h2>Editar tarjeta</h2>
-      <label class="field" data-review-field="basic-front">
-        <span>Frente</span>
-        <textarea rows="3"></textarea>
-      </label>
-      <label class="field" data-review-field="basic-back">
-        <span>Reverso</span>
-        <textarea rows="3"></textarea>
-      </label>
-      <label class="field hidden" data-review-field="cloze-text">
-        <span>Texto cloze (usa ____ para el hueco)</span>
-        <textarea rows="3"></textarea>
-      </label>
-      <label class="field hidden" data-review-field="cloze-answers">
-        <span>Respuestas (separa con | )</span>
-        <input type="text" placeholder="antwort | Antwort2" />
-      </label>
-      <label class="field hidden" data-review-field="order-tokens">
-        <span>Tokens (separa con || )</span>
-        <textarea rows="3" placeholder="ich || gehe || nach Hause"></textarea>
-      </label>
-      <label class="field hidden" data-review-field="order-labels">
-        <span>Labels (separa con || )</span>
-        <textarea rows="2" placeholder="Suj || V || CCL"></textarea>
-      </label>
-      <label class="field hidden" data-review-field="order-answer">
-        <span>Respuesta (índices o tokens)</span>
-        <input type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
-      </label>
-      <div class="row">
-        <button class="button ghost" type="button" data-review-action="cancelar">Cancelar</button>
-        <button class="button" type="button" data-review-action="guardar">Guardar</button>
+    <div class="modal modal-sheet">
+      <div class="modal__header modal__header--sticky">
+        <h2>Editar tarjeta</h2>
+        <button class="icon-button" type="button" data-review-action="cerrar" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="modal__body">
+        <label class="field" data-review-field="basic-front">
+          <span>Frente</span>
+          <textarea rows="3"></textarea>
+        </label>
+        <label class="field" data-review-field="basic-back">
+          <span>Reverso</span>
+          <textarea rows="3"></textarea>
+        </label>
+        <label class="field hidden" data-review-field="cloze-text">
+          <span>Texto cloze (usa ____ para el hueco)</span>
+          <textarea rows="3"></textarea>
+        </label>
+        <label class="field hidden" data-review-field="cloze-answers">
+          <span>Respuestas (separa con | )</span>
+          <input type="text" placeholder="antwort | Antwort2" />
+        </label>
+        <label class="field hidden" data-review-field="order-tokens">
+          <span>Tokens (separa con || )</span>
+          <textarea rows="3" placeholder="ich || gehe || nach Hause"></textarea>
+        </label>
+        <label class="field hidden" data-review-field="order-labels">
+          <span>Labels (separa con || )</span>
+          <textarea rows="2" placeholder="Suj || V || CCL"></textarea>
+        </label>
+        <label class="field hidden" data-review-field="order-answer">
+          <span>Respuesta (índices o tokens)</span>
+          <input type="text" placeholder="0,1,2 o ich || gehe || nach Hause" />
+        </label>
+        <details class="order-help hidden" data-review-field="order-help">
+          <summary>Ayuda: formato de ORDER</summary>
+          <div class="order-help__content">
+            <p><strong>Tokens</strong>: separados por <code>||</code>.</p>
+            <p><strong>Labels</strong>: misma cantidad que tokens.</p>
+            <p><strong>Answer</strong>: índices (0,1,2) o tokens en el orden correcto.</p>
+            <p>Ejemplo:</p>
+            <pre>ich || gehe || nach Hause</pre>
+            <pre>Suj || V || CCL</pre>
+            <pre>0,1,2</pre>
+          </div>
+        </details>
+      </div>
+      <div class="modal__footer modal__footer--sticky">
+        <div class="row row--end">
+          <button class="button ghost" type="button" data-review-action="cancelar">Cancelar</button>
+          <button class="button" type="button" data-review-action="guardar">Guardar</button>
+        </div>
       </div>
     </div>
   `;
@@ -1183,6 +1273,7 @@ function ensureReviewEditModal() {
   const orderTokensField = reviewEditModal.querySelector("[data-review-field=\"order-tokens\"]");
   const orderLabelsField = reviewEditModal.querySelector("[data-review-field=\"order-labels\"]");
   const orderAnswerField = reviewEditModal.querySelector("[data-review-field=\"order-answer\"]");
+  reviewEditOrderHelp = reviewEditModal.querySelector("[data-review-field=\"order-help\"]");
   reviewEditFront = basicFrontField.querySelector("textarea");
   reviewEditBack = basicBackField.querySelector("textarea");
   reviewEditClozeText = clozeTextField.querySelector("textarea");
@@ -1191,9 +1282,11 @@ function ensureReviewEditModal() {
   reviewEditOrderLabels = orderLabelsField.querySelector("textarea");
   reviewEditOrderAnswer = orderAnswerField.querySelector("input");
   reviewEditCancel = reviewEditModal.querySelector("[data-review-action=\"cancelar\"]");
+  reviewEditClose = reviewEditModal.querySelector("[data-review-action=\"cerrar\"]");
   reviewEditSave = reviewEditModal.querySelector("[data-review-action=\"guardar\"]");
 
   reviewEditCancel.addEventListener("click", closeReviewEditModal);
+  reviewEditClose.addEventListener("click", closeReviewEditModal);
   reviewEditModal.addEventListener("click", (event) => {
     if (event.target === reviewEditModal) {
       closeReviewEditModal();
@@ -1205,25 +1298,26 @@ function ensureReviewEditModal() {
 function openReviewEditModal(card) {
   if (!card) return;
   ensureReviewEditModal();
-  console.log("EDIT open", card.id);
-  reviewEditCardId = card.id;
-  const context = getReviewCardContext(card);
+  const resolvedCard = resolveLegacyOrderCard(card);
+  console.log("EDIT open", resolvedCard.id);
+  reviewEditCardId = resolvedCard.id;
+  const context = getReviewCardContext(resolvedCard);
   reviewEditOwnerUid = context.ownerUid;
   reviewEditRole = context.role;
   reviewEditIsShared = context.isShared;
-  reviewEditType = card.type || "basic";
-  reviewEditFront.value = card.front || "";
-  reviewEditBack.value = card.back || "";
-  reviewEditClozeText.value = card.clozeText || "";
-  reviewEditClozeAnswers.value = (card.clozeAnswers || []).join(" | ");
+  reviewEditType = resolvedCard.type || "basic";
+  reviewEditFront.value = resolvedCard.front || "";
+  reviewEditBack.value = resolvedCard.back || "";
+  reviewEditClozeText.value = resolvedCard.clozeText || "";
+  reviewEditClozeAnswers.value = (resolvedCard.clozeAnswers || []).join(" | ");
   if (reviewEditOrderTokens) {
-    reviewEditOrderTokens.value = formatOrderTokensInput(card);
+    reviewEditOrderTokens.value = formatOrderTokensInput(resolvedCard);
   }
   if (reviewEditOrderLabels) {
-    reviewEditOrderLabels.value = formatOrderLabelsInput(card);
+    reviewEditOrderLabels.value = formatOrderLabelsInput(resolvedCard);
   }
   if (reviewEditOrderAnswer) {
-    reviewEditOrderAnswer.value = buildOrderAnswerInput(card);
+    reviewEditOrderAnswer.value = buildOrderAnswerInput(resolvedCard);
   }
   const isCloze = reviewEditType === "cloze";
   const isOrder = reviewEditType === "order";
@@ -1239,6 +1333,9 @@ function openReviewEditModal(card) {
   }
   if (reviewEditOrderAnswer) {
     reviewEditOrderAnswer.closest(".field").classList.toggle("hidden", !isOrder);
+  }
+  if (reviewEditOrderHelp) {
+    reviewEditOrderHelp.classList.toggle("hidden", !isOrder);
   }
   reviewEditModal.classList.remove("hidden");
   if (isCloze) {
@@ -1387,6 +1484,9 @@ function updateCardTypeFields(type) {
   }
   if (elements.cardOrderAnswerField) {
     elements.cardOrderAnswerField.classList.toggle("hidden", !isOrder);
+  }
+  if (elements.cardOrderHelp) {
+    elements.cardOrderHelp.classList.toggle("hidden", !isOrder);
   }
 }
 
@@ -2581,18 +2681,19 @@ function evaluateOrderState(orderState) {
 
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
+  const resolvedCard = resolveLegacyOrderCard(card);
   const wrapper = document.createElement("div");
   wrapper.className = showBack ? "review-text review-text--reveal" : "review-text";
-  const glossaryMap = buildGlossaryMap(card);
+  const glossaryMap = buildGlossaryMap(resolvedCard);
 
-  if (card.type === "cloze") {
+  if (resolvedCard.type === "cloze") {
     const frontSection = document.createElement("div");
     frontSection.className = "review-section";
     const frontLabel = document.createElement("span");
     frontLabel.className = "review-label";
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
-    const clozeTokens = tokenizeClozeText(card.clozeText || "");
+    const clozeTokens = tokenizeClozeText(resolvedCard.clozeText || "");
     const blankCount = clozeTokens.filter((token) => token.type === "blank").length;
     frontText.className = blankCount ? "review-front review-front--cloze" : "review-front";
     const answers = blankCount
@@ -2602,7 +2703,7 @@ function renderReviewCard(card, showBack = false) {
       : [state.reviewClozeAnswers[0] || ""];
     state.reviewClozeAnswers = answers;
     const inlineInputs = [];
-    const evaluation = showBack ? evaluateClozeAnswers(card, answers, blankCount) : null;
+    const evaluation = showBack ? evaluateClozeAnswers(resolvedCard, answers, blankCount) : null;
     const updateInlineSize = (input) => {
       const nextSize = Math.min(Math.max(input.value.length, 4), 16);
       input.size = nextSize;
@@ -2652,7 +2753,7 @@ function renderReviewCard(card, showBack = false) {
         blankIndex += 1;
       });
     } else {
-      frontText.appendChild(renderTextWithLanguage(card.clozeText || "", "de", glossaryMap));
+      frontText.appendChild(renderTextWithLanguage(resolvedCard.clozeText || "", "de", glossaryMap));
     }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -2666,21 +2767,21 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Respuesta";
       const answers = document.createElement("div");
       answers.className = "review-back";
-      answers.textContent = formatCardText((card.clozeAnswers || []).join(" | ")) || "-";
+      answers.textContent = formatCardText((resolvedCard.clozeAnswers || []).join(" | ")) || "-";
       backSection.appendChild(backLabel);
       backSection.appendChild(answers);
       wrapper.appendChild(backSection);
 
       const correct = blankCount
         ? evaluation?.correct
-        : isClozeCorrect(card, answers[0] || "");
+        : isClozeCorrect(resolvedCard, answers[0] || "");
       const feedback = document.createElement("div");
       feedback.className = "review-feedback";
       feedback.textContent = correct ? "Respuesta correcta." : "Respuesta incorrecta.";
       wrapper.appendChild(feedback);
     }
-  } else if (card.type === "order") {
-    const orderState = ensureOrderState(card);
+  } else if (resolvedCard.type === "order") {
+    const orderState = ensureOrderState(resolvedCard);
     const evaluation = showBack ? evaluateOrderState(orderState) : null;
     const frontSection = document.createElement("div");
     frontSection.className = "review-section";
@@ -2689,36 +2790,23 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Español";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(card.front || "", "es", glossaryMap));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     wrapper.appendChild(frontSection);
 
     const orderCard = document.createElement("div");
     orderCard.className = `order-card${showBack ? " order-card--locked" : ""}`;
-
-    const buildZone = (title, zoneClass) => {
-      const zone = document.createElement("div");
-      zone.className = `order-zone ${zoneClass}`;
-      const label = document.createElement("div");
-      label.className = "order-zone__label";
-      label.textContent = title;
-      zone.appendChild(label);
-      return { zone, label };
-    };
-
-    const slotZone = buildZone("Construcción", "order-zone--slots");
     const slotsList = document.createElement("div");
     slotsList.className = "order-slots";
-    slotZone.zone.appendChild(slotsList);
-
-    const bankZone = buildZone("Fragmentos", "order-zone--bank");
+    const bankSection = document.createElement("div");
+    bankSection.className = "order-bank";
     const bankRow = document.createElement("div");
-    bankRow.className = "order-chip-row";
-    bankZone.zone.appendChild(bankRow);
+    bankRow.className = "order-chip-row order-chip-row--bank";
+    bankSection.appendChild(bankRow);
 
-    orderCard.appendChild(slotZone.zone);
-    orderCard.appendChild(bankZone.zone);
+    orderCard.appendChild(slotsList);
+    orderCard.appendChild(bankSection);
 
     const controls = document.createElement("div");
     controls.className = "order-controls";
@@ -2729,7 +2817,7 @@ function renderReviewCard(card, showBack = false) {
     resetButton.disabled = showBack;
     resetButton.addEventListener("click", () => {
       resetOrderState(orderState);
-      renderReviewCard(card, false);
+      renderReviewCard(resolvedCard, false);
     });
     controls.appendChild(resetButton);
     orderCard.appendChild(controls);
@@ -2862,7 +2950,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(card.front || "", "de", glossaryMap));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     wrapper.appendChild(frontSection);
@@ -2875,7 +2963,7 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
       backText.className = "review-back";
-      backText.appendChild(renderBackWithLanguage(card.back || "", glossaryMap));
+      backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       wrapper.appendChild(backSection);
@@ -3148,10 +3236,11 @@ function showNextReviewCard() {
   state.reviewClozeAnswers = [];
   state.reviewOrder = null;
   state.reviewShowingBack = false;
-  elements.flipCard.textContent = card.type === "cloze" || card.type === "order"
+  const resolvedCard = resolveLegacyOrderCard(card);
+  elements.flipCard.textContent = resolvedCard.type === "cloze" || resolvedCard.type === "order"
     ? "Comprobar"
     : "Mostrar respuesta";
-  renderReviewCard(card, false);
+  renderReviewCard(resolvedCard, false);
   resetSwipeVisuals({ animate: false });
   updateReviewAccessUI(card);
   updateReviewRatingButtons(card);
@@ -3199,7 +3288,8 @@ function revealReviewAnswer() {
   if (inputs.length) {
     state.reviewClozeAnswers = Array.from(inputs, (input) => input.value);
   }
-  renderReviewCard(card, true);
+  const resolvedCard = resolveLegacyOrderCard(card);
+  renderReviewCard(resolvedCard, true);
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
   elements.flipCard.classList.add("hidden");
@@ -3560,25 +3650,33 @@ function handleSaveSettings() {
 }
 
 function ensureTagPanels() {
-  if (elements.cardTags?.dataset.tagsReady) return;
-  const cardField = elements.cardTags?.closest(".field");
-  if (cardField) {
-    const panel = document.createElement("div");
-    panel.className = "tags-panel";
-    panel.dataset.tagsScope = "card";
-    panel.innerHTML = `
-      <div class="tags-panel__section">
-        <p class="tags-panel__label">Tags seleccionados</p>
-        <div class="tags-chip-row" data-tags-selected></div>
-      </div>
-      <div class="tags-panel__section">
-        <p class="tags-panel__label">Tags existentes</p>
-        <div class="tags-chip-row" data-tags-all></div>
-      </div>
-      <div class="tags-suggestions hidden" data-tags-suggestions></div>
-    `;
-    cardField.insertAdjacentElement("afterend", panel);
-    elements.cardTags.dataset.tagsReady = "true";
+  const cardPanel = document.querySelector(".tags-panel[data-tags-scope=\"card\"]");
+  if (!elements.cardTags?.dataset.tagsReady) {
+    if (cardPanel) {
+      cardPanel.dataset.collapsed = cardPanel.dataset.collapsed || "true";
+      cardPanel.classList.toggle("is-collapsed", cardPanel.dataset.collapsed === "true");
+      elements.cardTags.dataset.tagsReady = "true";
+    } else {
+      const cardField = elements.cardTags?.closest(".field");
+      if (cardField) {
+        const panel = document.createElement("div");
+        panel.className = "tags-panel";
+        panel.dataset.tagsScope = "card";
+        panel.innerHTML = `
+          <div class="tags-panel__section">
+            <p class="tags-panel__label">Tags seleccionados</p>
+            <div class="tags-chip-row" data-tags-selected></div>
+          </div>
+          <div class="tags-panel__section">
+            <p class="tags-panel__label">Tags existentes</p>
+            <div class="tags-chip-row" data-tags-all></div>
+          </div>
+          <div class="tags-suggestions hidden" data-tags-suggestions></div>
+        `;
+        cardField.insertAdjacentElement("afterend", panel);
+        elements.cardTags.dataset.tagsReady = "true";
+      }
+    }
   }
 
   const reviewField = elements.reviewTags?.closest(".field");
@@ -3943,6 +4041,10 @@ elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);
 
+if (elements.cardModalClose) {
+  elements.cardModalClose.addEventListener("click", closeCardModal);
+}
+
 if (elements.reviewCard) {
   elements.reviewCard.addEventListener("click", (event) => {
     const wordEl = event.target.closest(".word");
@@ -4215,6 +4317,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (elements.reviewFolderModal && !elements.reviewFolderModal.classList.contains("hidden")) {
     showOverlay(elements.reviewFolderModal, false);
+  }
+  if (reviewEditModal && !reviewEditModal.classList.contains("hidden")) {
+    closeReviewEditModal();
   }
   if (wordPopover && !wordPopover.classList.contains("hidden")) {
     closeWordPopover();
