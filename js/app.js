@@ -2530,31 +2530,41 @@ function ensureOrderState(card) {
     tokens,
     tokenMap,
     bank: shuffle([...tokenIds]),
-    built: [],
+    slots: Array.from({ length: tokens.length }, () => null),
     answer: resolvedAnswer,
+    lastDroppedSlot: null,
   };
   return state.reviewOrder;
 }
 
 function resetOrderState(orderState) {
   orderState.bank = shuffle([...orderState.tokens.map((token) => token.id)]);
-  orderState.built = [];
+  orderState.slots = Array.from({ length: orderState.tokens.length }, () => null);
+  orderState.lastDroppedSlot = null;
 }
 
 function moveOrderToken(orderState, tokenId, destination, targetIndex = null) {
   if (!tokenId || !orderState.tokenMap[tokenId]) return;
-  const removeFrom = (list) => {
-    const index = list.indexOf(tokenId);
-    if (index !== -1) list.splice(index, 1);
-  };
-  removeFrom(orderState.bank);
-  removeFrom(orderState.built);
-  if (destination === "built") {
-    if (typeof targetIndex === "number" && targetIndex >= 0 && targetIndex <= orderState.built.length) {
-      orderState.built.splice(targetIndex, 0, tokenId);
-    } else {
-      orderState.built.push(tokenId);
+  const slotIndex = orderState.slots.indexOf(tokenId);
+  if (slotIndex !== -1) {
+    orderState.slots[slotIndex] = null;
+  }
+  const bankIndex = orderState.bank.indexOf(tokenId);
+  if (bankIndex !== -1) {
+    orderState.bank.splice(bankIndex, 1);
+  }
+  if (destination === "slot") {
+    if (typeof targetIndex !== "number" || targetIndex < 0 || targetIndex >= orderState.slots.length) return;
+    const existingToken = orderState.slots[targetIndex];
+    if (existingToken && existingToken !== tokenId) {
+      if (slotIndex !== -1 && slotIndex !== targetIndex) {
+        orderState.slots[slotIndex] = existingToken;
+      } else {
+        orderState.bank.push(existingToken);
+      }
     }
+    orderState.slots[targetIndex] = tokenId;
+    orderState.lastDroppedSlot = targetIndex;
   } else {
     orderState.bank.push(tokenId);
   }
@@ -2562,12 +2572,11 @@ function moveOrderToken(orderState, tokenId, destination, targetIndex = null) {
 
 function evaluateOrderState(orderState) {
   const expected = orderState.answer || [];
-  const built = orderState.built || [];
-  const results = expected.map((id, index) => built[index] === id);
-  const correct = results.length === built.length
-    && built.length === expected.length
-    && results.every(Boolean);
-  return { correct, results };
+  const slots = orderState.slots || [];
+  const results = expected.map((id, index) => slots[index] === id);
+  const filled = slots.length === expected.length && slots.every(Boolean);
+  const correct = filled && results.every(Boolean);
+  return { correct, results, filled };
 }
 
 function renderReviewCard(card, showBack = false) {
@@ -2694,16 +2703,21 @@ function renderReviewCard(card, showBack = false) {
       const label = document.createElement("div");
       label.className = "order-zone__label";
       label.textContent = title;
-      const chips = document.createElement("div");
-      chips.className = "order-chip-row";
       zone.appendChild(label);
-      zone.appendChild(chips);
-      return { zone, chips };
+      return { zone, label };
     };
 
-    const builtZone = buildZone("Construcción", "order-zone--built");
-    const bankZone = buildZone("Banco", "order-zone--bank");
-    orderCard.appendChild(builtZone.zone);
+    const slotZone = buildZone("Construcción", "order-zone--slots");
+    const slotsList = document.createElement("div");
+    slotsList.className = "order-slots";
+    slotZone.zone.appendChild(slotsList);
+
+    const bankZone = buildZone("Fragmentos", "order-zone--bank");
+    const bankRow = document.createElement("div");
+    bankRow.className = "order-chip-row";
+    bankZone.zone.appendChild(bankRow);
+
+    orderCard.appendChild(slotZone.zone);
     orderCard.appendChild(bankZone.zone);
 
     const controls = document.createElement("div");
@@ -2720,48 +2734,64 @@ function renderReviewCard(card, showBack = false) {
     controls.appendChild(resetButton);
     orderCard.appendChild(controls);
 
-    const renderChips = () => {
-      builtZone.chips.innerHTML = "";
-      bankZone.chips.innerHTML = "";
-      orderState.built.forEach((tokenId, index) => {
-        const token = orderState.tokenMap[tokenId];
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "order-chip";
+    const buildChip = (token, zone, index) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "order-chip";
+      chip.dataset.id = token.id;
+      chip.dataset.zone = zone;
+      chip.dataset.index = String(index);
+      chip.draggable = !showBack;
+      chip.innerHTML = `
+        <span class="order-chip__text"></span>
+        <span class="order-chip__label"></span>
+      `;
+      chip.querySelector(".order-chip__text").textContent = token.text;
+      chip.querySelector(".order-chip__label").textContent = token.label;
+      return chip;
+    };
+
+    const renderSlots = () => {
+      slotsList.innerHTML = "";
+      orderState.slots.forEach((tokenId, index) => {
+        const slot = document.createElement("div");
+        slot.className = "order-slot";
+        slot.dataset.index = String(index);
         if (showBack && evaluation) {
-          chip.classList.add(
-            evaluation.results[index] ? "order-chip--correct" : "order-chip--incorrect"
+          slot.classList.add(
+            evaluation.results[index] ? "order-slot--correct" : "order-slot--incorrect"
           );
         }
-        chip.dataset.id = tokenId;
-        chip.dataset.zone = "built";
-        chip.dataset.index = String(index);
-        chip.draggable = !showBack;
-        chip.innerHTML = `
-          <span class="order-chip__text"></span>
-          <span class="order-chip__label"></span>
-        `;
-        chip.querySelector(".order-chip__text").textContent = token.text;
-        chip.querySelector(".order-chip__label").textContent = token.label;
-        builtZone.chips.appendChild(chip);
+        if (orderState.lastDroppedSlot === index) {
+          slot.classList.add("order-slot--drop");
+        }
+        if (tokenId) {
+          const token = orderState.tokenMap[tokenId];
+          const chip = buildChip(token, "slot", index);
+          slot.appendChild(chip);
+        } else {
+          const placeholder = document.createElement("div");
+          placeholder.className = "order-slot__placeholder";
+          placeholder.textContent = " ";
+          slot.appendChild(placeholder);
+        }
+        slotsList.appendChild(slot);
       });
+      orderState.lastDroppedSlot = null;
+    };
+
+    const renderBank = () => {
+      bankRow.innerHTML = "";
       orderState.bank.forEach((tokenId, index) => {
         const token = orderState.tokenMap[tokenId];
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "order-chip";
-        chip.dataset.id = tokenId;
-        chip.dataset.zone = "bank";
-        chip.dataset.index = String(index);
-        chip.draggable = !showBack;
-        chip.innerHTML = `
-          <span class="order-chip__text"></span>
-          <span class="order-chip__label"></span>
-        `;
-        chip.querySelector(".order-chip__text").textContent = token.text;
-        chip.querySelector(".order-chip__label").textContent = token.label;
-        bankZone.chips.appendChild(chip);
+        const chip = buildChip(token, "bank", index);
+        bankRow.appendChild(chip);
       });
+    };
+
+    const renderOrderLayout = () => {
+      renderSlots();
+      renderBank();
     };
 
     const handleChipClick = (event) => {
@@ -2771,11 +2801,13 @@ function renderReviewCard(card, showBack = false) {
       const tokenId = chip.dataset.id;
       const zone = chip.dataset.zone;
       if (zone === "bank") {
-        moveOrderToken(orderState, tokenId, "built");
+        const nextIndex = orderState.slots.findIndex((slotId) => !slotId);
+        if (nextIndex === -1) return;
+        moveOrderToken(orderState, tokenId, "slot", nextIndex);
       } else {
         moveOrderToken(orderState, tokenId, "bank");
       }
-      renderChips();
+      renderOrderLayout();
     };
 
     const handleDragStart = (event) => {
@@ -2787,18 +2819,13 @@ function renderReviewCard(card, showBack = false) {
       event.dataTransfer?.setData("text/index", chip.dataset.index || "");
     };
 
-    const handleDrop = (event, destination) => {
+    const handleDrop = (event, destination, targetIndex = null) => {
       if (showBack) return;
       event.preventDefault();
       const tokenId = event.dataTransfer?.getData("text/plain");
       if (!tokenId) return;
-      let targetIndex = null;
-      const targetChip = event.target.closest(".order-chip");
-      if (targetChip && destination === "built") {
-        targetIndex = Number(targetChip.dataset.index);
-      }
       moveOrderToken(orderState, tokenId, destination, targetIndex);
-      renderChips();
+      renderOrderLayout();
     };
 
     const allowDrop = (event) => {
@@ -2808,12 +2835,17 @@ function renderReviewCard(card, showBack = false) {
 
     orderCard.addEventListener("click", handleChipClick);
     orderCard.addEventListener("dragstart", handleDragStart);
-    builtZone.chips.addEventListener("dragover", allowDrop);
-    bankZone.chips.addEventListener("dragover", allowDrop);
-    builtZone.chips.addEventListener("drop", (event) => handleDrop(event, "built"));
-    bankZone.chips.addEventListener("drop", (event) => handleDrop(event, "bank"));
+    slotsList.addEventListener("dragover", allowDrop);
+    bankRow.addEventListener("dragover", allowDrop);
+    slotsList.addEventListener("drop", (event) => {
+      const slot = event.target.closest(".order-slot");
+      if (!slot) return;
+      const targetIndex = Number(slot.dataset.index);
+      handleDrop(event, "slot", targetIndex);
+    });
+    bankRow.addEventListener("drop", (event) => handleDrop(event, "bank"));
 
-    renderChips();
+    renderOrderLayout();
     wrapper.appendChild(orderCard);
 
     if (showBack && evaluation) {
