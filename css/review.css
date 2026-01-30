@@ -77,23 +77,9 @@
 .order-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   margin-top: 12px;
-}
-
-.order-zone {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px dashed rgba(148, 163, 184, 0.5);
-  border-radius: 16px;
-  padding: 12px;
-}
-
-.order-zone__label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 8px;
+  width: 100%;
 }
 
 .order-chip-row {
@@ -103,27 +89,34 @@
   min-height: 44px;
 }
 
+.order-chip-row--bank {
+  justify-content: center;
+}
+
+.order-bank {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .order-slots {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .order-slot {
   display: flex;
   align-items: center;
-  min-height: 48px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.35);
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.18s ease;
+  min-height: 44px;
+  padding: 6px 4px;
+  border-bottom: 2px solid rgba(148, 163, 184, 0.5);
+  transition: border-color 0.2s ease, transform 0.18s ease;
 }
 
 .order-slot__placeholder {
   width: 100%;
-  height: 18px;
-  border-bottom: 2px solid rgba(148, 163, 184, 0.5);
+  height: 20px;
 }
 
 .order-slot--drop {
@@ -131,13 +124,11 @@
 }
 
 .order-slot--correct {
-  border-color: color-mix(in srgb, var(--success) 75%, transparent);
-  background: color-mix(in srgb, var(--success) 12%, rgba(15, 23, 42, 0.3));
+  border-bottom-color: color-mix(in srgb, var(--success) 75%, transparent);
 }
 
 .order-slot--incorrect {
-  border-color: color-mix(in srgb, var(--danger) 75%, transparent);
-  background: color-mix(in srgb, var(--danger) 10%, rgba(15, 23, 42, 0.3));
+  border-bottom-color: color-mix(in srgb, var(--danger) 75%, transparent);
 }
 
 .order-chip {
