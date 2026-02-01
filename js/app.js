@@ -37,6 +37,7 @@ import {
   createOrUpdateVocabCard,
   listenTagsIndex,
   normalizeFolderPath,
+  normalizeFoldersSnapshot,
 } from "../lib/rtdb.js";
 import { parseChankiImport } from "../lib/parser.js";
 import { computeNextSrs } from "../lib/srs.js";
@@ -2016,8 +2017,19 @@ async function initFolders() {
   }
   const db = getDb();
   activeUnsubscribe = listenFolders(db, state.username, (folders) => {
-    state.folders = folders || {};
-    renderFolders();
+    normalizeFoldersSnapshot(db, state.username, folders || {})
+      .then((result) => {
+        state.folders = result.folders || {};
+        if (result.repaired) {
+          console.info(`Reparadas ${result.repaired} carpetas con datos incompletos.`);
+        }
+        renderFolders();
+      })
+      .catch((error) => {
+        console.error("No se pudo normalizar carpetas", error);
+        state.folders = folders || {};
+        renderFolders();
+      });
   });
 }
 
