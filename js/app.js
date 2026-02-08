@@ -1,12 +1,15 @@
 import { getDb } from "../lib/firebase.js";
 import {
   listenFolders,
+  listenManualFolders,
   listenFolderById,
   listenSharedFoldersByUser,
   listenFolderShares,
   createFolder,
+  createManualFolder,
   updateFolder,
   deleteFolder,
+  deleteManualFolder,
   upsertCardWithDedupe,
   updateCard,
   deleteCard,
@@ -14,10 +17,12 @@ import {
   getOrCreateFolderByPath,
   fetchCardsByFolder,
   fetchCardsByFolderId,
+  fetchManualCardsByFolder,
   fetchCardsByFolderPathCompat,
   fetchCardsByFolderQueue,
   fetchCardsForSearch,
   fetchCard,
+  upsertManualCard,
   fetchFolders,
   fetchSampleCards,
   updateReview,
@@ -88,6 +93,7 @@ console.log(
 
 let editingCardId = null;
 let activeUnsubscribe = null;
+let manualFoldersUnsubscribe = null;
 let editingFolderId = null;
 let wordPopover = null;
 let wordPopoverTitle = null;
@@ -139,7 +145,7 @@ const swipeState = {
   pointerId: null,
   action: null,
 };
-const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee"];
+const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee", "#2dd4bf", "#fb7185", "#f59e0b"];
 const ORDER_DEFAULT_LABELS = ["Suj", "V", "CCL", "CD", "CI"];
 const orderEditorState = {
   chunks: [],
@@ -532,6 +538,131 @@ function renderOrderEditor() {
   syncOrderHiddenFields();
 }
 
+
+function findLabelById(labelId) {
+  return (orderEditorState.labelsCatalog || []).find((label) => label.id === labelId) || null;
+}
+
+function removeLabelAssignments(labelId) {
+  Object.keys(orderEditorState.tokenLabels || {}).forEach((tokenId) => {
+    if (orderEditorState.tokenLabels[tokenId] === labelId) {
+      delete orderEditorState.tokenLabels[tokenId];
+    }
+  });
+}
+
+function openEditLabelModal(labelId) {
+  const label = findLabelById(labelId);
+  if (!label) return;
+  const modal = document.getElementById("order-label-modal");
+  if (!modal) return;
+  const textInput = document.getElementById("order-label-text");
+  const swatches = document.getElementById("order-label-swatches");
+  const saveBtn = document.getElementById("order-label-save");
+  const deleteBtn = document.getElementById("order-label-delete");
+  const cancelBtn = document.getElementById("order-label-cancel");
+  if (!textInput || !swatches || !saveBtn || !deleteBtn || !cancelBtn) return;
+  textInput.value = label.text || "";
+  swatches.innerHTML = "";
+  let selectedColor = label.color || ORDER_LABEL_COLORS[0];
+  ORDER_LABEL_COLORS.forEach((color) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `order-color-swatch${selectedColor === color ? " is-active" : ""}`;
+    chip.style.setProperty("--swatch-color", color);
+    chip.dataset.color = color;
+    chip.addEventListener("click", () => {
+      selectedColor = color;
+      swatches.querySelectorAll(".order-color-swatch").forEach((entry) => {
+        entry.classList.toggle("is-active", entry.dataset.color === color);
+      });
+    });
+    swatches.appendChild(chip);
+  });
+  const close = () => showOverlay(modal, false);
+  const onSave = () => {
+    label.text = textInput.value.trim() || label.text || "Label";
+    label.color = selectedColor;
+    renderOrderEditor();
+    close();
+    cleanup();
+  };
+  const onDelete = () => {
+    orderEditorState.labelsCatalog = (orderEditorState.labelsCatalog || []).filter((entry) => entry.id !== labelId);
+    removeLabelAssignments(labelId);
+    if (orderEditorState.activeLabelId === labelId) {
+      orderEditorState.activeLabelId = orderEditorState.labelsCatalog[0]?.id || null;
+    }
+    renderOrderEditor();
+    close();
+    cleanup();
+  };
+  const onCancel = () => {
+    close();
+    cleanup();
+  };
+  const cleanup = () => {
+    saveBtn.removeEventListener("click", onSave);
+    deleteBtn.removeEventListener("click", onDelete);
+    cancelBtn.removeEventListener("click", onCancel);
+  };
+  saveBtn.addEventListener("click", onSave);
+  deleteBtn.addEventListener("click", onDelete);
+  cancelBtn.addEventListener("click", onCancel);
+  showOverlay(modal, true);
+}
+
+function openChunkLabelMenu(tokenId) {
+  if (!tokenId) return;
+  const action = prompt("Acción: quitar / cambiar", "quitar");
+  if (!action) return;
+  if (action.toLowerCase().startsWith("q")) {
+    delete orderEditorState.tokenLabels[tokenId];
+    renderOrderEditor();
+    return;
+  }
+  if (!(orderEditorState.labelsCatalog || []).length) {
+    showToast("Crea un label primero", "error");
+    return;
+  }
+  const options = orderEditorState.labelsCatalog.map((label) => `${label.id}: ${label.text}`).join("
+");
+  const selected = prompt(`Label id:
+${options}`, orderEditorState.activeLabelId || "");
+  if (!selected) return;
+  const label = findLabelById(selected.trim());
+  if (!label) {
+    showToast("Label inválido", "error");
+    return;
+  }
+  orderEditorState.tokenLabels[tokenId] = label.id;
+  orderEditorState.activeLabelId = label.id;
+  renderOrderEditor();
+}
+
+function bindOrderLongPress(container, selector, callback) {
+  if (!container) return;
+  let timer = null;
+  let targetId = null;
+  const clear = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    targetId = null;
+  };
+  container.addEventListener("pointerdown", (event) => {
+    const target = event.target.closest(selector);
+    if (!target) return;
+    targetId = target.dataset.labelId || target.dataset.tokenId || null;
+    timer = setTimeout(() => {
+      if (targetId) callback(targetId);
+      clear();
+    }, 450);
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+    container.addEventListener(eventName, clear);
+  });
+}
+
 function getSafeAreaInset(side) {
   if (!side) return 0;
   const value = getComputedStyle(document.documentElement)
@@ -564,12 +695,17 @@ normalizeReviewBuckets();
 
 function resolveOwnedFolderId(value) {
   if (!value) return null;
+  if (state.manualFolders?.[value]) return value;
   if (state.folders[value]) return value;
   const normalized = normalizeFolderPath(String(value || ""));
-  const entries = Object.entries(state.folders || {});
-  const byId = entries.find(([, folder]) => folder?.id === value);
+  const manualEntries = Object.entries(state.manualFolders || {});
+  const manualById = manualEntries.find(([, folder]) => folder?.id === value);
+  if (manualById) return manualById[0];
+  const byId = Object.entries(state.folders || {}).find(([, folder]) => folder?.id === value);
   if (byId) return byId[0];
-  const byPath = entries.find(([, folder]) => normalizeFolderPath(folder?.path || folder?.name || "") === normalized);
+  const manualByPath = manualEntries.find(([, folder]) => normalizeFolderPath(folder?.path || folder?.name || "") === normalized);
+  if (manualByPath) return manualByPath[0];
+  const byPath = Object.entries(state.folders || {}).find(([, folder]) => normalizeFolderPath(folder?.path || folder?.name || "") === normalized);
   if (byPath) return byPath[0];
   return null;
 }
@@ -610,7 +746,7 @@ function getActiveFolderInfo() {
   const ref = getActiveFolderRef();
   if (!ref?.folderId) return null;
   if (!ref.isShared) {
-    return state.folders[ref.folderId];
+    return state.manualFolders?.[ref.folderId] || state.folders[ref.folderId];
   }
   const shareKey = `${ref.ownerUid}_${ref.folderId}`;
   return state.sharedFolders?.[shareKey] || null;
@@ -1983,6 +2119,17 @@ async function loadInitialFolderCards() {
   if (!activeRef?.folderId) return;
   const db = getDb();
   const { ownerUid, folderId } = activeRef;
+  const folderInfo = getActiveFolderInfo();
+  if (folderInfo?.source === "manual") {
+    const manualCards = await fetchManualCardsByFolder(db, ownerUid, folderId, 500);
+    state.cards = manualCards;
+    state.cardsCache = manualCards;
+    state.cardsLoadedIds = new Set(manualCards.map((card) => card.id));
+    state.cardsHasMore = false;
+    state.cardsPageCursor = null;
+    state.cardsLoadMode = "manual";
+    return;
+  }
   const queueResult = await fetchCardsByFolderQueue(
     db,
     ownerUid,
@@ -2008,7 +2155,6 @@ async function loadInitialFolderCards() {
     state.cardsLoadMode = "folderId";
     return;
   }
-  const folderInfo = getActiveFolderInfo();
   const folderPath = normalizeFolderPath(folderInfo?.path || folderInfo?.name || "");
   if (folderPath) {
     const legacyCards = await fetchCardsByFolderPathCompat(db, ownerUid, folderPath, 500);
@@ -2218,7 +2364,10 @@ async function loadSearchPool() {
   state.cardsSearchLoading = true;
   try {
     const db = getDb();
-    const cards = await fetchCardsForSearch(db, ownerUid, folderId, 200);
+    const folderInfo = getActiveFolderInfo();
+    const cards = folderInfo?.source === "manual"
+      ? await fetchManualCardsByFolder(db, ownerUid, folderId, 500)
+      : await fetchCardsForSearch(db, ownerUid, folderId, 200);
     state.cardsSearchPool = cards;
     state.cardsSearchFolderId = folderId;
     state.cardsSearchOwnerUid = ownerUid;
@@ -2245,12 +2394,34 @@ async function initFolders() {
   if (activeUnsubscribe) {
     activeUnsubscribe();
   }
+  if (manualFoldersUnsubscribe) {
+    manualFoldersUnsubscribe();
+    manualFoldersUnsubscribe = null;
+  }
   if (!state.username) {
     state.folders = {};
+    state.manualFolders = {};
     renderFolders();
     return;
   }
   const db = getDb();
+
+  manualFoldersUnsubscribe = listenManualFolders(db, state.username, (manualFolders) => {
+    const entries = Object.entries(manualFolders || {});
+    state.manualFolders = entries.reduce((acc, [key, folder]) => {
+      const id = folder?.id || key;
+      acc[id] = {
+        ...folder,
+        id,
+        name: folder?.name || "Carpeta",
+        path: folder?.path || folder?.name || "Carpeta",
+        source: "manual",
+      };
+      return acc;
+    }, {});
+    renderFolders();
+  });
+
   activeUnsubscribe = listenFolders(db, state.username, (folders) => {
     normalizeFoldersSnapshot(db, state.username, folders || {})
       .then((result) => {
@@ -2414,24 +2585,29 @@ function handleAddFolder() {
 async function handleFolderMenuAction(action, folderId) {
   const db = getDb();
   if (action === "rename") {
-    if (!state.folders[folderId]) {
+    if (!state.folders[folderId] && !state.manualFolders?.[folderId]) {
       showToast("Solo el owner puede renombrar.", "error");
       return;
     }
-    const folder = state.folders[folderId];
+    const folder = state.manualFolders?.[folderId] || state.folders[folderId];
     if (folder) {
       openFolderModal(folder);
     }
   }
   if (action === "delete") {
-    if (!state.folders[folderId]) {
+    if (!state.folders[folderId] && !state.manualFolders?.[folderId]) {
       showToast("Solo el owner puede borrar.", "error");
       return;
     }
+    const folder = state.manualFolders?.[folderId] || state.folders[folderId];
     const confirmDelete = confirm("¿Seguro? Esto no borra tarjetas asociadas.");
     if (confirmDelete) {
       try {
-        await deleteFolder(db, state.username, folderId);
+        if (folder?.source === "manual") {
+          await deleteManualFolder(db, state.username, folderId);
+        } else {
+          await deleteFolder(db, state.username, folderId);
+        }
         showToast("Guardado");
         if (state.selectedFolderId === folderId) {
           state.selectedFolderId = null;
@@ -2453,7 +2629,7 @@ async function handleFolderMenuAction(action, folderId) {
   }
   if (action === "share") {
     if (!state.folders[folderId]) {
-      showToast("Solo el owner puede compartir.", "error");
+      showToast("Solo carpetas importadas se comparten por ahora.", "error");
       return;
     }
     const folder = state.folders[folderId];
@@ -2480,12 +2656,16 @@ async function handleFolderAction(event) {
     const isShared = actionEl.dataset.shared === "true";
     const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
     const resolvedFolderId = isShared ? folderId : (resolveOwnedFolderId(folderId) || folderId);
+    const selectedFolder = !isShared
+      ? (state.manualFolders?.[resolvedFolderId] || state.folders[resolvedFolderId] || null)
+      : null;
     state.selectedFolderId = resolvedFolderId;
     state.activeFolderRef = {
       ownerUid,
       folderId: resolvedFolderId,
       role,
       isShared,
+      source: selectedFolder?.source || "import",
     };
     state.cardsSearchPool = [];
     state.cardsSearchFolderId = null;
@@ -2636,7 +2816,7 @@ async function handleSaveFolder() {
     if (editingFolderId) {
       await updateFolder(db, state.username, editingFolderId, { name });
     } else {
-      await createFolder(db, state.username, { name });
+      await createManualFolder(db, state.username, { name, source: "manual" });
     }
     showToast("Guardado");
     closeFolderModal();
@@ -2758,9 +2938,31 @@ async function handleSaveCard() {
   const selectedTags = dedupeTags([...state.selectedTags]);
   const finalTags = dedupeTags([...selectedTags, ...tags]);
   const db = getDb();
+  const activeFolder = getActiveFolderInfo();
+  const isManualFolder = activeFolder?.source === "manual";
+
   if (editingCardId) {
     try {
-      const result = await updateCard(db, ownerUid, editingCardId, {
+      if (isManualFolder) {
+        const existing = state.cards.find((item) => item.id === editingCardId) || {};
+        await upsertManualCard(db, ownerUid, state.selectedFolderId, {
+          ...existing,
+          id: editingCardId,
+          type,
+          front,
+          back,
+          clozeText,
+          clozeAnswers,
+          orderTokens,
+          orderAnswer,
+          orderLabelsCatalog,
+          orderTokenLabels,
+          labels: legacyOrderLabels,
+          tags: tagsToMap(finalTags),
+        });
+        showToast("Guardado");
+      } else {
+        const result = await updateCard(db, ownerUid, editingCardId, {
         type,
         front,
         back,
@@ -2773,11 +2975,12 @@ async function handleSaveCard() {
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
       });
-      if (result?.status === "duplicate") {
-        showToast("Duplicado omitido.");
-        return;
+        if (result?.status === "duplicate") {
+          showToast("Duplicado omitido.");
+          return;
+        }
+        showToast("Guardado");
       }
-      showToast("Guardado");
     } catch (error) {
       handleErrorToast(error, "Error al guardar tarjeta.");
       return;
@@ -2785,7 +2988,25 @@ async function handleSaveCard() {
   } else {
     const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
     try {
-      const result = await upsertCardWithDedupe(db, ownerUid, {
+      if (isManualFolder) {
+        await upsertManualCard(db, ownerUid, state.selectedFolderId, {
+          id,
+          folderId: state.selectedFolderId,
+          type,
+          front,
+          back,
+          clozeText,
+          clozeAnswers,
+          orderTokens,
+          orderAnswer,
+          orderLabelsCatalog,
+          orderTokenLabels,
+          labels: legacyOrderLabels,
+          tags: tagsToMap(finalTags),
+        });
+        showToast("Guardado");
+      } else {
+        const result = await upsertCardWithDedupe(db, ownerUid, {
         id,
         folderId: state.selectedFolderId,
         type,
@@ -2800,12 +3021,13 @@ async function handleSaveCard() {
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
       });
-      if (result.status === "duplicate") {
-        showToast("Duplicado omitido.");
-      } else if (result.status === "updated") {
-        showToast("Tarjeta actualizada.");
-      } else {
-        showToast("Guardado");
+        if (result.status === "duplicate") {
+          showToast("Duplicado omitido.");
+        } else if (result.status === "updated") {
+          showToast("Tarjeta actualizada.");
+        } else {
+          showToast("Guardado");
+        }
       }
     } catch (error) {
       handleErrorToast(error, "Error al crear tarjeta.");
@@ -4199,6 +4421,13 @@ if (elements.folderModal) {
   });
 }
 
+const orderLabelModal = document.getElementById("order-label-modal");
+if (orderLabelModal) {
+  orderLabelModal.addEventListener("click", (event) => {
+    if (event.target === orderLabelModal) showOverlay(orderLabelModal, false);
+  });
+}
+
 if (elements.shareModal) {
   elements.shareModal.addEventListener("click", (event) => {
     if (event.target === elements.shareModal) {
@@ -4347,6 +4576,9 @@ if (cardOrderLabelChips) {
     orderEditorState.activeLabelId = chip.dataset.labelId;
     renderOrderEditor();
   });
+  bindOrderLongPress(cardOrderLabelChips, "[data-label-id]", (labelId) => {
+    openEditLabelModal(labelId);
+  });
 }
 
 if (cardOrderTokenChips) {
@@ -4355,43 +4587,21 @@ if (cardOrderTokenChips) {
     if (!chip) return;
     const tokenId = chip.dataset.tokenId;
     if (!tokenId) return;
-    if (orderEditorState.activeLabelId) {
-      orderEditorState.tokenLabels[tokenId] = orderEditorState.activeLabelId;
+    if (!orderEditorState.activeLabelId) {
+      showToast("Elige un label");
+      return;
     }
-    if (orderEditorState.selectedTokenIds.has(tokenId)) {
-      orderEditorState.selectedTokenIds.delete(tokenId);
-    } else {
-      orderEditorState.selectedTokenIds.add(tokenId);
-    }
+    orderEditorState.tokenLabels[tokenId] = orderEditorState.activeLabelId;
     renderOrderEditor();
   });
   cardOrderTokenChips.addEventListener("contextmenu", (event) => {
     const chip = event.target.closest("[data-token-id]");
     if (!chip) return;
     event.preventDefault();
-    const tokenId = chip.dataset.tokenId;
-    if (!tokenId) return;
-    const action = prompt("Acción: quitar / cambiar", "quitar");
-    if (!action) return;
-    if (action.toLowerCase().startsWith("q")) {
-      delete orderEditorState.tokenLabels[tokenId];
-      renderOrderEditor();
-      return;
-    }
-    const labelText = prompt("Nuevo label", "");
-    if (!labelText) return;
-    let label = (orderEditorState.labelsCatalog || []).find((entry) => entry.text.toLowerCase() === labelText.toLowerCase());
-    if (!label) {
-      label = {
-        id: `lbl_${Date.now()}`,
-        text: labelText.trim(),
-        color: ORDER_LABEL_COLORS[(orderEditorState.labelsCatalog || []).length % ORDER_LABEL_COLORS.length],
-      };
-      orderEditorState.labelsCatalog.push(label);
-    }
-    orderEditorState.tokenLabels[tokenId] = label.id;
-    orderEditorState.activeLabelId = label.id;
-    renderOrderEditor();
+    openChunkLabelMenu(chip.dataset.tokenId);
+  });
+  bindOrderLongPress(cardOrderTokenChips, "[data-token-id]", (tokenId) => {
+    openChunkLabelMenu(tokenId);
   });
 }
 
@@ -4420,6 +4630,7 @@ if (cardOrderGroupButton) {
     if (mergedLabel) orderEditorState.tokenLabels[mergedId] = mergedLabel;
     orderEditorState.selectedTokenIds = new Set([mergedId]);
     renderOrderEditor();
+    showToast("Agrupado.");
   });
 }
 
@@ -4445,6 +4656,7 @@ if (cardOrderUngroupButton) {
     if (labelId) replacements.forEach((item) => { orderEditorState.tokenLabels[item.id] = labelId; });
     orderEditorState.selectedTokenIds = new Set(replacements.map((item) => item.id));
     renderOrderEditor();
+    showToast("Desagrupado.");
   });
 }
 

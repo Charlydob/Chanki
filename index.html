@@ -614,6 +614,26 @@
       </div>
     </div>
 
+
+    <div id="order-label-modal" class="overlay hidden">
+      <div class="modal modal-sheet order-label-modal">
+        <h2>Editar label</h2>
+        <label class="field">
+          <span>Texto</span>
+          <input id="order-label-text" type="text" maxlength="32" />
+        </label>
+        <div class="field">
+          <span>Color</span>
+          <div id="order-label-swatches" class="order-label-swatches"></div>
+        </div>
+        <div class="row row--end">
+          <button id="order-label-delete" class="button ghost danger" type="button">Eliminar</button>
+          <button id="order-label-cancel" class="button ghost" type="button">Cancelar</button>
+          <button id="order-label-save" class="button" type="button">Guardar</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toast-container" class="toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>

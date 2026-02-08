@@ -33,6 +33,7 @@ export const state = {
   username: localStorage.getItem("chanki_username") || "",
   deviceId: ensureDeviceId(),
   folders: {},
+  manualFolders: {},
   selectedFolderId: null,
   activeFolderRef: null,
   cards: [],
