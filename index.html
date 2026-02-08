@@ -494,13 +494,22 @@
             <input id="card-cloze-answers" type="text" placeholder="antwort | Antwort2" />
           </label>
           <label class="field hidden" id="card-order-tokens-field">
-            <span>Chunks/TOKENS (separa con ||)</span>
-            <textarea id="card-order-tokens" rows="3" placeholder="ich || gehe || nach Hause"></textarea>
-            <button id="card-order-split" class="button ghost small" type="button">Dividir TARGET_DE por espacios</button>
+            <span>Chunks/TOKENS</span>
+            <div id="card-order-editor" class="order-editor">
+              <div class="order-editor__toolbar">
+                <button id="card-order-split" class="button ghost small" type="button">Dividir TARGET_DE</button>
+                <button id="card-order-group" class="button ghost small" type="button">Agrupar</button>
+                <button id="card-order-ungroup" class="button ghost small" type="button">Desagrupar</button>
+              </div>
+              <div id="card-order-token-chips" class="order-editor__tokens"></div>
+            </div>
+            <textarea id="card-order-tokens" class="sr-only" rows="3" placeholder="ich || gehe || nach Hause"></textarea>
           </label>
           <label class="field hidden" id="card-order-labels-field">
-            <span>Labels (opcional, separa con ||)</span>
-            <textarea id="card-order-labels" rows="2" placeholder="Suj || V || CCL"></textarea>
+            <span>Labels</span>
+            <div id="card-order-label-chips" class="order-editor__labels"></div>
+            <button id="card-order-add-label" class="button ghost small" type="button">+ Label</button>
+            <textarea id="card-order-labels" class="sr-only" rows="2" placeholder="Suj || V || CCL"></textarea>
           </label>
           <label class="field hidden" id="card-order-answer-field">
             <span>Respuesta</span>

@@ -14,6 +14,7 @@ import {
   getOrCreateFolderByPath,
   fetchCardsByFolder,
   fetchCardsByFolderId,
+  fetchCardsByFolderPathCompat,
   fetchCardsByFolderQueue,
   fetchCardsForSearch,
   fetchCard,
@@ -138,6 +139,15 @@ const swipeState = {
   pointerId: null,
   action: null,
 };
+const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee"];
+const ORDER_DEFAULT_LABELS = ["Suj", "V", "CCL", "CD", "CI"];
+const orderEditorState = {
+  chunks: [],
+  labelsCatalog: [],
+  tokenLabels: {},
+  selectedTokenIds: new Set(),
+  activeLabelId: null,
+};
 
 function shuffle(list) {
   for (let i = list.length - 1; i > 0; i -= 1) {
@@ -233,29 +243,90 @@ function parseOrderTokenEntry(entry, index) {
   return { id: `t${index}`, text: entry.trim() };
 }
 
-function buildOrderTokens(tokensInput, labelsInput) {
-  const tokensRaw = parseOrderDelimitedInput(tokensInput);
-  const labelsRaw = parseOrderDelimitedInput(labelsInput);
+function buildOrderTokens(tokensInput, labelsInput, uiState = null) {
   const errors = [];
-  if (!tokensRaw.length) {
-    errors.push("Añade tokens/chunks para ordenar.");
-  }
   const tokens = [];
   const idSet = new Set();
-  tokensRaw.forEach((tokenEntry, index) => {
-    const parsed = parseOrderTokenEntry(tokenEntry, index);
-    let id = parsed.id || `t${index}`;
-    if (idSet.has(id)) {
-      id = `t${index}_${Math.random().toString(16).slice(2, 6)}`;
-    }
-    idSet.add(id);
-    tokens.push({
-      id,
-      text: parsed.text || "",
-      label: labelsRaw[index] || "",
+  let labelsCatalog = [];
+  let tokenLabels = {};
+
+  if (uiState?.chunks?.length) {
+    labelsCatalog = (uiState.labelsCatalog || []).map((label) => ({
+      id: label.id,
+      text: label.text,
+      color: label.color,
+    }));
+    tokenLabels = { ...(uiState.tokenLabels || {}) };
+    uiState.chunks.forEach((chunk, index) => {
+      let id = chunk.id || `t${index}`;
+      if (idSet.has(id)) {
+        id = `t${index}_${Math.random().toString(16).slice(2, 6)}`;
+      }
+      idSet.add(id);
+      tokens.push({ id, text: chunk.text || "", label: "" });
     });
+  } else {
+    const tokensRaw = parseOrderDelimitedInput(tokensInput);
+    const labelsRaw = parseOrderDelimitedInput(labelsInput);
+    tokensRaw.forEach((tokenEntry, index) => {
+      const parsed = parseOrderTokenEntry(tokenEntry, index);
+      let id = parsed.id || `t${index}`;
+      if (idSet.has(id)) {
+        id = `t${index}_${Math.random().toString(16).slice(2, 6)}`;
+      }
+      idSet.add(id);
+      tokens.push({
+        id,
+        text: parsed.text || "",
+        label: labelsRaw[index] || "",
+      });
+    });
+    labelsCatalog = labelsRaw.filter(Boolean).map((label, index) => ({
+      id: `legacy_${index}`,
+      text: label,
+      color: ORDER_LABEL_COLORS[index % ORDER_LABEL_COLORS.length],
+    }));
+    tokenLabels = tokens.reduce((acc, token, index) => {
+      if (!token.label) return acc;
+      const found = labelsCatalog.find((label) => label.text === token.label);
+      if (found) acc[token.id] = found.id;
+      else acc[token.id] = `legacy_${index}`;
+      return acc;
+    }, {});
+  }
+
+  if (!tokens.length) {
+    errors.push("Añade tokens/chunks para ordenar.");
+  }
+
+  const labelById = labelsCatalog.reduce((acc, label) => {
+    acc[label.id] = label;
+    return acc;
+  }, {});
+  const normalizedTokenLabels = {};
+  tokens.forEach((token, index) => {
+    const labelId = tokenLabels[token.id];
+    if (labelId && labelById[labelId]) {
+      normalizedTokenLabels[token.id] = labelId;
+      token.label = labelById[labelId].text;
+    } else if (token.label) {
+      // compat legacy
+      const compatLabel = labelsCatalog.find((label) => label.text === token.label);
+      if (compatLabel) {
+        normalizedTokenLabels[token.id] = compatLabel.id;
+      } else {
+        const fallbackId = `legacy_${index}`;
+        normalizedTokenLabels[token.id] = fallbackId;
+      }
+    }
   });
-  return { tokens, errors };
+
+  return {
+    tokens,
+    errors,
+    labelsCatalog,
+    tokenLabels: normalizedTokenLabels,
+  };
 }
 
 function buildOrderAnswer(answerInput, tokens) {
@@ -335,6 +406,132 @@ function formatOrderLabelsInput(card) {
   return (card?.orderTokens || []).map((token) => token.label || "").join(" || ");
 }
 
+
+function buildLegacyOrderLabelCompat(card) {
+  const tokens = card?.orderTokens || [];
+  if (!tokens.length) {
+    return { labelsCatalog: [], tokenLabels: {} };
+  }
+  if (Array.isArray(card?.orderLabelsCatalog) && card?.orderLabelsCatalog.length && card?.orderTokenLabels) {
+    return {
+      labelsCatalog: card.orderLabelsCatalog,
+      tokenLabels: card.orderTokenLabels,
+    };
+  }
+  const legacyLabels = parseOrderDelimitedInput(card?.labels || "");
+  if (!legacyLabels.length) {
+    const uniqueFromTokens = [...new Set(tokens.map((token) => token.label).filter(Boolean))];
+    const labelsCatalog = uniqueFromTokens.map((text, index) => ({
+      id: `lbl_${index}`,
+      text,
+      color: ORDER_LABEL_COLORS[index % ORDER_LABEL_COLORS.length],
+    }));
+    const byText = labelsCatalog.reduce((acc, label) => {
+      acc[label.text] = label.id;
+      return acc;
+    }, {});
+    const tokenLabels = tokens.reduce((acc, token) => {
+      const id = byText[token.label];
+      if (id) acc[token.id] = id;
+      return acc;
+    }, {});
+    return { labelsCatalog, tokenLabels };
+  }
+  if (legacyLabels.length !== tokens.length) {
+    return { labelsCatalog: [], tokenLabels: {} };
+  }
+  const labelsCatalog = [];
+  const labelByText = {};
+  const tokenLabels = {};
+  legacyLabels.forEach((text, index) => {
+    if (!labelByText[text]) {
+      const id = `lbl_${labelsCatalog.length}`;
+      labelByText[text] = id;
+      labelsCatalog.push({
+        id,
+        text,
+        color: ORDER_LABEL_COLORS[labelsCatalog.length % ORDER_LABEL_COLORS.length],
+      });
+    }
+    tokenLabels[tokens[index].id] = labelByText[text];
+  });
+  return { labelsCatalog, tokenLabels };
+}
+
+function hydrateOrderEditorState(card = null) {
+  const resolved = resolveLegacyOrderCard(card || {});
+  const tokens = (resolved?.orderTokens || []).map((token, index) => ({
+    id: token.id || `t${index}`,
+    text: token.text || "",
+  }));
+  const compat = buildLegacyOrderLabelCompat(resolved || {});
+  const labelsCatalog = compat.labelsCatalog.length
+    ? compat.labelsCatalog
+    : ORDER_DEFAULT_LABELS.map((text, index) => ({
+      id: `default_${index}`,
+      text,
+      color: ORDER_LABEL_COLORS[index % ORDER_LABEL_COLORS.length],
+    }));
+  const tokenLabels = { ...(compat.tokenLabels || {}) };
+  orderEditorState.chunks = tokens;
+  orderEditorState.labelsCatalog = labelsCatalog;
+  orderEditorState.tokenLabels = tokenLabels;
+  orderEditorState.selectedTokenIds = new Set();
+  orderEditorState.activeLabelId = labelsCatalog[0]?.id || null;
+}
+
+function syncOrderHiddenFields() {
+  if (elements.cardOrderTokens) {
+    elements.cardOrderTokens.value = orderEditorState.chunks.map((chunk) => chunk.text).join(" || ");
+  }
+  if (elements.cardOrderLabels) {
+    const labelMap = (orderEditorState.labelsCatalog || []).reduce((acc, label) => {
+      acc[label.id] = label.text;
+      return acc;
+    }, {});
+    elements.cardOrderLabels.value = orderEditorState.chunks
+      .map((chunk) => labelMap[orderEditorState.tokenLabels[chunk.id]] || "")
+      .join(" || ");
+  }
+  if (elements.cardOrderAnswer) {
+    elements.cardOrderAnswer.value = orderEditorState.chunks.map((chunk) => chunk.id).join(",");
+  }
+}
+
+function renderOrderEditor() {
+  const tokenWrap = document.getElementById("card-order-token-chips");
+  const labelWrap = document.getElementById("card-order-label-chips");
+  if (!tokenWrap || !labelWrap) return;
+  tokenWrap.innerHTML = "";
+  labelWrap.innerHTML = "";
+  const labelsById = (orderEditorState.labelsCatalog || []).reduce((acc, label) => {
+    acc[label.id] = label;
+    return acc;
+  }, {});
+  (orderEditorState.labelsCatalog || []).forEach((label) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `order-editor-chip${orderEditorState.activeLabelId === label.id ? " is-active" : ""}`;
+    chip.dataset.labelId = label.id;
+    chip.style.setProperty("--chip-color", label.color || "#60a5fa");
+    chip.textContent = label.text;
+    labelWrap.appendChild(chip);
+  });
+  (orderEditorState.chunks || []).forEach((chunk) => {
+    const label = labelsById[orderEditorState.tokenLabels[chunk.id]];
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `order-editor-token${orderEditorState.selectedTokenIds.has(chunk.id) ? " is-selected" : ""}`;
+    chip.dataset.tokenId = chunk.id;
+    if (label?.color) chip.style.setProperty("--token-label-color", label.color);
+    chip.innerHTML = `<span class="order-editor-token__text"></span><span class="order-editor-token__label"></span>`;
+    chip.querySelector(".order-editor-token__text").textContent = chunk.text;
+    chip.querySelector(".order-editor-token__label").textContent = label?.text || "Sin label";
+    tokenWrap.appendChild(chip);
+  });
+  syncOrderHiddenFields();
+}
+
 function getSafeAreaInset(side) {
   if (!side) return 0;
   const value = getComputedStyle(document.documentElement)
@@ -364,6 +561,18 @@ function normalizeReviewBuckets() {
 }
 
 normalizeReviewBuckets();
+
+function resolveOwnedFolderId(value) {
+  if (!value) return null;
+  if (state.folders[value]) return value;
+  const normalized = normalizeFolderPath(String(value || ""));
+  const entries = Object.entries(state.folders || {});
+  const byId = entries.find(([, folder]) => folder?.id === value);
+  if (byId) return byId[0];
+  const byPath = entries.find(([, folder]) => normalizeFolderPath(folder?.path || folder?.name || "") === normalized);
+  if (byPath) return byPath[0];
+  return null;
+}
 
 function getActiveFolderRef() {
   if (state.activeFolderRef?.folderId) {
@@ -1204,6 +1413,8 @@ function openCardModal(card = null) {
   if (elements.cardOrderAnswer) {
     elements.cardOrderAnswer.value = resolvedCard ? buildOrderAnswerInput(resolvedCard) : "";
   }
+  hydrateOrderEditorState(resolvedCard);
+  renderOrderEditor();
   elements.cardTags.value = "";
   state.selectedTags = new Set(mapToTags(resolvedCard?.tags || {}));
   renderTagPanels();
@@ -1397,6 +1608,9 @@ async function handleReviewEditSave() {
   }
   let orderTokens = [];
   let orderAnswer = [];
+  let orderLabelsCatalog = [];
+  let orderTokenLabels = {};
+  let legacyOrderLabels = "";
   if (reviewEditType === "order") {
     if (!nextFront) {
       showToast("Completa FRONT_ES.", "error");
@@ -1413,6 +1627,9 @@ async function handleReviewEditSave() {
     }
     orderTokens = orderTokensResult.tokens;
     orderAnswer = orderTokens.map((token) => token.id);
+    orderLabelsCatalog = orderTokensResult.labelsCatalog;
+    orderTokenLabels = orderTokensResult.tokenLabels;
+    legacyOrderLabels = elements.cardOrderLabels ? elements.cardOrderLabels.value : "";
   }
   try {
     const result = await updateCard(db, ownerUid, reviewEditCardId, {
@@ -1423,6 +1640,9 @@ async function handleReviewEditSave() {
       clozeAnswers: nextClozeAnswers,
       orderTokens,
       orderAnswer,
+      orderLabelsCatalog,
+      orderTokenLabels,
+      labels: legacyOrderLabels,
     });
     if (result?.status === "duplicate") {
       showToast("Duplicado omitido.");
@@ -1439,6 +1659,9 @@ async function handleReviewEditSave() {
         clozeAnswers: nextClozeAnswers,
         orderTokens,
         orderAnswer,
+        orderLabelsCatalog,
+        orderTokenLabels,
+        labels: legacyOrderLabels,
       };
     };
     state.reviewQueue = state.reviewQueue.map(updateCardLocal);
@@ -1454,6 +1677,9 @@ async function handleReviewEditSave() {
         clozeAnswers: nextClozeAnswers,
         orderTokens,
         orderAnswer,
+        orderLabelsCatalog,
+        orderTokenLabels,
+        labels: legacyOrderLabels,
       });
     }
     if (reviewEditType === "order") {
@@ -1781,6 +2007,20 @@ async function loadInitialFolderCards() {
     state.cardsPageCursor = null;
     state.cardsLoadMode = "folderId";
     return;
+  }
+  const folderInfo = getActiveFolderInfo();
+  const folderPath = normalizeFolderPath(folderInfo?.path || folderInfo?.name || "");
+  if (folderPath) {
+    const legacyCards = await fetchCardsByFolderPathCompat(db, ownerUid, folderPath, 500);
+    if (legacyCards.length) {
+      state.cards = legacyCards;
+      state.cardsCache = legacyCards;
+      state.cardsLoadedIds = new Set(legacyCards.map((card) => card.id));
+      state.cardsHasMore = false;
+      state.cardsPageCursor = null;
+      state.cardsLoadMode = "folderPathCompat";
+      return;
+    }
   }
   state.cardsLoadMode = "paged";
   await loadMoreCardsPage();
@@ -2239,10 +2479,11 @@ async function handleFolderAction(event) {
     const ownerUid = actionEl.dataset.ownerUid || state.username;
     const isShared = actionEl.dataset.shared === "true";
     const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
-    state.selectedFolderId = folderId;
+    const resolvedFolderId = isShared ? folderId : (resolveOwnedFolderId(folderId) || folderId);
+    state.selectedFolderId = resolvedFolderId;
     state.activeFolderRef = {
       ownerUid,
-      folderId,
+      folderId: resolvedFolderId,
       role,
       isShared,
     };
@@ -2490,6 +2731,9 @@ async function handleSaveCard() {
   }
   let orderTokens = [];
   let orderAnswer = [];
+  let orderLabelsCatalog = [];
+  let orderTokenLabels = {};
+  let legacyOrderLabels = "";
   if (type === "order") {
     if (!front) {
       showToast("Completa FRONT_ES.", "error");
@@ -2499,13 +2743,16 @@ async function handleSaveCard() {
       showToast("Completa TARGET_DE.", "error");
       return;
     }
-    const orderTokensResult = buildOrderTokens(orderTokensInput, orderLabelsInput);
+    const orderTokensResult = buildOrderTokens(orderTokensInput, orderLabelsInput, orderEditorState);
     if (orderTokensResult.errors.length) {
       showToast(orderTokensResult.errors.join(" "), "error");
       return;
     }
     orderTokens = orderTokensResult.tokens;
     orderAnswer = orderTokens.map((token) => token.id);
+    orderLabelsCatalog = orderTokensResult.labelsCatalog;
+    orderTokenLabels = orderTokensResult.tokenLabels;
+    legacyOrderLabels = elements.cardOrderLabels ? elements.cardOrderLabels.value : "";
   }
   const tags = normalizeTags(elements.cardTags.value);
   const selectedTags = dedupeTags([...state.selectedTags]);
@@ -2521,6 +2768,9 @@ async function handleSaveCard() {
         clozeAnswers,
         orderTokens,
         orderAnswer,
+        orderLabelsCatalog,
+        orderTokenLabels,
+        labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
       });
       if (result?.status === "duplicate") {
@@ -2545,6 +2795,9 @@ async function handleSaveCard() {
         clozeAnswers,
         orderTokens,
         orderAnswer,
+        orderLabelsCatalog,
+        orderTokenLabels,
+        labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
       });
       if (result.status === "duplicate") {
@@ -4061,6 +4314,12 @@ if (elements.cardType) {
 }
 
 const cardOrderSplitButton = document.getElementById("card-order-split");
+const cardOrderGroupButton = document.getElementById("card-order-group");
+const cardOrderUngroupButton = document.getElementById("card-order-ungroup");
+const cardOrderAddLabelButton = document.getElementById("card-order-add-label");
+const cardOrderTokenChips = document.getElementById("card-order-token-chips");
+const cardOrderLabelChips = document.getElementById("card-order-label-chips");
+
 if (cardOrderSplitButton) {
   cardOrderSplitButton.addEventListener("click", () => {
     const target = String(elements.cardBack?.value || "").trim();
@@ -4073,10 +4332,142 @@ if (cardOrderSplitButton) {
       showToast("No se pudieron extraer tokens.", "error");
       return;
     }
-    if (elements.cardOrderTokens) {
-      elements.cardOrderTokens.value = chunks.join(" || ");
-    }
+    orderEditorState.chunks = chunks.map((text, index) => ({ id: `t${index}`, text }));
+    orderEditorState.tokenLabels = {};
+    orderEditorState.selectedTokenIds = new Set();
+    renderOrderEditor();
     showToast(`Generados ${chunks.length} chunks.`);
+  });
+}
+
+if (cardOrderLabelChips) {
+  cardOrderLabelChips.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-label-id]");
+    if (!chip) return;
+    orderEditorState.activeLabelId = chip.dataset.labelId;
+    renderOrderEditor();
+  });
+}
+
+if (cardOrderTokenChips) {
+  cardOrderTokenChips.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-token-id]");
+    if (!chip) return;
+    const tokenId = chip.dataset.tokenId;
+    if (!tokenId) return;
+    if (orderEditorState.activeLabelId) {
+      orderEditorState.tokenLabels[tokenId] = orderEditorState.activeLabelId;
+    }
+    if (orderEditorState.selectedTokenIds.has(tokenId)) {
+      orderEditorState.selectedTokenIds.delete(tokenId);
+    } else {
+      orderEditorState.selectedTokenIds.add(tokenId);
+    }
+    renderOrderEditor();
+  });
+  cardOrderTokenChips.addEventListener("contextmenu", (event) => {
+    const chip = event.target.closest("[data-token-id]");
+    if (!chip) return;
+    event.preventDefault();
+    const tokenId = chip.dataset.tokenId;
+    if (!tokenId) return;
+    const action = prompt("Acción: quitar / cambiar", "quitar");
+    if (!action) return;
+    if (action.toLowerCase().startsWith("q")) {
+      delete orderEditorState.tokenLabels[tokenId];
+      renderOrderEditor();
+      return;
+    }
+    const labelText = prompt("Nuevo label", "");
+    if (!labelText) return;
+    let label = (orderEditorState.labelsCatalog || []).find((entry) => entry.text.toLowerCase() === labelText.toLowerCase());
+    if (!label) {
+      label = {
+        id: `lbl_${Date.now()}`,
+        text: labelText.trim(),
+        color: ORDER_LABEL_COLORS[(orderEditorState.labelsCatalog || []).length % ORDER_LABEL_COLORS.length],
+      };
+      orderEditorState.labelsCatalog.push(label);
+    }
+    orderEditorState.tokenLabels[tokenId] = label.id;
+    orderEditorState.activeLabelId = label.id;
+    renderOrderEditor();
+  });
+}
+
+if (cardOrderGroupButton) {
+  cardOrderGroupButton.addEventListener("click", () => {
+    const selectedIds = orderEditorState.chunks
+      .map((chunk) => chunk.id)
+      .filter((id) => orderEditorState.selectedTokenIds.has(id));
+    if (selectedIds.length < 2) {
+      showToast("Selecciona al menos 2 tokens contiguos.", "error");
+      return;
+    }
+    const indexes = selectedIds.map((id) => orderEditorState.chunks.findIndex((chunk) => chunk.id === id));
+    const min = Math.min(...indexes);
+    const max = Math.max(...indexes);
+    if (max - min + 1 !== selectedIds.length) {
+      showToast("Solo se pueden agrupar tokens contiguos.", "error");
+      return;
+    }
+    const group = orderEditorState.chunks.slice(min, max + 1);
+    const mergedText = group.map((chunk) => chunk.text).join(" ");
+    const mergedId = `t${Date.now()}`;
+    const mergedLabel = orderEditorState.tokenLabels[group[0].id] || null;
+    orderEditorState.chunks.splice(min, group.length, { id: mergedId, text: mergedText });
+    group.forEach((chunk) => delete orderEditorState.tokenLabels[chunk.id]);
+    if (mergedLabel) orderEditorState.tokenLabels[mergedId] = mergedLabel;
+    orderEditorState.selectedTokenIds = new Set([mergedId]);
+    renderOrderEditor();
+  });
+}
+
+if (cardOrderUngroupButton) {
+  cardOrderUngroupButton.addEventListener("click", () => {
+    const selectedId = [...orderEditorState.selectedTokenIds][0];
+    if (!selectedId) {
+      showToast("Selecciona un chunk agrupado.", "error");
+      return;
+    }
+    const index = orderEditorState.chunks.findIndex((chunk) => chunk.id === selectedId);
+    if (index < 0) return;
+    const chunk = orderEditorState.chunks[index];
+    const parts = String(chunk.text || "").split(/\s+/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) {
+      showToast("Ese chunk no se puede desagrupar.", "error");
+      return;
+    }
+    const labelId = orderEditorState.tokenLabels[selectedId];
+    delete orderEditorState.tokenLabels[selectedId];
+    const replacements = parts.map((text, idx) => ({ id: `${selectedId}_${idx}`, text }));
+    orderEditorState.chunks.splice(index, 1, ...replacements);
+    if (labelId) replacements.forEach((item) => { orderEditorState.tokenLabels[item.id] = labelId; });
+    orderEditorState.selectedTokenIds = new Set(replacements.map((item) => item.id));
+    renderOrderEditor();
+  });
+}
+
+if (cardOrderAddLabelButton) {
+  cardOrderAddLabelButton.addEventListener("click", () => {
+    const text = prompt("Nuevo label", "");
+    if (!text) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const existing = (orderEditorState.labelsCatalog || []).find((label) => label.text.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      orderEditorState.activeLabelId = existing.id;
+      renderOrderEditor();
+      return;
+    }
+    const label = {
+      id: `lbl_${Date.now()}`,
+      text: trimmed,
+      color: ORDER_LABEL_COLORS[(orderEditorState.labelsCatalog || []).length % ORDER_LABEL_COLORS.length],
+    };
+    orderEditorState.labelsCatalog.push(label);
+    orderEditorState.activeLabelId = label.id;
+    renderOrderEditor();
   });
 }
 
