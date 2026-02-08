@@ -804,12 +804,25 @@ function bind(el, event, fn, label = "") {
 }
 
 function mountFoldersView() {
-  if (!elements.folderTree) {
-    console.warn("folderTree missing (view not mounted yet)");
+  const root = document.querySelector("#folder-tree")
+    || document.querySelector("#foldersScreen")
+    || document.querySelector("[data-screen='folders']")
+    || elements.folderTree;
+  if (!root) {
+    console.warn("[mountFoldersView] folder container missing; skipping mount");
     return;
   }
-  mountFoldersScreen(elements.folderTree);
-  elements.folderTree.onclick = handleFolderAction;
+  mountFoldersScreen(root);
+  root.onclick = handleFolderAction;
+}
+
+function isScreenActive(name) {
+  return !!document.querySelector(`#screen-${name}.active`);
+}
+
+function requestFoldersRender() {
+  if (!isScreenActive("folders")) return;
+  renderFolders();
 }
 
 const clickActions = {
@@ -833,13 +846,10 @@ function setActiveScreen(name) {
     screens: elements.screens,
     tabs: elements.tabs,
     setReviewMode,
-    onFoldersMount: () => mountFoldersScreen(elements.folderTree),
+    onFoldersMount: () => mountFoldersView(),
     onCardsMount: () => mountCardsView(document.getElementById("screen-cards")),
     onReviewMount: () => mountReviewView(document.getElementById("screen-review")),
   });
-  if (name === "folders") {
-    mountFoldersView();
-  }
 }
 
 function closeAllMenus() {
@@ -1359,6 +1369,10 @@ function buildCardListItem(card, isDuplicate, readOnly) {
 
 function renderCards() {
   const list = elements.cardsList;
+  if (!list) {
+    console.warn("[renderCards] container missing; skipping render");
+    return;
+  }
   list.innerHTML = "";
   const searchQuery = normalizeSearchQuery(state.cardsSearchQuery);
   const searching = Boolean(searchQuery);
@@ -1469,6 +1483,10 @@ function renderCardsView() {
 
 function renderCardsFromList(cards, searching = false) {
   const list = elements.cardsList;
+  if (!list) {
+    console.warn("[renderCardsFromList] container missing; skipping render");
+    return;
+  }
   list.innerHTML = "";
   const filteredCards = cards;
   if (!filteredCards.length) {
@@ -2424,7 +2442,7 @@ async function initFolders() {
   if (!state.username) {
     state.folders = {};
     state.manualFolders = {};
-    renderFolders();
+    requestFoldersRender();
     return;
   }
   const db = getDb();
@@ -2442,7 +2460,7 @@ async function initFolders() {
       };
       return acc;
     }, {});
-    renderFolders();
+    requestFoldersRender();
   });
 
   activeUnsubscribe = listenFolders(db, state.username, (folders) => {
@@ -2452,12 +2470,12 @@ async function initFolders() {
         if (result.repaired) {
           console.info(`Reparadas ${result.repaired} carpetas con datos incompletos.`);
         }
-        renderFolders();
+        requestFoldersRender();
       })
       .catch((error) => {
         console.error("No se pudo normalizar carpetas", error);
         state.folders = folders || {};
-        renderFolders();
+        requestFoldersRender();
       });
   });
 }
@@ -2481,7 +2499,7 @@ async function initSharedFolders() {
     state.sharedFolderRefs = {};
     sharedFolderListeners.forEach((unsubscribe) => unsubscribe());
     sharedFolderListeners.clear();
-    renderFolders();
+    requestFoldersRender();
     return;
   }
   const db = getDb();
@@ -2517,7 +2535,7 @@ async function initSharedFolders() {
           cardCount: folder?.cardCount,
           updatedAt: folder?.updatedAt,
         };
-        renderFolders();
+        requestFoldersRender();
         if (
           state.activeFolderRef?.isShared
           && state.activeFolderRef.ownerUid === ownerUid
@@ -2567,7 +2585,7 @@ async function initSharedFolders() {
         updateFolderAccessUI();
       }
     }
-    renderFolders();
+    requestFoldersRender();
   });
 }
 
@@ -2577,7 +2595,7 @@ async function loadUsersPublic() {
   try {
     const users = await fetchUsersPublic(db);
     state.usersPublic = users || {};
-    renderFolders();
+    requestFoldersRender();
   } catch (error) {
     handleErrorToast(error, "No se pudo cargar usuarios.");
   }
@@ -3127,6 +3145,10 @@ function ensureOrderState(card) {
 }
 
 function renderReviewCard(card, showBack = false) {
+  if (!elements.reviewCard) {
+    console.warn("[renderReviewCard] container missing; skipping render");
+    return;
+  }
   elements.reviewCard.innerHTML = "";
   const resolvedCard = resolveLegacyOrderCard(card);
   const wrapper = document.createElement("div");
