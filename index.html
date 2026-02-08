@@ -22,14 +22,14 @@
           <span class="brand__dot"></span>
           <h1>CHANKI</h1>
         </div>
-        <div id="status" data-role="status" class="status"></div>
+        <div id="status" class="status"></div>
       </header>
 
       <main class="app__main">
         <section id="screen-folders" class="screen active">
           <div class="screen__header">
             <h2>Carpetas</h2>
-            <button id="add-folder" class="button" data-action="add-folder">Nueva carpeta</button>
+            <button id="add-folder" class="button">Nueva carpeta</button>
           </div>
           <div id="folder-tree" class="list"></div>
         </section>
@@ -53,7 +53,7 @@
             </div>
             <div class="screen__header-actions">
               <button id="import-folder" class="button ghost" type="button">Importar aquí</button>
-              <button id="add-card" class="button" type="button" data-action="add-card">Nueva tarjeta</button>
+              <button id="add-card" class="button" type="button">Nueva tarjeta</button>
             </div>
           </div>
           <div class="cards-search">
@@ -614,29 +614,9 @@
       </div>
     </div>
 
-
-    <div id="order-label-modal" class="overlay hidden">
-      <div class="modal modal-sheet order-label-modal">
-        <h2>Editar label</h2>
-        <label class="field">
-          <span>Texto</span>
-          <input id="order-label-text" type="text" maxlength="32" />
-        </label>
-        <div class="field">
-          <span>Color</span>
-          <div id="order-label-swatches" class="order-label-swatches"></div>
-        </div>
-        <div class="row row--end">
-          <button id="order-label-delete" class="button ghost danger" type="button">Eliminar</button>
-          <button id="order-label-cancel" class="button ghost" type="button">Cancelar</button>
-          <button id="order-label-save" class="button" type="button">Guardar</button>
-        </div>
-      </div>
-    </div>
-
     <div id="toast-container" class="toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
-    <script type="module" src="./js/bootstrap.js"></script>
+    <script type="module" src="./js/app.js"></script>
   </body>
 </html>
