@@ -138,7 +138,16 @@ export function renderFolderSelects() {
 }
 
 export function renderFolders() {
-  const container = elements.folderTree;
+  const container =
+    document.querySelector("#folder-tree")
+    || document.querySelector("#foldersScreen")
+    || document.querySelector("[data-screen='folders']")
+    || document.querySelector("#screen")
+    || document.querySelector("#app");
+  if (!container) {
+    console.warn("[renderFolders] container missing; skipping render");
+    return;
+  }
   container.innerHTML = "";
   const manualList = buildManualFolderList();
   const folderList = buildOwnedFolderList();
