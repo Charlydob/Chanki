@@ -1,13 +1,46 @@
-import { elements, state } from "../shared.js";
+import { elements, normalizeSearchQuery, state } from "../shared.js";
 import { refreshReviewBucketCounts } from "./review.js";
 
-// moved from app.js
+function buildOwnedFolderList() {
+  return Object.entries(state.folders || {}).map(([folderKey, folder]) => {
+    const id = folder?.id || folderKey;
+    const path = folder?.path || folder?.name || "";
+    const name = folder?.name || path || "Carpeta";
+    return {
+      ...folder,
+      id,
+      path,
+      name,
+      _search: normalizeSearchQuery(`${name} ${path}`),
+    };
+  });
+}
+
+function buildSharedFolderList() {
+  return Object.entries(state.sharedFolders || {})
+    .map(([shareKey, folder]) => {
+      const folderId = folder?.folderId || folder?.id;
+      const name = folder?.name || folder?.path || "Carpeta";
+      const path = folder?.path || name;
+      return {
+        ...folder,
+        shareKey,
+        folderId,
+        name,
+        path,
+        _search: normalizeSearchQuery(`${name} ${path}`),
+      };
+    })
+    .filter((folder) => folder.folderId);
+}
+
 export function renderFolderSelects() {
   const options = elements.reviewFolderOptions;
   if (!options) return;
   options.innerHTML = "";
   const selected = new Set(state.reviewSelectedFolderIds || []);
   const allChecked = selected.size === 0;
+  const query = normalizeSearchQuery(state.reviewFolderSearchQuery || "");
 
   const addOption = (value, label, checked) => {
     const item = document.createElement("label");
@@ -21,10 +54,10 @@ export function renderFolderSelects() {
 
   addOption("all", "Todas", allChecked);
 
-  const ownedFolders = Object.values(state.folders);
+  const ownedFolders = buildOwnedFolderList().filter((folder) => !query || folder._search.includes(query));
   if (ownedFolders.length) {
     const title = document.createElement("div");
-    title.className = "list-section-title";
+    title.className = "list-section-title folder-select-section-title";
     title.textContent = "Mis carpetas";
     options.appendChild(title);
     ownedFolders.forEach((folder) => {
@@ -32,22 +65,28 @@ export function renderFolderSelects() {
     });
   }
 
-  const sharedEntries = Object.entries(state.sharedFolders || {});
+  const sharedEntries = buildSharedFolderList().filter((folder) => !query || folder._search.includes(query));
   if (sharedEntries.length) {
     const title = document.createElement("div");
-    title.className = "list-section-title";
+    title.className = "list-section-title folder-select-section-title";
     title.textContent = "Compartidas conmigo";
     options.appendChild(title);
-    sharedEntries.forEach(([shareKey, folder]) => {
-      if (!folder?.folderId) return;
+    sharedEntries.forEach((folder) => {
       const ownerInfo = state.usersPublic?.[folder.ownerUid];
       const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
       addOption(
-        `shared:${shareKey}`,
+        `shared:${folder.shareKey}`,
         `Compartida · ${folder.name || "Carpeta"} · ${ownerLabel}`,
-        selected.has(`shared:${shareKey}`)
+        selected.has(`shared:${folder.shareKey}`)
       );
     });
+  }
+
+  if (!ownedFolders.length && !sharedEntries.length && query) {
+    const empty = document.createElement("div");
+    empty.className = "card";
+    empty.textContent = "Sin carpetas para ese filtro.";
+    options.appendChild(empty);
   }
 
   if (elements.reviewFolderLabel) {
@@ -72,20 +111,17 @@ export function renderFolderSelects() {
   refreshReviewBucketCounts();
 }
 
-// moved from app.js
 export function renderFolders() {
   const container = elements.folderTree;
   container.innerHTML = "";
-  const folderList = Object.values(state.folders);
-  const sharedList = Object.entries(state.sharedFolders || {})
-    .map(([shareKey, folder]) => ({ ...folder, shareKey }))
-    .filter((folder) => folder?.folderId || folder?.id);
+  const folderList = buildOwnedFolderList();
+  const sharedList = buildSharedFolderList();
   if (!state.username) {
-    container.innerHTML = "<div class=\"card\">Define tu usuario en Ajustes o al iniciar.</div>";
+    container.innerHTML = '<div class="card">Define tu usuario en Ajustes o al iniciar.</div>';
     return;
   }
   if (!folderList.length && !sharedList.length) {
-    container.innerHTML = "<div class=\"card\">Crea tu primera carpeta para organizar tus tarjetas.</div>";
+    container.innerHTML = '<div class="card">Crea tu primera carpeta para organizar tus tarjetas.</div>';
     return;
   }
   if (folderList.length) {

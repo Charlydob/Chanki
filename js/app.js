@@ -238,19 +238,15 @@ function buildOrderTokens(tokensInput, labelsInput) {
   const labelsRaw = parseOrderDelimitedInput(labelsInput);
   const errors = [];
   if (!tokensRaw.length) {
-    errors.push("Añade tokens para ordenar.");
-  }
-  if (tokensRaw.length !== labelsRaw.length) {
-    errors.push("TOKENS y LABELS deben tener la misma longitud.");
+    errors.push("Añade tokens/chunks para ordenar.");
   }
   const tokens = [];
   const idSet = new Set();
   tokensRaw.forEach((tokenEntry, index) => {
     const parsed = parseOrderTokenEntry(tokenEntry, index);
-    const id = parsed.id || `t${index}`;
+    let id = parsed.id || `t${index}`;
     if (idSet.has(id)) {
-      errors.push(`ID de token duplicado: ${id}`);
-      return;
+      id = `t${index}_${Math.random().toString(16).slice(2, 6)}`;
     }
     idSet.add(id);
     tokens.push({
@@ -1332,7 +1328,7 @@ function openReviewEditModal(card) {
   }
   const isCloze = reviewEditType === "cloze";
   const isOrder = reviewEditType === "order";
-  reviewEditFront.closest(".field").classList.toggle("hidden", isCloze);
+  reviewEditFront.closest(".field").classList.toggle("hidden", false);
   reviewEditBack.closest(".field").classList.toggle("hidden", isCloze || isOrder);
   reviewEditClozeText.closest(".field").classList.toggle("hidden", !isCloze);
   reviewEditClozeAnswers.closest(".field").classList.toggle("hidden", !isCloze);
@@ -1403,7 +1399,11 @@ async function handleReviewEditSave() {
   let orderAnswer = [];
   if (reviewEditType === "order") {
     if (!nextFront) {
-      showToast("Completa el frente en español.", "error");
+      showToast("Completa FRONT_ES.", "error");
+      return;
+    }
+    if (!nextBack) {
+      showToast("Completa TARGET_DE.", "error");
       return;
     }
     const orderTokensResult = buildOrderTokens(nextOrderTokensInput, nextOrderLabelsInput);
@@ -1412,12 +1412,7 @@ async function handleReviewEditSave() {
       return;
     }
     orderTokens = orderTokensResult.tokens;
-    const orderAnswerResult = buildOrderAnswer(nextOrderAnswerInput, orderTokens);
-    if (orderAnswerResult.errors.length) {
-      showToast(orderAnswerResult.errors.join(" "), "error");
-      return;
-    }
-    orderAnswer = orderAnswerResult.answer;
+    orderAnswer = orderTokens.map((token) => token.id);
   }
   try {
     const result = await updateCard(db, ownerUid, reviewEditCardId, {
@@ -1483,8 +1478,8 @@ function closeCardModal() {
 function updateCardTypeFields(type) {
   const isCloze = type === "cloze";
   const isOrder = type === "order";
-  elements.cardBasicFrontField.classList.toggle("hidden", isCloze);
-  elements.cardBasicBackField.classList.toggle("hidden", isCloze || isOrder);
+  elements.cardBasicFrontField.classList.toggle("hidden", false);
+  elements.cardBasicBackField.classList.toggle("hidden", isCloze);
   elements.cardClozeTextField.classList.toggle("hidden", !isCloze);
   elements.cardClozeAnswersField.classList.toggle("hidden", !isCloze);
   if (elements.cardOrderTokensField) {
@@ -2497,7 +2492,11 @@ async function handleSaveCard() {
   let orderAnswer = [];
   if (type === "order") {
     if (!front) {
-      showToast("Completa el frente en español.", "error");
+      showToast("Completa FRONT_ES.", "error");
+      return;
+    }
+    if (!back) {
+      showToast("Completa TARGET_DE.", "error");
       return;
     }
     const orderTokensResult = buildOrderTokens(orderTokensInput, orderLabelsInput);
@@ -2506,12 +2505,7 @@ async function handleSaveCard() {
       return;
     }
     orderTokens = orderTokensResult.tokens;
-    const orderAnswerResult = buildOrderAnswer(orderAnswerInput, orderTokens);
-    if (orderAnswerResult.errors.length) {
-      showToast(orderAnswerResult.errors.join(" "), "error");
-      return;
-    }
-    orderAnswer = orderAnswerResult.answer;
+    orderAnswer = orderTokens.map((token) => token.id);
   }
   const tags = normalizeTags(elements.cardTags.value);
   const selectedTags = dedupeTags([...state.selectedTags]);
@@ -2642,11 +2636,24 @@ function renderReviewCard(card, showBack = false) {
   const glossaryMap = buildGlossaryMap(resolvedCard);
 
   if (resolvedCard.type === "cloze") {
+    const promptSection = document.createElement("div");
+    promptSection.className = "review-section";
+    const promptLabel = document.createElement("span");
+    promptLabel.className = "review-label";
+    promptLabel.textContent = "Español";
+    const promptText = document.createElement("div");
+    promptText.className = "review-back";
+    const promptValue = (resolvedCard.front || "").trim();
+    promptText.textContent = promptValue || "Traduce al alemán:";
+    promptSection.appendChild(promptLabel);
+    promptSection.appendChild(promptText);
+    wrapper.appendChild(promptSection);
+
     const frontSection = document.createElement("div");
     frontSection.className = "review-section";
     const frontLabel = document.createElement("span");
     frontLabel.className = "review-label";
-    frontLabel.textContent = "Frente";
+    frontLabel.textContent = "Alemán (completa huecos)";
     const frontText = document.createElement("div");
     const clozeTokens = tokenizeClozeText(resolvedCard.clozeText || "");
     const blankCount = clozeTokens.filter((token) => token.type === "blank").length;
@@ -3364,6 +3371,15 @@ async function handleReviewRating(rating) {
     return;
   }
 
+  if (rating === "error") {
+    const reinjectedCard = {
+      ...card,
+      srs: { ...nextSrs },
+    };
+    state.reviewQueue.splice(state.currentIndex + 1, 0, reinjectedCard);
+    state.sessionTotal += 1;
+  }
+
   state.sessionStats.answeredCount += 1;
   state.currentIndex += 1;
   showNextReviewCard();
@@ -4044,6 +4060,26 @@ if (elements.cardType) {
   });
 }
 
+const cardOrderSplitButton = document.getElementById("card-order-split");
+if (cardOrderSplitButton) {
+  cardOrderSplitButton.addEventListener("click", () => {
+    const target = String(elements.cardBack?.value || "").trim();
+    if (!target) {
+      showToast("Escribe TARGET_DE primero.", "error");
+      return;
+    }
+    const chunks = target.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+    if (!chunks.length) {
+      showToast("No se pudieron extraer tokens.", "error");
+      return;
+    }
+    if (elements.cardOrderTokens) {
+      elements.cardOrderTokens.value = chunks.join(" || ");
+    }
+    showToast(`Generados ${chunks.length} chunks.`);
+  });
+}
+
 elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);
@@ -4119,6 +4155,9 @@ if (elements.reviewBucketChart) {
 
 if (elements.reviewFolderTrigger) {
   elements.reviewFolderTrigger.addEventListener("click", () => {
+    if (elements.reviewFolderSearch) {
+      elements.reviewFolderSearch.value = state.reviewFolderSearchQuery || "";
+    }
     renderFolderSelects();
     showOverlay(elements.reviewFolderModal, true);
   });
@@ -4135,6 +4174,14 @@ if (elements.reviewFolderModal) {
     if (event.target === elements.reviewFolderModal) {
       showOverlay(elements.reviewFolderModal, false);
     }
+  });
+}
+
+
+if (elements.reviewFolderSearch) {
+  elements.reviewFolderSearch.addEventListener("input", (event) => {
+    state.reviewFolderSearchQuery = event.target.value || "";
+    renderFolderSelects();
   });
 }
 
