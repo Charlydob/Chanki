@@ -809,19 +809,23 @@ function bind(el, event, fn, label = "") {
 }
 
 function mountFoldersView() {
-  const addFolderBtn = document.querySelector("#addFolderBtn") || elements.addFolder;
-  if (!addFolderBtn) {
-    console.warn("addFolderBtn missing (view not mounted yet)");
-    return;
-  }
-  addFolderBtn.onclick = handleAddFolder;
-
   if (!elements.folderTree) {
     console.warn("folderTree missing (view not mounted yet)");
     return;
   }
   elements.folderTree.onclick = handleFolderAction;
 }
+
+const clickActions = {
+  "add-folder": () => handleAddFolder(),
+  "add-card": () => {
+    if (isActiveFolderReadOnly()) {
+      showToast("Carpeta compartida en solo lectura.", "error");
+      return;
+    }
+    openCardModal();
+  },
+};
 
 function setActiveScreen(name) {
   const tabName = name === "cards" ? "folders" : name;
@@ -4522,14 +4526,6 @@ if (elements.shareCurrentList) {
   });
 }
 
-elements.addCard.addEventListener("click", () => {
-  if (isActiveFolderReadOnly()) {
-    showToast("Carpeta compartida en solo lectura.", "error");
-    return;
-  }
-  openCardModal();
-});
-
 if (elements.importFolder) {
   elements.importFolder.addEventListener("click", () => {
     if (isActiveFolderReadOnly()) {
@@ -4551,7 +4547,9 @@ if (elements.importFolder) {
   });
 }
 
-elements.cardsList.addEventListener("click", handleCardListAction);
+if (elements.cardsList) {
+  elements.cardsList.addEventListener("click", handleCardListAction);
+}
 
 if (elements.cardsDupToggle) {
   elements.cardsDupToggle.addEventListener("click", () => {
@@ -4707,9 +4705,13 @@ if (cardOrderAddLabelButton) {
   });
 }
 
-elements.saveCard.addEventListener("click", handleSaveCard);
+if (elements.saveCard) {
+  elements.saveCard.addEventListener("click", handleSaveCard);
+}
 
-elements.cancelCard.addEventListener("click", closeCardModal);
+if (elements.cancelCard) {
+  elements.cancelCard.addEventListener("click", closeCardModal);
+}
 
 if (elements.cardModalClose) {
   elements.cardModalClose.addEventListener("click", closeCardModal);
@@ -4744,29 +4746,31 @@ if (elements.reviewCard) {
   elements.reviewCard.addEventListener("pointercancel", finalizeSwipe);
 }
 
-elements.startReview.addEventListener("click", async () => {
-  await buildReviewQueue();
-  if (!state.reviewQueue.length) {
-    showToast("No hay tarjetas para repasar con esos filtros.", "error");
-    state.sessionActive = false;
-    state.sessionTotal = 0;
-    return;
-  }
-  state.sessionStart = Date.now();
-  state.lastReviewAt = Date.now();
-  state.sessionStats = {
-    startTime: Date.now(),
-    answeredCount: 0,
-  };
-  state.sessionActive = true;
-  state.sessionTotal = state.reviewQueue.length;
-  state.reviewFolderName = buildReviewFolderLabel();
-  if (elements.reviewPlayerFolder) {
-    elements.reviewPlayerFolder.textContent = state.reviewFolderName;
-  }
-  setReviewMode(true);
-  showNextReviewCard();
-});
+if (elements.startReview) {
+  elements.startReview.addEventListener("click", async () => {
+    await buildReviewQueue();
+    if (!state.reviewQueue.length) {
+      showToast("No hay tarjetas para repasar con esos filtros.", "error");
+      state.sessionActive = false;
+      state.sessionTotal = 0;
+      return;
+    }
+    state.sessionStart = Date.now();
+    state.lastReviewAt = Date.now();
+    state.sessionStats = {
+      startTime: Date.now(),
+      answeredCount: 0,
+    };
+    state.sessionActive = true;
+    state.sessionTotal = state.reviewQueue.length;
+    state.reviewFolderName = buildReviewFolderLabel();
+    if (elements.reviewPlayerFolder) {
+      elements.reviewPlayerFolder.textContent = state.reviewFolderName;
+    }
+    setReviewMode(true);
+    showNextReviewCard();
+  });
+}
 
 if (elements.reviewBucketChart) {
   elements.reviewBucketChart.addEventListener("click", (event) => {
@@ -4844,15 +4848,19 @@ if (elements.reviewFolderApply) {
   });
 }
 
-elements.flipCard.addEventListener("click", () => {
-  revealReviewAnswer();
-});
+if (elements.flipCard) {
+  elements.flipCard.addEventListener("click", () => {
+    revealReviewAnswer();
+  });
+}
 
-elements.reviewActions.addEventListener("click", (event) => {
-  const rating = event.target.dataset.rating;
-  if (!rating) return;
-  handleReviewRating(rating);
-});
+if (elements.reviewActions) {
+  elements.reviewActions.addEventListener("click", (event) => {
+    const rating = event.target.dataset.rating;
+    if (!rating) return;
+    handleReviewRating(rating);
+  });
+}
 
 if (elements.reviewExit) {
   elements.reviewExit.addEventListener("click", exitReviewPlayer);
@@ -4862,9 +4870,13 @@ if (elements.reviewEditCard) {
   elements.reviewEditCard.disabled = true;
 }
 
-elements.importParse.addEventListener("click", handleImportPreview);
+if (elements.importParse) {
+  elements.importParse.addEventListener("click", handleImportPreview);
+}
 
-elements.importSave.addEventListener("click", handleImportSave);
+if (elements.importSave) {
+  elements.importSave.addEventListener("click", handleImportSave);
+}
 
 if (elements.importCancel) {
   elements.importCancel.addEventListener("click", handleImportCancel);
@@ -4876,11 +4888,17 @@ if (elements.importText) {
   });
 }
 
-elements.saveSettings.addEventListener("click", handleSaveSettings);
+if (elements.saveSettings) {
+  elements.saveSettings.addEventListener("click", handleSaveSettings);
+}
 
-elements.exportJson.addEventListener("click", handleExportJson);
+if (elements.exportJson) {
+  elements.exportJson.addEventListener("click", handleExportJson);
+}
 
-elements.resetLocal.addEventListener("click", handleResetLocal);
+if (elements.resetLocal) {
+  elements.resetLocal.addEventListener("click", handleResetLocal);
+}
 
 document.addEventListener(
   "pointerdown",
@@ -4895,6 +4913,15 @@ document.addEventListener(
   },
   { capture: true }
 );
+
+document.addEventListener("click", (event) => {
+  const actionEl = event.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  const handler = clickActions[action];
+  if (typeof handler !== "function") return;
+  handler(event, actionEl);
+});
 
 document.addEventListener("click", (event) => {
   if (event.target.closest(".item-menu")) return;
