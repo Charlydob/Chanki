@@ -799,6 +799,30 @@ function setStatus(text) {
   elements.status.textContent = text;
 }
 
+function bind(el, event, fn, label = "") {
+  if (!el) {
+    const suffix = label ? ` (${label})` : "";
+    console.warn(`Missing element for '${event}' listener${suffix}`);
+    return;
+  }
+  el.addEventListener(event, fn);
+}
+
+function mountFoldersView() {
+  const addFolderBtn = document.querySelector("#addFolderBtn") || elements.addFolder;
+  if (!addFolderBtn) {
+    console.warn("addFolderBtn missing (view not mounted yet)");
+    return;
+  }
+  addFolderBtn.onclick = handleAddFolder;
+
+  if (!elements.folderTree) {
+    console.warn("folderTree missing (view not mounted yet)");
+    return;
+  }
+  elements.folderTree.onclick = handleFolderAction;
+}
+
 function setActiveScreen(name) {
   const tabName = name === "cards" ? "folders" : name;
   elements.screens.forEach((screen) => {
@@ -809,6 +833,9 @@ function setActiveScreen(name) {
   });
   if (name !== "review") {
     setReviewMode(false);
+  }
+  if (name === "folders") {
+    mountFoldersView();
   }
 }
 
@@ -4373,17 +4400,17 @@ if ("serviceWorker" in navigator) {
 }
 
 elements.tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
+  bind(tab, "click", () => {
     if (tab.dataset.screen === "import") {
       setImportContext("generic", { sourceScreen: "import" });
       resetImportPreview();
     }
     setActiveScreen(tab.dataset.screen);
-  });
+  }, `tab:${tab.dataset.screen || "unknown"}`);
 });
 
 if (elements.backToFolders) {
-  elements.backToFolders.addEventListener("click", () => setActiveScreen("folders"));
+  bind(elements.backToFolders, "click", () => setActiveScreen("folders"), "backToFolders");
 }
 
 if (elements.saveUsername) {
@@ -4400,9 +4427,7 @@ if (elements.saveUsername) {
   });
 }
 
-elements.addFolder.addEventListener("click", handleAddFolder);
-
-elements.folderTree.addEventListener("click", handleFolderAction);
+mountFoldersView();
 
 if (elements.saveFolder) {
   elements.saveFolder.addEventListener("click", handleSaveFolder);
