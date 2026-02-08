@@ -89,6 +89,7 @@ export const state = {
   reviewFolderRole: null,
   reviewFolderIsShared: false,
   reviewSelectedFolderIds: [],
+  reviewFolderSearchQuery: "",
   reviewShowingBack: false,
   repairAttempted: false,
   vocabFolderIds: {
@@ -149,6 +150,7 @@ export const elements = {
   reviewFolderLabel: document.getElementById("review-folder-label"),
   reviewFolderModal: document.getElementById("review-folder-modal"),
   reviewFolderOptions: document.getElementById("review-folder-options"),
+  reviewFolderSearch: document.getElementById("review-folder-search"),
   reviewFolderApply: document.getElementById("review-folder-apply"),
   reviewFolderClose: document.getElementById("review-folder-close"),
   reviewBucketChart: document.getElementById("review-bucket-chart"),
