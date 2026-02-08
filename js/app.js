@@ -73,6 +73,12 @@ import {
 import { refreshReviewBucketCounts } from "./screens/review.js";
 import { loadStats } from "./screens/stats.js";
 import { renderFolders, renderFolderSelects } from "./screens/folders.js";
+import { setStatus } from "./ui/status.js";
+import { onClick, toast } from "./ui/dom.js";
+import { mountFoldersView as mountFoldersScreen } from "./views/foldersView.js";
+import { mountCardsView } from "./views/cardsView.js";
+import { mountReviewView } from "./views/reviewView.js";
+import { setActiveScreenRoute } from "./router.js";
 
 const APP_VERSION = "0.15.0";
 
@@ -779,24 +785,13 @@ function showOverlay(overlay, show) {
 }
 
 function showToast(message, type = "") {
-  if (!elements.toastContainer) return;
-  const toast = document.createElement("div");
-  toast.className = `toast${type ? ` ${type}` : ""}`;
-  toast.textContent = message;
-  elements.toastContainer.appendChild(toast);
-  setTimeout(() => {
-    toast.remove();
-  }, 2500);
+  toast(message, type);
 }
 
 function handleErrorToast(error, fallbackMessage = "Ha ocurrido un error.") {
   const message = error?.message || String(error);
   showToast(message || fallbackMessage, "error");
   console.error(error);
-}
-
-function setStatus(text) {
-  elements.status.textContent = text;
 }
 
 function bind(el, event, fn, label = "") {
@@ -813,6 +808,7 @@ function mountFoldersView() {
     console.warn("folderTree missing (view not mounted yet)");
     return;
   }
+  mountFoldersScreen(elements.folderTree);
   elements.folderTree.onclick = handleFolderAction;
 }
 
@@ -827,17 +823,20 @@ const clickActions = {
   },
 };
 
+Object.entries(clickActions).forEach(([action, handler]) => {
+  onClick(action, handler);
+});
+
 function setActiveScreen(name) {
-  const tabName = name === "cards" ? "folders" : name;
-  elements.screens.forEach((screen) => {
-    screen.classList.toggle("active", screen.id === `screen-${name}`);
+  setActiveScreenRoute({
+    name,
+    screens: elements.screens,
+    tabs: elements.tabs,
+    setReviewMode,
+    onFoldersMount: () => mountFoldersScreen(elements.folderTree),
+    onCardsMount: () => mountCardsView(document.getElementById("screen-cards")),
+    onReviewMount: () => mountReviewView(document.getElementById("screen-review")),
   });
-  elements.tabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.screen === tabName);
-  });
-  if (name !== "review") {
-    setReviewMode(false);
-  }
   if (name === "folders") {
     mountFoldersView();
   }
@@ -4913,15 +4912,6 @@ document.addEventListener(
   },
   { capture: true }
 );
-
-document.addEventListener("click", (event) => {
-  const actionEl = event.target.closest("[data-action]");
-  if (!actionEl) return;
-  const action = actionEl.dataset.action;
-  const handler = clickActions[action];
-  if (typeof handler !== "function") return;
-  handler(event, actionEl);
-});
 
 document.addEventListener("click", (event) => {
   if (event.target.closest(".item-menu")) return;
