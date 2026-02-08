@@ -219,10 +219,6 @@ export async function loadStats() {
   if (!state.username) {
     return;
   }
-  if (!elements.statsTodayDistribution) {
-    console.warn("[loadStats] stats container missing; skipping render");
-    return;
-  }
   const db = getDb();
   const root = userRoot(state.username);
   const now = new Date();
