@@ -1,4 +1,4 @@
-import { getDb } from "../lib/firebase.js";
+import { getDb, initFirebase } from "../lib/firebase.js";
 import {
   listenFolders,
   listenManualFolders,
@@ -75,11 +75,6 @@ import { loadStats } from "./screens/stats.js";
 import { renderFolders, renderFolderSelects } from "./screens/folders.js";
 
 const APP_VERSION = "0.15.0";
-
-window.onerror = (message, source, lineno, colno, error) => {
-  console.error("JS ERROR", error || message, source, lineno, colno);
-  showToast(`Error JS: ${message}`, "error");
-};
 
 console.log("APP BOOT OK", APP_VERSION);
 console.log(
@@ -625,10 +620,8 @@ function openChunkLabelMenu(tokenId) {
     showToast("Crea un label primero", "error");
     return;
   }
-  const options = orderEditorState.labelsCatalog.map((label) => `${label.id}: ${label.text}`).join("
-");
-  const selected = prompt(`Label id:
-${options}`, orderEditorState.activeLabelId || "");
+  const options = orderEditorState.labelsCatalog.map((label) => `${label.id}: ${label.text}`).join("\n");
+  const selected = prompt(`Label id:\n${options}`, orderEditorState.activeLabelId || "");
   if (!selected) return;
   const label = findLabelById(selected.trim());
   if (!label) {
@@ -4335,10 +4328,16 @@ async function initApp() {
     return;
   }
 
-  initFirebaseUi();
+  try {
+    await initFirebaseUi();
+  } catch (error) {
+    console.error("INIT_APP_ERROR", error);
+    window.__CHANKI_RENDER_BOOT_ERROR__?.(error);
+  }
 }
 
-function initFirebaseUi() {
+async function initFirebaseUi() {
+  await initFirebase();
   getDb();
   setStatus(`Usuario: ${state.username}`);
   syncUsersPublic();
@@ -5011,4 +5010,6 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-initApp();
+export async function startApp() {
+  await initApp();
+}
