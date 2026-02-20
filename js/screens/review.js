@@ -2,14 +2,12 @@ import { getDb } from "../../lib/firebase.js";
 import { buildSessionQueue } from "../../lib/rtdb.js";
 import {
   BUCKET_ORDER,
-  dedupeTags,
   elements,
   getReviewFolderSelections,
-  normalizeTags,
+  getReviewTagFilters,
   state,
 } from "../shared.js";
 
-// moved from app.js
 export function renderBucketFilterCounts(bucketCounts) {
   const values = BUCKET_ORDER.map((bucket) => bucketCounts[bucket] || 0);
   const maxVal = Math.max(1, ...values);
@@ -27,14 +25,10 @@ export function renderBucketFilterCounts(bucketCounts) {
   });
 }
 
-// moved from app.js
 export async function refreshReviewBucketCounts() {
   if (!state.username || !elements.reviewBucketChart) return;
   const db = getDb();
-  const tagFilter = dedupeTags([
-    ...state.reviewSelectedTags,
-    ...normalizeTags(elements.reviewTags.value),
-  ]);
+  const { includeTags, excludeTags } = getReviewTagFilters();
   const selections = getReviewFolderSelections();
   const combinedCounts = BUCKET_ORDER.reduce((acc, bucket) => {
     acc[bucket] = 0;
@@ -47,8 +41,9 @@ export async function refreshReviewBucketCounts() {
       folderIdOrAll: selection.folderId ?? "all",
       buckets: BUCKET_ORDER,
       maxCards: 0,
-      tagFilter,
-      tagFilterMode: "or",
+      tagFilter: includeTags,
+      excludeTags,
+      tagFilterMode: state.reviewTagFilterMode || "or",
       countsOnly: true,
     });
     BUCKET_ORDER.forEach((bucket) => {
@@ -56,5 +51,11 @@ export async function refreshReviewBucketCounts() {
     });
   }
   state.reviewBucketCounts = combinedCounts;
+  state.reviewFilterVisibleCount = Object.values(combinedCounts).reduce((sum, value) => sum + value, 0);
+  if (elements.reviewFilterSummary) {
+    elements.reviewFilterSummary.textContent = state.reviewFilterVisibleCount
+      ? `Tarjetas visibles: ${state.reviewFilterVisibleCount}`
+      : "Sin resultados con el filtro actual.";
+  }
   renderBucketFilterCounts(state.reviewBucketCounts);
 }

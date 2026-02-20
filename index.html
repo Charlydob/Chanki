@@ -150,9 +150,14 @@
                 </button>
               </label>
               <label class="field">
-                <span>Tags (separados por coma)</span>
+                <span>Tags a incluir (coma)</span>
                 <input id="review-tags" type="text" placeholder="a1, verbos" />
               </label>
+              <label class="field">
+                <span>Tags a excluir (coma)</span>
+                <input id="review-tags-exclude" type="text" placeholder="suspended, difícil" />
+              </label>
+              <p id="review-filter-summary" class="muted review-filter-summary">Tarjetas visibles: 0</p>
               <div class="row">
                 <label class="field">
                   <span>Max nuevas</span>
@@ -599,16 +604,39 @@
     </div>
 
     <div id="review-folder-modal" class="overlay hidden">
-      <div class="modal modal--wide">
-        <div class="modal__header">
+      <div class="modal modal--wide review-folder-modal__dialog">
+        <div class="modal__header modal__header--sticky review-folder-modal__header">
           <h2>Seleccionar carpetas</h2>
           <button id="review-folder-close" class="icon-button" type="button" aria-label="Cerrar">
             ✕
           </button>
         </div>
-        <label class="field"><span>Buscar carpeta</span><input id="review-folder-search" type="search" placeholder="Escribe nombre o ruta" /></label>
-        <div id="review-folder-options" class="list folder-select-list"></div>
-        <div class="row">
+        <div class="review-folder-modal__body">
+          <label class="field"><span>Buscar carpeta</span><input id="review-folder-search" type="search" placeholder="Escribe nombre o ruta" /></label>
+          <div class="review-folder-actions" role="group" aria-label="Acciones de selección de carpetas">
+            <button id="review-folder-select-all" class="button ghost small" type="button">Seleccionar todo</button>
+            <button id="review-folder-select-none" class="button ghost small" type="button">Deseleccionar todo</button>
+            <button id="review-folder-select-invert" class="button ghost small" type="button">Invertir</button>
+            <button id="review-folder-select-visible" class="button ghost small" type="button">Solo visibles</button>
+            <button id="review-folder-reset-preferences" class="button ghost small" type="button">Reset</button>
+          </div>
+          <div id="review-folder-options" class="list folder-select-list" aria-live="polite"></div>
+          <div class="review-folder-bulk card">
+            <p class="list-section-title">Acciones masivas por carpetas seleccionadas</p>
+            <label class="field"><span>Tag</span><input id="review-bulk-tag-input" type="text" placeholder="ej: verbo" /></label>
+            <div class="row">
+              <button id="review-bulk-add-tag" class="button small" type="button">Añadir tag</button>
+              <button id="review-bulk-remove-tag" class="button ghost small" type="button">Quitar tag</button>
+            </div>
+            <p id="review-bulk-progress" class="muted"></p>
+          </div>
+          <div class="review-folder-bulk card">
+            <p class="list-section-title">Gestionar tags</p>
+            <label class="field"><span>Tag global</span><input id="review-global-tag-input" type="text" placeholder="ej: suspendida" /></label>
+            <button id="review-global-delete-tag" class="button danger small" type="button">Eliminar de todas las fichas</button>
+          </div>
+        </div>
+        <div class="row modal__footer--sticky">
           <button id="review-folder-apply" class="button" type="button">Aplicar</button>
         </div>
       </div>

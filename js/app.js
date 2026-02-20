@@ -60,6 +60,7 @@ import {
   dedupeTags,
   elements,
   getReviewFolderSelections,
+  getReviewTagFilters,
   normalizeSearchQuery,
   normalizeTags,
   normalizeText,
@@ -67,9 +68,63 @@ import {
 } from "./shared.js";
 import { refreshReviewBucketCounts } from "./screens/review.js";
 import { loadStats } from "./screens/stats.js";
-import { renderFolders, renderFolderSelects } from "./screens/folders.js";
+import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } from "./screens/folders.js";
 
 const APP_VERSION = "0.15.0";
+
+const REVIEW_PREFS_KEY = "chanki_review_selector_prefs";
+let reviewFolderSearchDebounce = null;
+
+function persistReviewSelectorPrefs() {
+  const payload = {
+    selectedFolderIds: state.reviewSelectedFolderIds || [],
+    includeTags: Array.from(state.reviewSelectedTags || []),
+    excludeTags: Array.from(state.reviewExcludeTags || []),
+    searchQuery: state.reviewFolderSearchQuery || "",
+    includeMode: state.reviewTagFilterMode || "or",
+    timestamp: Date.now(),
+  };
+  localStorage.setItem(REVIEW_PREFS_KEY, JSON.stringify(payload));
+}
+
+function restoreReviewSelectorPrefs() {
+  try {
+    const raw = localStorage.getItem(REVIEW_PREFS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    state.reviewSelectedFolderIds = Array.isArray(parsed.selectedFolderIds) ? parsed.selectedFolderIds : [];
+    state.reviewSelectedTags = new Set(Array.isArray(parsed.includeTags) ? parsed.includeTags : []);
+    state.reviewExcludeTags = new Set(Array.isArray(parsed.excludeTags) ? parsed.excludeTags : []);
+    state.reviewFolderSearchQuery = parsed.searchQuery || "";
+    state.reviewTagFilterMode = parsed.includeMode === "and" ? "and" : "or";
+  } catch (error) {
+    console.warn("Cannot restore review selector prefs", error);
+  }
+}
+
+function sanitizeReviewFolderSelections() {
+  const validOwned = new Set(Object.keys(state.folders || {}));
+  const validShared = new Set(Object.keys(state.sharedFolders || {}).map((key) => `shared:${key}`));
+  state.reviewSelectedFolderIds = (state.reviewSelectedFolderIds || []).filter((value) => {
+    if (value.startsWith("shared:")) return validShared.has(value);
+    return validOwned.has(value);
+  });
+}
+
+function resetReviewSelectorPrefs() {
+  state.reviewSelectedFolderIds = [];
+  state.reviewSelectedTags = new Set();
+  state.reviewExcludeTags = new Set();
+  state.reviewFolderSearchQuery = "";
+  if (elements.reviewTags) elements.reviewTags.value = "";
+  if (elements.reviewTagsExclude) elements.reviewTagsExclude.value = "";
+  if (elements.reviewFolderSearch) elements.reviewFolderSearch.value = "";
+  localStorage.removeItem(REVIEW_PREFS_KEY);
+  renderFolderSelects();
+  renderTagPanels();
+  refreshReviewBucketCounts();
+}
+
 
 window.onerror = (message, source, lineno, colno, error) => {
   console.error("JS ERROR", error || message, source, lineno, colno);
@@ -3353,10 +3408,7 @@ async function buildReviewQueue() {
     state.currentIndex = 0;
     return;
   }
-  const tagFilter = dedupeTags([
-    ...state.reviewSelectedTags,
-    ...normalizeTags(elements.reviewTags.value),
-  ]);
+  const { includeTags: tagFilter, excludeTags } = getReviewTagFilters();
 
   const maxNew = Number(elements.reviewMaxNew.value || state.prefs.maxNew);
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
@@ -3383,7 +3435,8 @@ async function buildReviewQueue() {
       maxNew,
       maxReviews,
       tagFilter,
-      tagFilterMode: "or",
+      excludeTags,
+      tagFilterMode: state.reviewTagFilterMode || "or",
       allowRepair: !state.repairAttempted,
     });
 
@@ -3432,7 +3485,7 @@ async function buildReviewQueue() {
 
   const filtered = cards.filter((card) => {
     if (!card) return false;
-    return cardMatchesTagFilter(card, tagFilter, "or");
+    return cardMatchesTagFilter(card, tagFilter, state.reviewTagFilterMode || "or") && !cardMatchesTagFilter(card, excludeTags, "or");
   });
 
   const bucketed = new Map();
@@ -3925,8 +3978,14 @@ function handleSaveSettings() {
   showToast("Preferencias guardadas.");
 }
 
+function getTagSelectionSet(scope) {
+  if (scope === "review") return state.reviewSelectedTags;
+  if (scope === "review-exclude") return state.reviewExcludeTags;
+  return state.selectedTags;
+}
+
 function ensureTagPanels() {
-  const cardPanel = document.querySelector(".tags-panel[data-tags-scope=\"card\"]");
+  const cardPanel = document.querySelector('.tags-panel[data-tags-scope="card"]');
   if (!elements.cardTags?.dataset.tagsReady) {
     if (cardPanel) {
       cardPanel.dataset.collapsed = cardPanel.dataset.collapsed || "true";
@@ -3955,15 +4014,15 @@ function ensureTagPanels() {
     }
   }
 
-  const reviewField = elements.reviewTags?.closest(".field");
-  if (reviewField && !reviewField.dataset.tagsReady) {
+  const buildReviewPanel = (field, scope, title) => {
+    if (!field || field.dataset.tagsReady) return;
     const panel = document.createElement("div");
     panel.className = "tags-panel tags-panel--collapsible is-collapsed";
-    panel.dataset.tagsScope = "review";
+    panel.dataset.tagsScope = scope;
     panel.dataset.collapsed = "true";
     panel.innerHTML = `
       <button type="button" class="tags-panel__toggle" data-tags-toggle>
-        <span>Tags existentes / seleccionados</span>
+        <span>${title}</span>
         <span class="tags-panel__chevron" aria-hidden="true">▾</span>
       </button>
       <div class="tags-panel__content">
@@ -3978,19 +4037,22 @@ function ensureTagPanels() {
         <div class="tags-suggestions hidden" data-tags-suggestions></div>
       </div>
     `;
-    reviewField.insertAdjacentElement("afterend", panel);
-    reviewField.dataset.tagsReady = "true";
-  }
+    field.insertAdjacentElement("afterend", panel);
+    field.dataset.tagsReady = "true";
+  };
+
+  buildReviewPanel(elements.reviewTags?.closest(".field"), "review", "Tags incluir");
+  buildReviewPanel(elements.reviewTagsExclude?.closest(".field"), "review-exclude", "Tags excluir");
 }
 
 function renderTagPanels() {
   ensureTagPanels();
   document.querySelectorAll(".tags-panel").forEach((panel) => {
     const scope = panel.dataset.tagsScope;
-    const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+    const selected = getTagSelectionSet(scope);
     const selectedContainer = panel.querySelector("[data-tags-selected]");
     const allContainer = panel.querySelector("[data-tags-all]");
-    if (!selectedContainer || !allContainer) return;
+    if (!selectedContainer || !allContainer || !selected) return;
     selectedContainer.innerHTML = "";
     allContainer.innerHTML = "";
     const selectedTags = Array.from(selected);
@@ -4027,8 +4089,8 @@ function updateTagSuggestions(scope, query) {
     return;
   }
   const trimmed = normalizeSearchQuery(query);
-  const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
-  if (!trimmed) {
+  const selected = getTagSelectionSet(scope);
+  if (!trimmed || !selected) {
     suggestionBox.classList.add("hidden");
     suggestionBox.innerHTML = "";
     return;
@@ -4053,7 +4115,8 @@ function updateTagSuggestions(scope, query) {
 }
 
 function addTagsToSelection(scope, tags) {
-  const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+  const selected = getTagSelectionSet(scope);
+  if (!selected) return;
   tags.forEach((tag) => selected.add(tag));
   renderTagPanels();
 }
@@ -4118,6 +4181,8 @@ async function initApp() {
 
 function initFirebaseUi() {
   getDb();
+  restoreReviewSelectorPrefs();
+  sanitizeReviewFolderSelections();
   setStatus(`Usuario: ${state.username}`);
   syncUsersPublic();
   initFolders();
@@ -4130,6 +4195,8 @@ function initFirebaseUi() {
   initLexiconListener();
   initTagsIndexListener();
   ensureTagPanels();
+  if (elements.reviewTags) elements.reviewTags.value = "";
+  if (elements.reviewTagsExclude) elements.reviewTagsExclude.value = "";
   renderTagPanels();
   if (elements.reviewEditCard) {
     elements.reviewEditCard.disabled = true;
@@ -4544,6 +4611,106 @@ if (elements.reviewBucketChart) {
   });
 }
 
+function setReviewSelectionCheckboxes(values) {
+  if (!elements.reviewFolderOptions) return;
+  const next = new Set(values || []);
+  const allBox = elements.reviewFolderOptions.querySelector('input[value="all"]');
+  elements.reviewFolderOptions.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    if (input.value === "all") {
+      input.checked = next.size === 0;
+      return;
+    }
+    input.checked = next.has(input.value);
+  });
+  if (allBox) allBox.checked = next.size === 0;
+}
+
+function getCheckedReviewFolderIds() {
+  if (!elements.reviewFolderOptions) return [];
+  const checked = Array.from(elements.reviewFolderOptions.querySelectorAll('input[type="checkbox"]:checked'))
+    .map((input) => input.value)
+    .filter((value) => value !== "all");
+  return checked;
+}
+
+async function performBulkTagAction(action = "add") {
+  const rawTag = elements.reviewBulkTagInput?.value || "";
+  const [tag] = normalizeTags(rawTag);
+  if (!tag) {
+    showToast("Escribe un tag válido.", "error");
+    return;
+  }
+  const selectedIds = state.reviewSelectedFolderIds || [];
+  if (!selectedIds.length) {
+    showToast("Selecciona carpetas y aplica antes de usar acciones masivas.", "error");
+    return;
+  }
+  const db = getDb();
+  const selections = getReviewFolderSelections().filter((entry) => entry.folderId);
+  let targetCards = [];
+  for (const selection of selections) {
+    const cards = await fetchCardsByFolderId(db, selection.ownerUid, selection.folderId, 4000);
+    targetCards.push(...cards.map((card) => ({ ...card, _ownerUid: selection.ownerUid })));
+  }
+  if (!targetCards.length) {
+    showToast("No se encontraron fichas para procesar.", "error");
+    return;
+  }
+  const affected = targetCards.filter((card) => {
+    const tags = mapToTags(card.tags || {});
+    return action === "add" ? !tags.includes(tag) : tags.includes(tag);
+  });
+  if (!affected.length) {
+    showToast(action === "add" ? "Todas ya tenían ese tag." : "Ninguna tenía ese tag.");
+    return;
+  }
+  const confirmed = window.confirm(`${action === "add" ? "Añadir" : "Quitar"} tag "${tag}" en ${affected.length} fichas. ¿Continuar?`);
+  if (!confirmed) return;
+  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = "Procesando...";
+  let done = 0;
+  for (const card of affected) {
+    const tags = new Set(mapToTags(card.tags || {}));
+    if (action === "add") tags.add(tag);
+    else tags.delete(tag);
+    await updateCard(db, card._ownerUid || state.username, card.id, { tags: tagsToMap([...tags]) });
+    done += 1;
+    if (elements.reviewBulkProgress && done % 25 === 0) {
+      elements.reviewBulkProgress.textContent = `Procesadas ${done}/${affected.length}`;
+    }
+  }
+  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = `Completado: ${done} fichas actualizadas.`;
+  showToast(`Acción completada: ${done} fichas.`, "success");
+  refreshReviewBucketCounts();
+}
+
+async function deleteTagGlobally() {
+  const [tag] = normalizeTags(elements.reviewGlobalTagInput?.value || "");
+  if (!tag) {
+    showToast("Indica un tag para eliminar globalmente.", "error");
+    return;
+  }
+  const db = getDb();
+  const allCards = await fetchCardsForSearch(db, state.username, null, 5000);
+  const affected = allCards.filter((card) => mapToTags(card.tags || {}).includes(tag));
+  if (!affected.length) {
+    showToast("Ese tag no existe en tus fichas.");
+    return;
+  }
+  const confirmed = window.confirm(`Esto quitará el tag "${tag}" de ${affected.length} fichas. ¿Confirmar?`);
+  if (!confirmed) return;
+  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = "Eliminando tag global...";
+  let done = 0;
+  for (const card of affected) {
+    const tags = new Set(mapToTags(card.tags || {}));
+    tags.delete(tag);
+    await updateCard(db, state.username, card.id, { tags: tagsToMap([...tags]) });
+    done += 1;
+  }
+  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = `Tag eliminado en ${done} fichas.`;
+  showToast(`Tag "${tag}" eliminado de ${done} fichas.`, "success");
+  refreshReviewBucketCounts();
+}
+
 if (elements.reviewFolderTrigger) {
   elements.reviewFolderTrigger.addEventListener("click", () => {
     if (elements.reviewFolderSearch) {
@@ -4568,40 +4735,72 @@ if (elements.reviewFolderModal) {
   });
 }
 
-
 if (elements.reviewFolderSearch) {
   elements.reviewFolderSearch.addEventListener("input", (event) => {
     state.reviewFolderSearchQuery = event.target.value || "";
-    renderFolderSelects();
+    clearTimeout(reviewFolderSearchDebounce);
+    reviewFolderSearchDebounce = setTimeout(() => {
+      renderFolderSelects();
+      persistReviewSelectorPrefs();
+    }, 120);
   });
 }
 
 if (elements.reviewFolderOptions) {
   elements.reviewFolderOptions.addEventListener("change", (event) => {
-    const checkbox = event.target.closest("input[type=\"checkbox\"]");
+    const checkbox = event.target.closest('input[type="checkbox"]');
     if (!checkbox) return;
     if (checkbox.value === "all" && checkbox.checked) {
-      elements.reviewFolderOptions
-        .querySelectorAll("input[type=\"checkbox\"]:not([value=\"all\"])")
-        .forEach((input) => {
-          input.checked = false;
-        });
+      setReviewSelectionCheckboxes([]);
+      return;
     }
     if (checkbox.value !== "all" && checkbox.checked) {
-      const allBox = elements.reviewFolderOptions.querySelector("input[value=\"all\"]");
+      const allBox = elements.reviewFolderOptions.querySelector('input[value="all"]');
       if (allBox) allBox.checked = false;
     }
   });
 }
 
+if (elements.reviewFolderSelectAll) {
+  elements.reviewFolderSelectAll.addEventListener("click", () => {
+    setReviewSelectionCheckboxes(getVisibleReviewFolderOptionIds());
+  });
+}
+if (elements.reviewFolderSelectNone) {
+  elements.reviewFolderSelectNone.addEventListener("click", () => setReviewSelectionCheckboxes([]));
+}
+if (elements.reviewFolderSelectVisible) {
+  elements.reviewFolderSelectVisible.addEventListener("click", () => {
+    setReviewSelectionCheckboxes(getVisibleReviewFolderOptionIds());
+  });
+}
+if (elements.reviewFolderSelectInvert) {
+  elements.reviewFolderSelectInvert.addEventListener("click", () => {
+    const visible = getVisibleReviewFolderOptionIds();
+    const current = new Set(getCheckedReviewFolderIds());
+    const inverted = visible.filter((value) => !current.has(value));
+    setReviewSelectionCheckboxes(inverted);
+  });
+}
+if (elements.reviewFolderResetPreferences) {
+  elements.reviewFolderResetPreferences.addEventListener("click", resetReviewSelectorPrefs);
+}
+
+if (elements.reviewBulkAddTag) {
+  elements.reviewBulkAddTag.addEventListener("click", () => performBulkTagAction("add"));
+}
+if (elements.reviewBulkRemoveTag) {
+  elements.reviewBulkRemoveTag.addEventListener("click", () => performBulkTagAction("remove"));
+}
+if (elements.reviewGlobalDeleteTag) {
+  elements.reviewGlobalDeleteTag.addEventListener("click", deleteTagGlobally);
+}
+
 if (elements.reviewFolderApply) {
   elements.reviewFolderApply.addEventListener("click", () => {
-    if (!elements.reviewFolderOptions) return;
-    const checked = Array.from(
-      elements.reviewFolderOptions.querySelectorAll("input[type=\"checkbox\"]:checked")
-    ).map((input) => input.value);
-    const selected = checked.filter((value) => value !== "all");
+    const selected = getCheckedReviewFolderIds();
     state.reviewSelectedFolderIds = selected.length ? selected : [];
+    persistReviewSelectorPrefs();
     renderFolderSelects();
     refreshReviewBucketCounts();
     showOverlay(elements.reviewFolderModal, false);
@@ -4678,14 +4877,15 @@ document.addEventListener("click", (event) => {
   if (tagChip) {
     const tag = tagChip.dataset.tag;
     const scope = tagChip.dataset.tagScope || "card";
-    const selected = scope === "review" ? state.reviewSelectedTags : state.selectedTags;
+    const selected = getTagSelectionSet(scope);
     if (selected.has(tag)) {
       selected.delete(tag);
     } else {
       selected.add(tag);
     }
     renderTagPanels();
-    if (scope === "review") {
+    if (scope === "review" || scope === "review-exclude") {
+      persistReviewSelectorPrefs();
       refreshReviewBucketCounts();
     }
     return;
@@ -4695,12 +4895,17 @@ document.addEventListener("click", (event) => {
     const tag = suggestion.dataset.tag;
     const scope = suggestion.dataset.tagScope || "card";
     addTagsToSelection(scope, [tag]);
-    const input = scope === "review" ? elements.reviewTags : elements.cardTags;
+    const input = scope === "review"
+      ? elements.reviewTags
+      : scope === "review-exclude"
+        ? elements.reviewTagsExclude
+        : elements.cardTags;
     if (input) {
       input.value = "";
       updateTagSuggestions(scope, "");
     }
-    if (scope === "review") {
+    if (scope === "review" || scope === "review-exclude") {
+      persistReviewSelectorPrefs();
       refreshReviewBucketCounts();
     }
     return;
@@ -4780,6 +4985,12 @@ document.addEventListener("input", (event) => {
   }
   if (event.target === elements.reviewTags) {
     handleTagInput("review", elements.reviewTags);
+    persistReviewSelectorPrefs();
+    refreshReviewBucketCounts();
+  }
+  if (event.target === elements.reviewTagsExclude) {
+    handleTagInput("review-exclude", elements.reviewTagsExclude);
+    persistReviewSelectorPrefs();
     refreshReviewBucketCounts();
   }
 });
@@ -4787,13 +4998,15 @@ document.addEventListener("input", (event) => {
 document.addEventListener("keydown", (event) => {
   const isCardInput = event.target === elements.cardTags;
   const isReviewInput = event.target === elements.reviewTags;
-  if (!isCardInput && !isReviewInput) return;
+  const isReviewExcludeInput = event.target === elements.reviewTagsExclude;
+  if (!isCardInput && !isReviewInput && !isReviewExcludeInput) return;
   if (event.key === "Enter" || event.key === ",") {
     event.preventDefault();
-    const scope = isReviewInput ? "review" : "card";
-    const input = isReviewInput ? elements.reviewTags : elements.cardTags;
+    const scope = isReviewInput ? "review" : isReviewExcludeInput ? "review-exclude" : "card";
+    const input = isReviewInput ? elements.reviewTags : isReviewExcludeInput ? elements.reviewTagsExclude : elements.cardTags;
     handleTagInput(scope, input, true);
-    if (scope === "review") {
+    if (scope === "review" || scope === "review-exclude") {
+      persistReviewSelectorPrefs();
       refreshReviewBucketCounts();
     }
   }

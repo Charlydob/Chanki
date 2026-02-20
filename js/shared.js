@@ -90,6 +90,9 @@ export const state = {
   reviewFolderIsShared: false,
   reviewSelectedFolderIds: [],
   reviewFolderSearchQuery: "",
+  reviewExcludeTags: new Set(),
+  reviewTagFilterMode: localStorage.getItem("chanki_review_include_mode") || "or",
+  reviewFilterVisibleCount: 0,
   reviewShowingBack: false,
   repairAttempted: false,
   vocabFolderIds: {
@@ -155,6 +158,19 @@ export const elements = {
   reviewFolderClose: document.getElementById("review-folder-close"),
   reviewBucketChart: document.getElementById("review-bucket-chart"),
   reviewTags: document.getElementById("review-tags"),
+  reviewTagsExclude: document.getElementById("review-tags-exclude"),
+  reviewFilterSummary: document.getElementById("review-filter-summary"),
+  reviewFolderSelectAll: document.getElementById("review-folder-select-all"),
+  reviewFolderSelectNone: document.getElementById("review-folder-select-none"),
+  reviewFolderSelectInvert: document.getElementById("review-folder-select-invert"),
+  reviewFolderSelectVisible: document.getElementById("review-folder-select-visible"),
+  reviewFolderResetPreferences: document.getElementById("review-folder-reset-preferences"),
+  reviewBulkTagInput: document.getElementById("review-bulk-tag-input"),
+  reviewBulkAddTag: document.getElementById("review-bulk-add-tag"),
+  reviewBulkRemoveTag: document.getElementById("review-bulk-remove-tag"),
+  reviewBulkProgress: document.getElementById("review-bulk-progress"),
+  reviewGlobalTagInput: document.getElementById("review-global-tag-input"),
+  reviewGlobalDeleteTag: document.getElementById("review-global-delete-tag"),
   reviewMaxNew: document.getElementById("review-max-new"),
   reviewMax: document.getElementById("review-max"),
   startReview: document.getElementById("start-review"),
@@ -277,6 +293,20 @@ export function normalizeTags(text) {
 
 export function dedupeTags(list) {
   return [...new Set(list.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
+
+export function getReviewTagFilters() {
+  return {
+    includeTags: dedupeTags([
+      ...state.reviewSelectedTags,
+      ...normalizeTags(elements.reviewTags?.value || ""),
+    ]),
+    excludeTags: dedupeTags([
+      ...state.reviewExcludeTags,
+      ...normalizeTags(elements.reviewTagsExclude?.value || ""),
+    ]),
+  };
 }
 
 export function normalizeText(value) {
