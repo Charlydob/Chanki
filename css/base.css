@@ -18,6 +18,11 @@
   --bucket-week: #7dd3fc;
   --bucket-future: #34d399;
   --radius: 18px;
+  --ui-space-xs: 6px;
+  --ui-space-sm: 10px;
+  --ui-space-md: 14px;
+  --ui-border-soft: 14px;
+  --ui-blur: 10px;
   --safe-area-top: env(safe-area-inset-top);
   --safe-area-bottom: env(safe-area-inset-bottom);
   --safe-area-left: env(safe-area-inset-left);
@@ -1437,30 +1442,86 @@ textarea {
   }
 }
 
-#review-folder-modal .modal {
-  max-height: min(86vh, 760px);
+#review-folder-modal .review-folder-modal__dialog {
+  max-height: calc(100dvh - 140px);
+  min-height: min(520px, calc(100dvh - 160px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.review-folder-modal__header {
+  padding: 14px 16px;
+}
+
+.review-folder-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #review-folder-modal .modal .field {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.review-folder-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(11, 15, 25, 0.86);
+  backdrop-filter: blur(8px);
 }
 
 .folder-select-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  max-height: 56vh;
+  max-height: 40dvh;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 2px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .folder-select-section-title {
   grid-column: 1 / -1;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .folder-select-item {
-  min-height: 56px;
+  align-items: flex-start;
+  min-height: 62px;
+  border-radius: 14px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 8px;
+  break-inside: avoid;
+}
+
+.folder-select-item__label {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.folder-select-item__meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.review-folder-bulk {
+  padding: 10px;
+}
+
+.review-filter-summary {
+  margin: 0;
 }
 
 @media (min-width: 860px) {

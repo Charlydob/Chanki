@@ -34,25 +34,38 @@ function buildSharedFolderList() {
     .filter((folder) => folder.folderId);
 }
 
+export function getVisibleReviewFolderOptionIds() {
+  if (!elements.reviewFolderOptions) return [];
+  return Array.from(elements.reviewFolderOptions.querySelectorAll("input[type=\"checkbox\"]"))
+    .map((input) => input.value)
+    .filter((value) => value !== "all");
+}
+
 export function renderFolderSelects() {
   const options = elements.reviewFolderOptions;
   if (!options) return;
   options.innerHTML = "";
+  const validOwned = new Set(Object.keys(state.folders || {}));
+  const validShared = new Set(Object.keys(state.sharedFolders || {}).map((key) => `shared:${key}`));
+  state.reviewSelectedFolderIds = (state.reviewSelectedFolderIds || []).filter((value) => (value.startsWith("shared:") ? validShared.has(value) : validOwned.has(value)));
   const selected = new Set(state.reviewSelectedFolderIds || []);
   const allChecked = selected.size === 0;
   const query = normalizeSearchQuery(state.reviewFolderSearchQuery || "");
 
-  const addOption = (value, label, checked) => {
+  const addOption = (value, label, checked, meta = "") => {
     const item = document.createElement("label");
     item.className = "folder-select-item";
     item.innerHTML = `
       <input type="checkbox" value="${value}" ${checked ? "checked" : ""} />
-      <span class="folder-select-item__label">${label}</span>
+      <span>
+        <span class="folder-select-item__label">${label}</span>
+        ${meta ? `<span class="folder-select-item__meta">${meta}</span>` : ""}
+      </span>
     `;
     options.appendChild(item);
   };
 
-  addOption("all", "Todas", allChecked);
+  addOption("all", "Todas", allChecked, "Incluye todas las carpetas");
 
   const ownedFolders = buildOwnedFolderList().filter((folder) => !query || folder._search.includes(query));
   if (ownedFolders.length) {
@@ -61,7 +74,8 @@ export function renderFolderSelects() {
     title.textContent = "Mis carpetas";
     options.appendChild(title);
     ownedFolders.forEach((folder) => {
-      addOption(folder.id, folder.name, selected.has(folder.id));
+      const meta = typeof folder.cardCount === "number" ? `${folder.cardCount} tarjetas` : folder.path;
+      addOption(folder.id, folder.name, selected.has(folder.id), meta);
     });
   }
 
@@ -76,8 +90,9 @@ export function renderFolderSelects() {
       const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
       addOption(
         `shared:${folder.shareKey}`,
-        `Compartida · ${folder.name || "Carpeta"} · ${ownerLabel}`,
-        selected.has(`shared:${folder.shareKey}`)
+        folder.name || "Carpeta compartida",
+        selected.has(`shared:${folder.shareKey}`),
+        ownerLabel || "Compartida"
       );
     });
   }
