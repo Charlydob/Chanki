@@ -26,16 +26,18 @@ function sharedFolders() {
   })).filter((folder) => folder.folderId);
 }
 
-function folderCardMarkup(folder, subtitle, extraAttrs = "") {
+function folderRowMarkup(folder, subtitle, extraAttrs = "", actions = "") {
   return `
-    <button class="folder-card" type="button" data-action="select" data-id="${folder.id || folder.folderId}" ${extraAttrs}
-      style="--folder-accent:${folder.color};">
-      <span class="folder-card__emoji">${folder.emoji}</span>
-      <span class="folder-card__text">
-        <span class="folder-card__name">${folder.name}</span>
-        <span class="folder-card__count">${subtitle}</span>
-      </span>
-    </button>
+    <article class="folder-row" style="--folder-accent:${folder.color};">
+      <button class="folder-row__main" type="button" data-action="select" data-id="${folder.id || folder.folderId}" ${extraAttrs}>
+        <span class="folder-row__emoji">${folder.emoji}</span>
+        <span class="folder-row__text">
+          <span class="folder-row__name">${folder.name}</span>
+          <span class="folder-row__count">${subtitle}</span>
+        </span>
+      </button>
+      ${actions ? `<div class="folder-row__actions">${actions}</div>` : ""}
+    </article>
   `;
 }
 
@@ -96,32 +98,34 @@ export function renderFolders() {
     return;
   }
 
-  const grid = document.createElement("div");
-  grid.className = "folder-grid";
+  const list = document.createElement("div");
+  list.className = "folder-list";
 
   own.forEach((folder) => {
     const item = document.createElement("div");
-    item.className = "folder-grid-item";
-    item.innerHTML = `
-      ${folderCardMarkup(folder, `${folder.cardCount || 0} tarjetas`, `data-owner-uid="${state.username}"`)}
-      <div class="folder-card-actions">
-        <button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button">✏️</button>
-        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${folder.id}" type="button">🗑️</button>
-      </div>`;
-    grid.appendChild(item);
+    item.className = "folder-list-item";
+    item.innerHTML = folderRowMarkup(
+      folder,
+      `${folder.cardCount || 0} tarjetas`,
+      `data-owner-uid="${state.username}"`,
+      `
+      <button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button" aria-label="Editar carpeta">✏️</button>
+      <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${folder.id}" type="button" aria-label="Eliminar carpeta">🗑️</button>`
+    );
+    list.appendChild(item);
   });
 
   shared.forEach((folder) => {
     const item = document.createElement("div");
-    item.className = "folder-grid-item";
-    item.innerHTML = folderCardMarkup(
+    item.className = "folder-list-item";
+    item.innerHTML = folderRowMarkup(
       { ...folder, id: folder.folderId },
       `${folder.cardCount || 0} tarjetas · compartida`,
       `data-owner-uid="${folder.ownerUid}" data-shared="true"`
     );
-    grid.appendChild(item);
+    list.appendChild(item);
   });
 
-  container.appendChild(grid);
+  container.appendChild(list);
   renderFolderSelects();
 }
