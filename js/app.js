@@ -2,6 +2,7 @@ import { getDb } from "../lib/firebase.js";
 import {
   listenFolders,
   listenFolderById,
+  listenCardsByUser,
   listenSharedFoldersByUser,
   listenFolderShares,
   createFolder,
@@ -180,6 +181,7 @@ let lexiconUnsubscribe = null;
 let sharedFoldersUnsubscribe = null;
 let sharedFolderListeners = new Map();
 let folderSharesUnsubscribe = null;
+let cardsCountUnsubscribe = null;
 let menuPortal = null;
 let menuPortalAnchor = null;
 let menuPortalCleanup = null;
@@ -2349,6 +2351,29 @@ function updateCardsSearch(value) {
   renderCardsListFiltered();
 }
 
+function initCardCountsListener() {
+  if (cardsCountUnsubscribe) {
+    cardsCountUnsubscribe();
+    cardsCountUnsubscribe = null;
+  }
+  if (!state.username) {
+    state.folderCardCounts = {};
+    renderFolders();
+    return;
+  }
+  const db = getDb();
+  cardsCountUnsubscribe = listenCardsByUser(db, state.username, (cardsMap) => {
+    const counts = {};
+    Object.values(cardsMap || {}).forEach((card) => {
+      const folderId = card?.folderId;
+      if (!folderId) return;
+      counts[folderId] = (counts[folderId] || 0) + 1;
+    });
+    state.folderCardCounts = counts;
+    renderFolders();
+  });
+}
+
 async function initFolders() {
   if (activeUnsubscribe) {
     activeUnsubscribe();
@@ -4138,13 +4163,26 @@ function renderTagPanels() {
       selectedContainer.appendChild(chip);
     });
     allTags.forEach((tag) => {
+      const item = document.createElement("div");
+      item.className = "tag-item";
+
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = selected.has(tag) ? "tag-chip tag-chip--selected" : "tag-chip";
       chip.dataset.tag = tag;
       chip.dataset.tagScope = scope;
       chip.textContent = tag;
-      allContainer.appendChild(chip);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "tag-item__delete";
+      remove.dataset.tagDeleteGlobal = tag;
+      remove.setAttribute("aria-label", `Eliminar tag ${tag} globalmente`);
+      remove.textContent = "✕";
+
+      item.appendChild(chip);
+      item.appendChild(remove);
+      allContainer.appendChild(item);
     });
   });
 }
@@ -4333,6 +4371,7 @@ function initFirebaseUi() {
   setStatus(`Usuario: ${state.username}`);
   syncUsersPublic();
   initFolders();
+  initCardCountsListener();
   initSharedFolders();
   state.activeFolderRef = null;
   runFolderIdMigration();
@@ -4817,70 +4856,14 @@ if (elements.reviewBucketChart) {
   });
 }
 
-function setReviewSelectionCheckboxes(values) {
-  state.reviewSelectedFolderIds = [...new Set(values || [])];
-  persistReviewSelectorPrefs();
-  renderFolderSelects();
-}
-
 function getCheckedReviewFolderIds() {
   return [...(state.reviewSelectedFolderIds || [])];
 }
 
-async function performBulkTagAction(action = "add") {
-  const rawTag = elements.reviewBulkTagInput?.value || "";
-  const [tag] = normalizeTags(rawTag);
+async function deleteTagGlobally(tagToDelete) {
+  const [tag] = normalizeTags(tagToDelete || "");
   if (!tag) {
-    showToast("Escribe un tag válido.", "error");
-    return;
-  }
-  const selectedIds = state.reviewSelectedFolderIds || [];
-  if (!selectedIds.length) {
-    showToast("Selecciona carpetas y aplica antes de usar acciones masivas.", "error");
-    return;
-  }
-  const db = getDb();
-  const selections = getReviewFolderSelections().filter((entry) => entry.folderId);
-  let targetCards = [];
-  for (const selection of selections) {
-    const cards = await fetchCardsByFolderId(db, selection.ownerUid, selection.folderId, 4000);
-    targetCards.push(...cards.map((card) => ({ ...card, _ownerUid: selection.ownerUid })));
-  }
-  if (!targetCards.length) {
-    showToast("No se encontraron fichas para procesar.", "error");
-    return;
-  }
-  const affected = targetCards.filter((card) => {
-    const tags = mapToTags(card.tags || {});
-    return action === "add" ? !tags.includes(tag) : tags.includes(tag);
-  });
-  if (!affected.length) {
-    showToast(action === "add" ? "Todas ya tenían ese tag." : "Ninguna tenía ese tag.");
-    return;
-  }
-  const confirmed = window.confirm(`${action === "add" ? "Añadir" : "Quitar"} tag "${tag}" en ${affected.length} fichas. ¿Continuar?`);
-  if (!confirmed) return;
-  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = "Procesando...";
-  let done = 0;
-  for (const card of affected) {
-    const tags = new Set(mapToTags(card.tags || {}));
-    if (action === "add") tags.add(tag);
-    else tags.delete(tag);
-    await updateCard(db, card._ownerUid || state.username, card.id, { tags: tagsToMap([...tags]) });
-    done += 1;
-    if (elements.reviewBulkProgress && done % 25 === 0) {
-      elements.reviewBulkProgress.textContent = `Procesadas ${done}/${affected.length}`;
-    }
-  }
-  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = `Completado: ${done} fichas actualizadas.`;
-  showToast(`Acción completada: ${done} fichas.`, "success");
-  refreshReviewBucketCounts();
-}
-
-async function deleteTagGlobally() {
-  const [tag] = normalizeTags(elements.reviewGlobalTagInput?.value || "");
-  if (!tag) {
-    showToast("Indica un tag para eliminar globalmente.", "error");
+    showToast("Tag inválido.", "error");
     return;
   }
   const db = getDb();
@@ -4890,9 +4873,8 @@ async function deleteTagGlobally() {
     showToast("Ese tag no existe en tus fichas.");
     return;
   }
-  const confirmed = window.confirm(`Esto quitará el tag "${tag}" de ${affected.length} fichas. ¿Confirmar?`);
+  const confirmed = window.confirm(`Eliminar el tag '${tag}' de todas las tarjetas?`);
   if (!confirmed) return;
-  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = "Eliminando tag global...";
   let done = 0;
   for (const card of affected) {
     const tags = new Set(mapToTags(card.tags || {}));
@@ -4900,9 +4882,9 @@ async function deleteTagGlobally() {
     await updateCard(db, state.username, card.id, { tags: tagsToMap([...tags]) });
     done += 1;
   }
-  if (elements.reviewBulkProgress) elements.reviewBulkProgress.textContent = `Tag eliminado en ${done} fichas.`;
   showToast(`Tag "${tag}" eliminado de ${done} fichas.`, "success");
   refreshReviewBucketCounts();
+  renderTagPanels();
 }
 
 if (elements.reviewFolderTrigger) {
@@ -4964,33 +4946,8 @@ if (elements.reviewFolderSelectAll) {
 if (elements.reviewFolderSelectNone) {
   elements.reviewFolderSelectNone.addEventListener("click", () => { state.reviewSelectedFolderIds = []; persistReviewSelectorPrefs(); renderFolderSelects(); });
 }
-if (elements.reviewFolderSelectVisible) {
-  elements.reviewFolderSelectVisible.addEventListener("click", () => {
-    state.reviewSelectedFolderIds = getVisibleReviewFolderOptionIds();
-    persistReviewSelectorPrefs();
-    renderFolderSelects();
-  });
-}
-if (elements.reviewFolderSelectInvert) {
-  elements.reviewFolderSelectInvert.addEventListener("click", () => {
-    const visible = getVisibleReviewFolderOptionIds();
-    const current = new Set(getCheckedReviewFolderIds());
-    const inverted = visible.filter((value) => !current.has(value));
-    setReviewSelectionCheckboxes(inverted);
-  });
-}
 if (elements.reviewFolderResetPreferences) {
   elements.reviewFolderResetPreferences.addEventListener("click", resetReviewSelectorPrefs);
-}
-
-if (elements.reviewBulkAddTag) {
-  elements.reviewBulkAddTag.addEventListener("click", () => performBulkTagAction("add"));
-}
-if (elements.reviewBulkRemoveTag) {
-  elements.reviewBulkRemoveTag.addEventListener("click", () => performBulkTagAction("remove"));
-}
-if (elements.reviewGlobalDeleteTag) {
-  elements.reviewGlobalDeleteTag.addEventListener("click", deleteTagGlobally);
 }
 
 if (elements.reviewFolderApply) {
@@ -5068,6 +5025,12 @@ document.addEventListener("click", (event) => {
       panel.classList.toggle("is-collapsed", collapsed);
       updateTagSuggestions(panel.dataset.tagsScope || "review", "");
     }
+    return;
+  }
+  const globalDeleteTag = event.target.closest("[data-tag-delete-global]");
+  if (globalDeleteTag) {
+    const tag = globalDeleteTag.dataset.tagDeleteGlobal;
+    deleteTagGlobally(tag);
     return;
   }
   const tagChip = event.target.closest(".tag-chip");

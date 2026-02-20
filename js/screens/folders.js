@@ -106,7 +106,7 @@ export function renderFolders() {
     item.className = "folder-list-item";
     item.innerHTML = folderRowMarkup(
       folder,
-      `${folder.cardCount || 0} tarjetas`,
+      `${state.folderCardCounts?.[folder.id] || 0} tarjetas`,
       `data-owner-uid="${state.username}"`,
       `
       <button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button" aria-label="Editar carpeta">✏️</button>
