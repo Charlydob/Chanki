@@ -1,4 +1,4 @@
-const CACHE_NAME = "chanki-static-v1";
+const CACHE_NAME = "chanki-static-v2";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
   "./css/folders.css",
   "./css/review.css",
   "./css/stats.css",
+  "./css/chanki-touch-icon.svg",
   "./js/app.js",
   "./js/shared.js",
   "./js/screens/review.js",
