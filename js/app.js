@@ -731,7 +731,7 @@ function setStatus(text) {
   elements.status.textContent = text;
 }
 
-function setActiveScreen(name) {
+function setActiveScreen(name, { skipRouteSync = false } = {}) {
   const tabName = name === "cards" ? "folders" : name;
   elements.screens.forEach((screen) => {
     screen.classList.toggle("active", screen.id === `screen-${name}`);
@@ -741,6 +741,9 @@ function setActiveScreen(name) {
   });
   if (name !== "review") {
     setReviewMode(false);
+  }
+  if (!skipRouteSync) {
+    syncRouteFromState(name);
   }
 }
 
@@ -2130,14 +2133,24 @@ function updateCardsTitle() {
   const folder = getActiveFolderInfo();
   if (!folder || !activeRef) {
     elements.cardsTitle.textContent = "Tarjetas";
+    if (elements.cardsFolderMeta) {
+      elements.cardsFolderMeta.textContent = "Selecciona una carpeta";
+    }
     return;
   }
+  const cardCount = Number(folder?.cardCount || 0);
   if (activeRef.isShared) {
     const ownerLabel = getUserLabel(activeRef.ownerUid);
-    elements.cardsTitle.textContent = `Tarjetas · ${folder.name} (Compartida por ${ownerLabel})`;
+    elements.cardsTitle.textContent = `${folder.emoji || "📁"} ${folder.name}`;
+    if (elements.cardsFolderMeta) {
+      elements.cardsFolderMeta.textContent = `${cardCount} tarjetas · compartida por ${ownerLabel}`;
+    }
     return;
   }
-  elements.cardsTitle.textContent = `Tarjetas · ${folder.name}`;
+  elements.cardsTitle.textContent = `${folder.emoji || "📁"} ${folder.name}`;
+  if (elements.cardsFolderMeta) {
+    elements.cardsFolderMeta.textContent = `${cardCount} tarjetas`;
+  }
 }
 
 function updateSearchUI() {
@@ -2203,6 +2216,32 @@ function setImportContext(mode, options = {}) {
   }
   if (elements.importSave) {
     elements.importSave.textContent = mode === "folder" ? "Importar aquí" : "Importar";
+  }
+  renderImportFolderSelect();
+}
+
+function renderImportFolderSelect() {
+  if (!elements.importFolderSelect) return;
+  const select = elements.importFolderSelect;
+  const currentValue = select.value;
+  const options = [
+    '<option value="__none__">Sin carpeta</option>',
+    ...Object.entries(state.folders || {})
+      .map(([id, folder]) => ({ id, folder }))
+      .sort((a, b) => String(a.folder?.name || "").localeCompare(String(b.folder?.name || ""), "es"))
+      .map(({ id, folder }) => `<option value="${id}">${escapeHtml(folder?.emoji || "📁")} ${escapeHtml(folder?.name || "Carpeta")}</option>`),
+  ];
+  select.innerHTML = options.join("");
+  if (importState.mode === "folder") {
+    select.value = importState.forcedFolderId || "__none__";
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  if (currentValue && select.querySelector(`option[value="${CSS.escape(currentValue)}"]`)) {
+    select.value = currentValue;
+  } else {
+    select.value = "__none__";
   }
 }
 
@@ -2328,11 +2367,13 @@ async function initFolders() {
           console.info(`Reparadas ${result.repaired} carpetas con datos incompletos.`);
         }
         renderFolders();
+        renderImportFolderSelect();
       })
       .catch((error) => {
         console.error("No se pudo normalizar carpetas", error);
         state.folders = folders || {};
         renderFolders();
+        renderImportFolderSelect();
       });
   });
 }
@@ -2548,25 +2589,8 @@ async function handleFolderAction(event) {
     const isShared = actionEl.dataset.shared === "true";
     const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
     const resolvedFolderId = isShared ? folderId : (resolveOwnedFolderId(folderId) || folderId);
-    state.selectedFolderId = resolvedFolderId;
-    state.activeFolderRef = {
-      ownerUid,
-      folderId: resolvedFolderId,
-      role,
-      isShared,
-    };
-    state.cardsSearchPool = [];
-    state.cardsSearchFolderId = null;
-    state.cardsSearchOwnerUid = null;
-    updateCardsTitle();
-    updateSearchUI();
     debugFolderSelection(folderId);
-    await loadCards(true);
-    if (state.cardsSearchQuery) {
-      loadSearchPool();
-    }
-    updateFolderAccessUI();
-    setActiveScreen("cards");
+    await openFolderView({ ownerUid, folderId: resolvedFolderId, role, isShared }, "push");
   }
   if (action === "rename" || action === "delete" || action === "share") {
     handleFolderMenuAction(action, folderId);
@@ -3819,11 +3843,13 @@ async function importBlocks(blocks, options = {}) {
   };
   const resolvedFolders = new Map();
   for (const block of blocks) {
-    const folderPath = options.forcedFolderId
+    const folderPath = options.forcedFolderId || options.forceNoFolder
       ? null
       : resolveBlockFolderPath(block, folderFallback);
     let folderId = options.forcedFolderId || null;
-    if (!folderId) {
+    if (options.forceNoFolder) {
+      folderId = null;
+    } else if (!folderId) {
       if (activeRef?.isShared) {
         throw new Error("No puedes crear carpetas en una compartida.");
       }
@@ -3839,7 +3865,6 @@ async function importBlocks(blocks, options = {}) {
         }
       }
     }
-    if (!folderId) continue;
     for (const card of block.cards) {
       const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
       const result = await upsertCardWithDedupe(db, ownerUid, {
@@ -3891,17 +3916,22 @@ async function handleImportSave() {
     return;
   }
   const db = getDb();
-  const forcedFolderId = importState.mode === "folder" ? importState.forcedFolderId : null;
+  const selectedImportFolderId = elements.importFolderSelect?.value || "__none__";
+  const forceNoFolder = importState.mode !== "folder" && selectedImportFolderId === "__none__";
+  const forcedFolderId = importState.mode === "folder"
+    ? importState.forcedFolderId
+    : (selectedImportFolderId !== "__none__" ? selectedImportFolderId : null);
   if (importState.mode === "folder" && !forcedFolderId) {
     showToast("Selecciona una carpeta antes de importar aquí.", "error");
     return;
   }
   window.__importing = true;
   elements.importSave.disabled = true;
-  console.log("IMPORT START", { parsed: totalCards, forcedFolderId });
+  console.log("IMPORT START", { parsed: totalCards, forcedFolderId, forceNoFolder });
   try {
     const summary = await importBlocks(parsed.blocks, {
       forcedFolderId,
+      forceNoFolder,
       folderFallback: "Importadas",
     });
     if (parsed.glossary && parsed.glossary.length) {
@@ -3963,6 +3993,7 @@ function handleImportCancel() {
   resetImportPreview();
   const returnScreen = importState.mode === "folder" ? (importState.sourceScreen || "cards") : "import";
   setImportContext("generic", { sourceScreen: "import" });
+  renderImportFolderSelect();
   if (returnScreen !== "import") {
     setActiveScreen(returnScreen);
   }
@@ -4209,7 +4240,83 @@ function initLexiconListener() {
   });
 }
 
-async function initApp() {
+function syncRouteFromState(screenName) {
+  const screen = screenName || "folders";
+  let path = "/";
+  const activeRef = getActiveFolderRef();
+  if (screen === "cards" && activeRef?.folderId) {
+    path = `/folder/${encodeURIComponent(activeRef.folderId)}`;
+  } else if (screen === "review") {
+    path = "/review";
+  } else if (screen === "import") {
+    path = "/import";
+  } else if (screen === "stats") {
+    path = "/stats";
+  }
+  if (`${window.location.pathname}${window.location.search}` === path) return;
+  window.history.pushState({}, "", path);
+}
+
+async function openFolderView({ ownerUid, folderId, role = "owner", isShared = false }, routeMode = "push") {
+  state.selectedFolderId = folderId;
+  state.activeFolderRef = { ownerUid, folderId, role, isShared };
+  state.cardsSearchPool = [];
+  state.cardsSearchFolderId = null;
+  state.cardsSearchOwnerUid = null;
+  updateCardsTitle();
+  updateSearchUI();
+  await loadCards(true);
+  if (state.cardsSearchQuery) {
+    loadSearchPool();
+  }
+  updateFolderAccessUI();
+  setActiveScreen("cards", { skipRouteSync: true });
+  if (routeMode === "replace") {
+    window.history.replaceState({}, "", `/folder/${encodeURIComponent(folderId)}`);
+  } else if (routeMode === "push") {
+    window.history.pushState({}, "", `/folder/${encodeURIComponent(folderId)}`);
+  }
+}
+
+async function applyRoute() {
+  const path = window.location.pathname || "/";
+  if (path.startsWith("/folder/")) {
+    const folderId = decodeURIComponent(path.replace("/folder/", ""));
+    if (!folderId) {
+      setActiveScreen("folders", { skipRouteSync: true });
+      return;
+    }
+    const ownedFolderId = resolveOwnedFolderId(folderId);
+    if (ownedFolderId) {
+      await openFolderView({ ownerUid: state.username, folderId: ownedFolderId, role: "owner", isShared: false }, "replace");
+      return;
+    }
+    const shared = Object.values(state.sharedFolders || {}).find((entry) => entry?.folderId === folderId);
+    if (shared) {
+      await openFolderView({ ownerUid: shared.ownerUid, folderId, role: shared.role || "viewer", isShared: true }, "replace");
+      return;
+    }
+    showToast("Carpeta no encontrada.", "error");
+    setActiveScreen("folders", { skipRouteSync: true });
+    window.history.replaceState({}, "", "/");
+    return;
+  }
+  if (path === "/import") {
+    setActiveScreen("import", { skipRouteSync: true });
+    return;
+  }
+  if (path === "/review") {
+    setActiveScreen("review", { skipRouteSync: true });
+    return;
+  }
+  if (path === "/stats") {
+    setActiveScreen("stats", { skipRouteSync: true });
+    return;
+  }
+  setActiveScreen("folders", { skipRouteSync: true });
+}
+
+function initApp() {
   if (!state.username) {
     showOverlay(elements.overlay, true);
     setStatus("Define un usuario para empezar.");
@@ -4250,6 +4357,8 @@ function initFirebaseUi() {
   renderBucketFilter();
   refreshReviewBucketCounts();
   setImportContext("generic", { sourceScreen: "import" });
+  renderImportFolderSelect();
+  applyRoute();
 }
 
 if ("serviceWorker" in navigator) {
@@ -5098,6 +5207,10 @@ document.addEventListener("keydown", (event) => {
       refreshReviewBucketCounts();
     }
   }
+});
+
+window.addEventListener("popstate", () => {
+  applyRoute();
 });
 
 initApp();

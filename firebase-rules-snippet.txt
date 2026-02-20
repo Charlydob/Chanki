@@ -32,6 +32,7 @@
           }
         },
         "cards": {
+          ".indexOn": ["folderId"],
           "$cardId": {
             ".read": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child(data.child('folderId').val()).child(auth.uid).exists())",
             ".write": "auth != null && (auth.uid === $ownerUid || root.child('folderShares').child($ownerUid).child(data.child('folderId').val()).child(auth.uid).child('role').val() === 'editor')"
