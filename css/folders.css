@@ -1,1 +1,71 @@
-/* moved from styles.css (folders screen overrides) */
+#folder-tree {
+  overflow-y: auto;
+}
+
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.folder-grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.folder-card {
+  border: 1px solid color-mix(in srgb, var(--folder-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--folder-accent) 18%, rgba(15, 23, 42, 0.65));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--folder-accent) 28%, transparent);
+  border-radius: 14px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: inherit;
+}
+
+.folder-card__emoji { font-size: 24px; }
+.folder-card__text { min-width: 0; display: flex; flex-direction: column; }
+.folder-card__name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+.folder-card__count { font-size: 12px; color: var(--muted); }
+
+.folder-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.review-folder-chip {
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.45);
+  color: inherit;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#review-folder-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.review-folder-chip.is-selected {
+  border-color: color-mix(in srgb, var(--folder-accent) 65%, transparent);
+  background: color-mix(in srgb, var(--folder-accent) 18%, rgba(15, 23, 42, 0.75));
+}
+
+.list-item.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.4);
+}
+
+.modal {
+  max-height: 90dvh;
+  overflow-y: auto;
+}

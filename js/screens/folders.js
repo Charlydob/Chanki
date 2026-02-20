@@ -1,229 +1,127 @@
 import { elements, normalizeSearchQuery, state } from "../shared.js";
 import { refreshReviewBucketCounts } from "./review.js";
 
-function buildOwnedFolderList() {
-  return Object.entries(state.folders || {}).map(([folderKey, folder]) => {
-    const id = folder?.id || folderKey;
-    const path = folder?.path || folder?.name || "";
-    const name = folder?.name || path || "Carpeta";
-    return {
-      ...folder,
-      id,
-      path,
-      name,
-      _search: normalizeSearchQuery(`${name} ${path}`),
-    };
-  });
+const DEFAULT_EMOJI = "📁";
+
+function ownedFolders() {
+  return Object.entries(state.folders || {}).map(([id, folder]) => ({
+    ...folder,
+    id,
+    name: folder?.name || "Carpeta",
+    emoji: folder?.emoji || DEFAULT_EMOJI,
+    color: folder?.color || "#8b5cf6",
+    _search: normalizeSearchQuery(folder?.name || ""),
+  }));
 }
 
-function buildSharedFolderList() {
-  return Object.entries(state.sharedFolders || {})
-    .map(([shareKey, folder]) => {
-      const folderId = folder?.folderId || folder?.id;
-      const name = folder?.name || folder?.path || "Carpeta";
-      const path = folder?.path || name;
-      return {
-        ...folder,
-        shareKey,
-        folderId,
-        name,
-        path,
-        _search: normalizeSearchQuery(`${name} ${path}`),
-      };
-    })
-    .filter((folder) => folder.folderId);
+function sharedFolders() {
+  return Object.entries(state.sharedFolders || {}).map(([shareKey, folder]) => ({
+    ...folder,
+    shareKey,
+    folderId: folder?.folderId,
+    name: folder?.name || "Carpeta compartida",
+    emoji: folder?.emoji || DEFAULT_EMOJI,
+    color: folder?.color || "#8b5cf6",
+    _search: normalizeSearchQuery(folder?.name || ""),
+  })).filter((folder) => folder.folderId);
+}
+
+function folderCardMarkup(folder, subtitle, extraAttrs = "") {
+  return `
+    <button class="folder-card" type="button" data-action="select" data-id="${folder.id || folder.folderId}" ${extraAttrs}
+      style="--folder-accent:${folder.color};">
+      <span class="folder-card__emoji">${folder.emoji}</span>
+      <span class="folder-card__text">
+        <span class="folder-card__name">${folder.name}</span>
+        <span class="folder-card__count">${subtitle}</span>
+      </span>
+    </button>
+  `;
 }
 
 export function getVisibleReviewFolderOptionIds() {
   if (!elements.reviewFolderOptions) return [];
-  return Array.from(elements.reviewFolderOptions.querySelectorAll("input[type=\"checkbox\"]"))
-    .map((input) => input.value)
-    .filter((value) => value !== "all");
+  return Array.from(elements.reviewFolderOptions.querySelectorAll("[data-folder-id]"))
+    .map((el) => el.dataset.folderId)
+    .filter(Boolean);
 }
 
 export function renderFolderSelects() {
   const options = elements.reviewFolderOptions;
   if (!options) return;
-  options.innerHTML = "";
-  const validOwned = new Set(Object.keys(state.folders || {}));
-  const validShared = new Set(Object.keys(state.sharedFolders || {}).map((key) => `shared:${key}`));
-  state.reviewSelectedFolderIds = (state.reviewSelectedFolderIds || []).filter((value) => (value.startsWith("shared:") ? validShared.has(value) : validOwned.has(value)));
-  const selected = new Set(state.reviewSelectedFolderIds || []);
-  const allChecked = selected.size === 0;
   const query = normalizeSearchQuery(state.reviewFolderSearchQuery || "");
+  const list = ownedFolders().filter((folder) => !query || folder._search.includes(query));
+  const selected = new Set(state.reviewSelectedFolderIds || []);
 
-  const addOption = (value, label, checked, meta = "") => {
-    const item = document.createElement("label");
-    item.className = "folder-select-item";
-    item.innerHTML = `
-      <input type="checkbox" value="${value}" ${checked ? "checked" : ""} />
-      <span>
-        <span class="folder-select-item__label">${label}</span>
-        ${meta ? `<span class="folder-select-item__meta">${meta}</span>` : ""}
-      </span>
-    `;
-    options.appendChild(item);
-  };
-
-  addOption("all", "Todas", allChecked, "Incluye todas las carpetas");
-
-  const ownedFolders = buildOwnedFolderList().filter((folder) => !query || folder._search.includes(query));
-  if (ownedFolders.length) {
-    const title = document.createElement("div");
-    title.className = "list-section-title folder-select-section-title";
-    title.textContent = "Mis carpetas";
-    options.appendChild(title);
-    ownedFolders.forEach((folder) => {
-      const meta = typeof folder.cardCount === "number" ? `${folder.cardCount} tarjetas` : folder.path;
-      addOption(folder.id, folder.name, selected.has(folder.id), meta);
+  options.innerHTML = "";
+  if (!list.length) {
+    options.innerHTML = '<div class="card">Sin carpetas para ese filtro.</div>';
+  } else {
+    list.forEach((folder) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `review-folder-chip${selected.has(folder.id) ? " is-selected" : ""}`;
+      button.dataset.folderId = folder.id;
+      button.style.setProperty("--folder-accent", folder.color);
+      button.innerHTML = `<span>${folder.emoji}</span><span>${folder.name}</span>`;
+      options.appendChild(button);
     });
-  }
-
-  const sharedEntries = buildSharedFolderList().filter((folder) => !query || folder._search.includes(query));
-  if (sharedEntries.length) {
-    const title = document.createElement("div");
-    title.className = "list-section-title folder-select-section-title";
-    title.textContent = "Compartidas conmigo";
-    options.appendChild(title);
-    sharedEntries.forEach((folder) => {
-      const ownerInfo = state.usersPublic?.[folder.ownerUid];
-      const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
-      addOption(
-        `shared:${folder.shareKey}`,
-        folder.name || "Carpeta compartida",
-        selected.has(`shared:${folder.shareKey}`),
-        ownerLabel || "Compartida"
-      );
-    });
-  }
-
-  if (!ownedFolders.length && !sharedEntries.length && query) {
-    const empty = document.createElement("div");
-    empty.className = "card";
-    empty.textContent = "Sin carpetas para ese filtro.";
-    options.appendChild(empty);
   }
 
   if (elements.reviewFolderLabel) {
-    if (!selected.size) {
-      elements.reviewFolderLabel.textContent = "Todas";
-    } else if (selected.size === 1) {
-      const value = [...selected][0];
-      if (value.startsWith("shared:")) {
-        const shareKey = value.replace("shared:", "");
-        const folder = state.sharedFolders?.[shareKey];
-        const ownerInfo = state.usersPublic?.[folder?.ownerUid];
-        const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder?.ownerUid || "";
-        elements.reviewFolderLabel.textContent = `Compartida · ${folder?.name || "Carpeta"} · ${ownerLabel}`;
-      } else {
-        elements.reviewFolderLabel.textContent = state.folders[value]?.name || "Carpeta";
-      }
+    if (!selected.size) elements.reviewFolderLabel.textContent = "Todas";
+    else if (selected.size === 1) {
+      const id = [...selected][0];
+      elements.reviewFolderLabel.textContent = state.folders[id]?.name || "Carpeta";
     } else {
       elements.reviewFolderLabel.textContent = `${selected.size} carpetas`;
     }
   }
-
   refreshReviewBucketCounts();
 }
 
 export function renderFolders() {
   const container = elements.folderTree;
+  if (!container) return;
   container.innerHTML = "";
-  const folderList = buildOwnedFolderList();
-  const sharedList = buildSharedFolderList();
+
+  const own = ownedFolders();
+  const shared = sharedFolders();
   if (!state.username) {
     container.innerHTML = '<div class="card">Define tu usuario en Ajustes o al iniciar.</div>';
     return;
   }
-  if (!folderList.length && !sharedList.length) {
+  if (!own.length && !shared.length) {
     container.innerHTML = '<div class="card">Crea tu primera carpeta para organizar tus tarjetas.</div>';
     return;
   }
-  if (folderList.length) {
-    const ownedTitle = document.createElement("div");
-    ownedTitle.className = "list-section-title";
-    ownedTitle.textContent = "Mis carpetas";
-    container.appendChild(ownedTitle);
-  }
-  folderList.forEach((folder) => {
+
+  const grid = document.createElement("div");
+  grid.className = "folder-grid";
+
+  own.forEach((folder) => {
     const item = document.createElement("div");
-    item.className = "list-item";
-    const menuId = `folder-menu-${folder.id}`;
-    const subtitle = typeof folder.cardCount === "number"
-      ? `${folder.cardCount} tarjetas`
-      : folder.path;
+    item.className = "folder-grid-item";
     item.innerHTML = `
-      <button class="item-main" data-action="select" data-id="${folder.id}" data-owner-uid="${state.username}" type="button">
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v8A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-          </svg>
-        </span>
-        <span class="item-text">
-          <span class="item-title">${folder.name}</span>
-          <span class="item-subtitle">${subtitle}</span>
-        </span>
-        <span class="item-chevron" aria-hidden="true">›</span>
-      </button>
-      <div class="item-menu-wrapper">
-        <button class="icon-button" data-menu-toggle="${menuId}" type="button" aria-label="Opciones">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          </svg>
-        </button>
-        <div class="item-menu hidden" data-menu-id="${menuId}">
-          <button data-action="share" data-id="${folder.id}" type="button">Compartir</button>
-          <button data-action="rename" data-id="${folder.id}" type="button">Renombrar</button>
-          <button data-action="delete" data-id="${folder.id}" type="button" class="danger">Borrar</button>
-        </div>
-      </div>
-    `;
-    container.appendChild(item);
+      ${folderCardMarkup(folder, `${folder.cardCount || 0} tarjetas`, `data-owner-uid="${state.username}"`)}
+      <div class="folder-card-actions">
+        <button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button">✏️</button>
+        <button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${folder.id}" type="button">🗑️</button>
+      </div>`;
+    grid.appendChild(item);
   });
-  if (sharedList.length) {
-    const sharedTitle = document.createElement("div");
-    sharedTitle.className = "list-section-title";
-    sharedTitle.textContent = "Compartidas conmigo";
-    container.appendChild(sharedTitle);
-  }
-  sharedList.forEach((folder) => {
+
+  shared.forEach((folder) => {
     const item = document.createElement("div");
-    item.className = "list-item";
-    const ownerInfo = state.usersPublic?.[folder.ownerUid];
-    const ownerLabel = ownerInfo?.displayName || ownerInfo?.handle || folder.ownerUid;
-    const subtitle = typeof folder.cardCount === "number"
-      ? `${folder.cardCount} tarjetas · ${ownerLabel}`
-      : `${folder.path || "Compartida"} · ${ownerLabel}`;
-    item.innerHTML = `
-      <button class="item-main" data-action="select" data-id="${folder.folderId}" data-owner-uid="${folder.ownerUid}" data-role="${folder.role || "viewer"}" data-shared="true" type="button">
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v8A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-          </svg>
-        </span>
-        <span class="item-text">
-          <span class="item-title-row">
-            <span class="item-title">${folder.name || "Carpeta"}</span>
-            <span class="share-badge">Compartida</span>
-          </span>
-          <span class="item-subtitle">${subtitle}</span>
-        </span>
-        <span class="item-chevron" aria-hidden="true">›</span>
-      </button>
-    `;
-    container.appendChild(item);
+    item.className = "folder-grid-item";
+    item.innerHTML = folderCardMarkup(
+      { ...folder, id: folder.folderId },
+      `${folder.cardCount || 0} tarjetas · compartida`,
+      `data-owner-uid="${folder.ownerUid}" data-shared="true"`
+    );
+    grid.appendChild(item);
   });
+
+  container.appendChild(grid);
   renderFolderSelects();
 }
