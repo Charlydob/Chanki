@@ -271,6 +271,27 @@ body {
   color: #f4f0ff;
 }
 
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-item__delete {
+  border: 1px solid var(--glass-border);
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.tag-item__delete:hover {
+  background: rgba(239, 68, 68, 0.32);
+}
+
 .tags-suggestions {
   display: flex;
   flex-direction: column;
@@ -1516,9 +1537,6 @@ textarea {
   color: var(--muted);
 }
 
-.review-folder-bulk {
-  padding: 10px;
-}
 
 .review-filter-summary {
   margin: 0;
