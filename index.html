@@ -52,6 +52,10 @@
               <h2 id="cards-title">Tarjetas</h2>
             </div>
             <div class="screen__header-actions">
+              <button id="cards-select-toggle" class="button ghost" type="button">Seleccionar</button>
+              <button id="cards-bulk-move" class="button ghost hidden" type="button">Mover</button>
+              <button id="cards-bulk-clear-folder" class="button ghost hidden" type="button">Quitar carpeta</button>
+              <button id="cards-bulk-delete" class="button ghost hidden" type="button">Eliminar</button>
               <button id="import-folder" class="button ghost" type="button">Importar aquí</button>
               <button id="add-card" class="button" type="button">Nueva tarjeta</button>
             </div>
@@ -564,11 +568,19 @@
     </div>
 
     <div id="folder-modal" class="overlay hidden">
-      <div class="modal">
+        <div class="modal">
         <h2 id="folder-modal-title">Nueva carpeta</h2>
         <label class="field">
           <span>Nombre</span>
           <input id="folder-name-input" type="text" placeholder="Ej: Verbos" />
+        </label>
+        <label class="field">
+          <span>Emoji</span>
+          <input id="folder-emoji-input" type="text" maxlength="4" placeholder="📁" />
+        </label>
+        <label class="field">
+          <span>Color</span>
+          <input id="folder-color-input" type="color" value="#8b5cf6" />
         </label>
         <div class="row">
           <button id="save-folder" class="button" type="button">Crear</button>
@@ -612,12 +624,10 @@
           </button>
         </div>
         <div class="review-folder-modal__body">
-          <label class="field"><span>Buscar carpeta</span><input id="review-folder-search" type="search" placeholder="Escribe nombre o ruta" /></label>
+          <label class="field"><span>Buscar carpeta</span><input id="review-folder-search" type="search" placeholder="Escribe nombre" /></label>
           <div class="review-folder-actions" role="group" aria-label="Acciones de selección de carpetas">
             <button id="review-folder-select-all" class="button ghost small" type="button">Seleccionar todo</button>
             <button id="review-folder-select-none" class="button ghost small" type="button">Deseleccionar todo</button>
-            <button id="review-folder-select-invert" class="button ghost small" type="button">Invertir</button>
-            <button id="review-folder-select-visible" class="button ghost small" type="button">Solo visibles</button>
             <button id="review-folder-reset-preferences" class="button ghost small" type="button">Reset</button>
           </div>
           <div id="review-folder-options" class="list folder-select-list" aria-live="polite"></div>

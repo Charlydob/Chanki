@@ -73,6 +73,7 @@ import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } f
 const APP_VERSION = "0.15.0";
 
 const REVIEW_PREFS_KEY = "chanki_review_selector_prefs";
+const REVIEW_FOLDER_IDS_KEY = "reviewFolderIds";
 let reviewFolderSearchDebounce = null;
 
 function persistReviewSelectorPrefs() {
@@ -85,6 +86,7 @@ function persistReviewSelectorPrefs() {
     timestamp: Date.now(),
   };
   localStorage.setItem(REVIEW_PREFS_KEY, JSON.stringify(payload));
+  localStorage.setItem(REVIEW_FOLDER_IDS_KEY, JSON.stringify(state.reviewSelectedFolderIds || []));
 }
 
 function restoreReviewSelectorPrefs() {
@@ -92,7 +94,10 @@ function restoreReviewSelectorPrefs() {
     const raw = localStorage.getItem(REVIEW_PREFS_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
-    state.reviewSelectedFolderIds = Array.isArray(parsed.selectedFolderIds) ? parsed.selectedFolderIds : [];
+    const byPrefs = Array.isArray(parsed.selectedFolderIds) ? parsed.selectedFolderIds : [];
+    let byKey = [];
+    try { byKey = JSON.parse(localStorage.getItem(REVIEW_FOLDER_IDS_KEY) || "[]"); } catch (_) { byKey = []; }
+    state.reviewSelectedFolderIds = byKey.length ? byKey : byPrefs;
     state.reviewSelectedTags = new Set(Array.isArray(parsed.includeTags) ? parsed.includeTags : []);
     state.reviewExcludeTags = new Set(Array.isArray(parsed.excludeTags) ? parsed.excludeTags : []);
     state.reviewFolderSearchQuery = parsed.searchQuery || "";
@@ -120,6 +125,7 @@ function resetReviewSelectorPrefs() {
   if (elements.reviewTagsExclude) elements.reviewTagsExclude.value = "";
   if (elements.reviewFolderSearch) elements.reviewFolderSearch.value = "";
   localStorage.removeItem(REVIEW_PREFS_KEY);
+  localStorage.removeItem(REVIEW_FOLDER_IDS_KEY);
   renderFolderSelects();
   renderTagPanels();
   refreshReviewBucketCounts();
@@ -657,8 +663,8 @@ function isActiveFolderReadOnly() {
 
 function getFolderLabel(folder, ownerLabel, isShared = false) {
   if (!folder) return "Carpeta";
-  if (!isShared) return folder.name || folder.path || "Carpeta";
-  return `${folder.name || folder.path || "Carpeta"} · ${ownerLabel}`;
+  if (!isShared) return folder.name || "Carpeta";
+  return `${folder.name || "Carpeta"} · ${ownerLabel}`;
 }
 
 function getActiveFolderInfo() {
@@ -1142,9 +1148,11 @@ async function buildWordKey(word) {
 
 function openFolderModal(folder = null) {
   editingFolderId = folder ? folder.id : null;
-  elements.folderModalTitle.textContent = folder ? "Renombrar carpeta" : "Nueva carpeta";
+  elements.folderModalTitle.textContent = folder ? "Editar carpeta" : "Nueva carpeta";
   elements.saveFolder.textContent = folder ? "Guardar" : "Crear";
   elements.folderNameInput.value = folder ? folder.name : "";
+  if (elements.folderEmojiInput) elements.folderEmojiInput.value = folder?.emoji || "📁";
+  if (elements.folderColorInput) elements.folderColorInput.value = folder?.color || "#8b5cf6";
   elements.saveFolder.disabled = false;
   showOverlay(elements.folderModal, true);
   elements.folderNameInput.focus();
@@ -1153,6 +1161,8 @@ function openFolderModal(folder = null) {
 function closeFolderModal() {
   showOverlay(elements.folderModal, false);
   elements.folderNameInput.value = "";
+  if (elements.folderEmojiInput) elements.folderEmojiInput.value = "📁";
+  if (elements.folderColorInput) elements.folderColorInput.value = "#8b5cf6";
   editingFolderId = null;
 }
 
@@ -1194,7 +1204,8 @@ function getCardDedupeValues(card) {
 
 function buildCardListItem(card, isDuplicate, readOnly) {
   const item = document.createElement("div");
-  item.className = `list-item${isDuplicate ? " is-dup" : ""}`;
+  const isSelected = state.selectedCardIds.has(card.id);
+  item.className = `list-item${isDuplicate ? " is-dup" : ""}${isSelected ? " is-selected" : ""}`;
   const resolvedCard = resolveLegacyOrderCard(card);
   const summary = resolvedCard.type === "cloze"
     ? `${resolvedCard.clozeText || "(cloze sin texto)"}`
@@ -1207,6 +1218,7 @@ function buildCardListItem(card, isDuplicate, readOnly) {
       ? `Orden: ${getCardDedupeValues(resolvedCard).back || "-"}`
       : `${resolvedCard.back}`;
   item.innerHTML = `
+      ${state.cardsSelectionMode ? `<button class="icon-button icon-button--compact" data-action="toggle-select" data-id="${card.id}" type="button" aria-label="Seleccionar">${isSelected ? "☑️" : "⬜"}</button>` : ""}
       <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
         <span class="item-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24">
@@ -1337,6 +1349,7 @@ function renderCards() {
     list.appendChild(item);
   });
   updateLoadMoreVisibility(searching);
+  updateCardsBulkToolbar();
 }
 
 function renderCardsListFiltered() {
@@ -1437,6 +1450,7 @@ function renderCardsFromList(cards, searching = false) {
     list.appendChild(item);
   });
   updateLoadMoreVisibility(searching);
+  updateCardsBulkToolbar();
 }
 
 function updateLoadMoreVisibility(searching = false) {
@@ -2374,7 +2388,6 @@ async function initSharedFolders() {
           folderId,
           id: folderId,
           name: folder?.name || "(Carpeta compartida)",
-          path: folder?.path || "",
           cardCount: folder?.cardCount,
           updatedAt: folder?.updatedAt,
         };
@@ -2681,6 +2694,8 @@ async function handleSaveFolder() {
     return;
   }
   const name = elements.folderNameInput.value.trim();
+  const emoji = (elements.folderEmojiInput?.value || "📁").trim() || "📁";
+  const color = (elements.folderColorInput?.value || "#8b5cf6").trim() || "#8b5cf6";
   if (!name) {
     showToast("Escribe un nombre.", "error");
     return;
@@ -2689,9 +2704,9 @@ async function handleSaveFolder() {
   elements.saveFolder.disabled = true;
   try {
     if (editingFolderId) {
-      await updateFolder(db, state.username, editingFolderId, { name });
+      await updateFolder(db, state.username, editingFolderId, { name, emoji, color });
     } else {
-      await createFolder(db, state.username, { name });
+      await createFolder(db, state.username, { name, emoji, color });
     }
     showToast("Guardado");
     closeFolderModal();
@@ -2700,6 +2715,17 @@ async function handleSaveFolder() {
   } finally {
     elements.saveFolder.disabled = false;
   }
+}
+
+function updateCardsBulkToolbar() {
+  const active = state.cardsSelectionMode;
+  const count = state.selectedCardIds.size;
+  if (elements.cardsSelectToggle) elements.cardsSelectToggle.textContent = active ? `Cancelar (${count})` : "Seleccionar";
+  [elements.cardsBulkMove, elements.cardsBulkClearFolder, elements.cardsBulkDelete].forEach((el) => {
+    if (!el) return;
+    el.classList.toggle("hidden", !active);
+    el.disabled = !count;
+  });
 }
 
 async function handleCardListAction(event) {
@@ -2715,7 +2741,21 @@ async function handleCardListAction(event) {
     return;
   }
   const ownerUid = getActiveOwnerUid();
+  if (action === "toggle-select") {
+    if (state.selectedCardIds.has(card.id)) state.selectedCardIds.delete(card.id);
+    else state.selectedCardIds.add(card.id);
+    updateCardsBulkToolbar();
+    renderCardsView();
+    return;
+  }
   if (action === "edit") {
+    if (state.cardsSelectionMode) {
+      if (state.selectedCardIds.has(card.id)) state.selectedCardIds.delete(card.id);
+      else state.selectedCardIds.add(card.id);
+      updateCardsBulkToolbar();
+      renderCardsView();
+      return;
+    }
     openCardModal(card);
   }
   if (action === "move") {
@@ -4367,6 +4407,63 @@ if (elements.importFolder) {
 
 elements.cardsList.addEventListener("click", handleCardListAction);
 
+if (elements.cardsSelectToggle) {
+  elements.cardsSelectToggle.addEventListener("click", () => {
+    state.cardsSelectionMode = !state.cardsSelectionMode;
+    if (!state.cardsSelectionMode) state.selectedCardIds = new Set();
+    updateCardsBulkToolbar();
+    renderCardsView();
+  });
+}
+
+if (elements.cardsBulkDelete) {
+  elements.cardsBulkDelete.addEventListener("click", async () => {
+    const ids = [...state.selectedCardIds];
+    if (!ids.length) return;
+    if (!window.confirm(`¿Borrar ${ids.length} tarjetas seleccionadas?`)) return;
+    const db = getDb();
+    const ownerUid = getActiveOwnerUid();
+    for (const id of ids) {
+      const card = state.cards.find((entry) => entry.id === id);
+      if (card) await deleteCard(db, ownerUid, card);
+    }
+    state.selectedCardIds = new Set();
+    await loadCards(true);
+  });
+}
+
+if (elements.cardsBulkMove) {
+  elements.cardsBulkMove.addEventListener("click", async () => {
+    const ids = [...state.selectedCardIds];
+    if (!ids.length) return;
+    const folderOptions = Object.values(state.folders).map((folder) => `${folder.id}:${folder.name}`).join("\n");
+    const newFolderId = prompt(`Mover seleccionadas a carpeta (id:nombre)\n${folderOptions}`);
+    if (!newFolderId || !state.folders[newFolderId]) return;
+    const db = getDb();
+    const ownerUid = getActiveOwnerUid();
+    for (const id of ids) {
+      const card = state.cards.find((entry) => entry.id === id);
+      if (card) await moveCardFolder(db, ownerUid, card, newFolderId);
+    }
+    state.selectedCardIds = new Set();
+    await loadCards(true);
+  });
+}
+
+if (elements.cardsBulkClearFolder) {
+  elements.cardsBulkClearFolder.addEventListener("click", async () => {
+    const ids = [...state.selectedCardIds];
+    if (!ids.length) return;
+    const db = getDb();
+    const ownerUid = getActiveOwnerUid();
+    for (const id of ids) {
+      await updateCard(db, ownerUid, id, { folderId: null });
+    }
+    state.selectedCardIds = new Set();
+    await loadCards(true);
+  });
+}
+
 if (elements.cardsDupToggle) {
   elements.cardsDupToggle.addEventListener("click", () => {
     state.showOnlyDuplicates = !state.showOnlyDuplicates;
@@ -4612,25 +4709,13 @@ if (elements.reviewBucketChart) {
 }
 
 function setReviewSelectionCheckboxes(values) {
-  if (!elements.reviewFolderOptions) return;
-  const next = new Set(values || []);
-  const allBox = elements.reviewFolderOptions.querySelector('input[value="all"]');
-  elements.reviewFolderOptions.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-    if (input.value === "all") {
-      input.checked = next.size === 0;
-      return;
-    }
-    input.checked = next.has(input.value);
-  });
-  if (allBox) allBox.checked = next.size === 0;
+  state.reviewSelectedFolderIds = [...new Set(values || [])];
+  persistReviewSelectorPrefs();
+  renderFolderSelects();
 }
 
 function getCheckedReviewFolderIds() {
-  if (!elements.reviewFolderOptions) return [];
-  const checked = Array.from(elements.reviewFolderOptions.querySelectorAll('input[type="checkbox"]:checked'))
-    .map((input) => input.value)
-    .filter((value) => value !== "all");
-  return checked;
+  return [...(state.reviewSelectedFolderIds || [])];
 }
 
 async function performBulkTagAction(action = "add") {
@@ -4747,31 +4832,34 @@ if (elements.reviewFolderSearch) {
 }
 
 if (elements.reviewFolderOptions) {
-  elements.reviewFolderOptions.addEventListener("change", (event) => {
-    const checkbox = event.target.closest('input[type="checkbox"]');
-    if (!checkbox) return;
-    if (checkbox.value === "all" && checkbox.checked) {
-      setReviewSelectionCheckboxes([]);
-      return;
-    }
-    if (checkbox.value !== "all" && checkbox.checked) {
-      const allBox = elements.reviewFolderOptions.querySelector('input[value="all"]');
-      if (allBox) allBox.checked = false;
-    }
+  elements.reviewFolderOptions.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-folder-id]");
+    if (!chip) return;
+    const folderId = chip.dataset.folderId;
+    const selected = new Set(state.reviewSelectedFolderIds || []);
+    if (selected.has(folderId)) selected.delete(folderId);
+    else selected.add(folderId);
+    state.reviewSelectedFolderIds = [...selected];
+    persistReviewSelectorPrefs();
+    renderFolderSelects();
   });
 }
 
 if (elements.reviewFolderSelectAll) {
   elements.reviewFolderSelectAll.addEventListener("click", () => {
-    setReviewSelectionCheckboxes(getVisibleReviewFolderOptionIds());
+    state.reviewSelectedFolderIds = getVisibleReviewFolderOptionIds();
+    persistReviewSelectorPrefs();
+    renderFolderSelects();
   });
 }
 if (elements.reviewFolderSelectNone) {
-  elements.reviewFolderSelectNone.addEventListener("click", () => setReviewSelectionCheckboxes([]));
+  elements.reviewFolderSelectNone.addEventListener("click", () => { state.reviewSelectedFolderIds = []; persistReviewSelectorPrefs(); renderFolderSelects(); });
 }
 if (elements.reviewFolderSelectVisible) {
   elements.reviewFolderSelectVisible.addEventListener("click", () => {
-    setReviewSelectionCheckboxes(getVisibleReviewFolderOptionIds());
+    state.reviewSelectedFolderIds = getVisibleReviewFolderOptionIds();
+    persistReviewSelectorPrefs();
+    renderFolderSelects();
   });
 }
 if (elements.reviewFolderSelectInvert) {
