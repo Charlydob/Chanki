@@ -72,10 +72,46 @@ import { loadStats } from "./screens/stats.js";
 import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } from "./screens/folders.js";
 
 const APP_VERSION = "0.15.0";
+const APP_BASE = (() => {
+  const fromMeta = document.querySelector('meta[name="app-base"]')?.content;
+  const basePath = new URL(fromMeta || "./", window.location.href).pathname;
+  return basePath.endsWith("/") ? basePath : `${basePath}/`;
+})();
 
 const REVIEW_PREFS_KEY = "chanki_review_selector_prefs";
 const REVIEW_FOLDER_IDS_KEY = "reviewFolderIds";
 let reviewFolderSearchDebounce = null;
+
+function buildAppPath(path = "") {
+  const safePath = String(path).replace(/^\/+/, "");
+  return new URL(safePath, `${window.location.origin}${APP_BASE}`).pathname;
+}
+
+function getRouteWithinApp() {
+  const path = window.location.pathname || "/";
+  if (path === APP_BASE || path === APP_BASE.slice(0, -1)) return "/";
+  if (!path.startsWith(APP_BASE)) return "/";
+  const relative = path.slice(APP_BASE.length);
+  return relative ? `/${relative}` : "/";
+}
+
+function updateBrowserRoute(path, mode = "push") {
+  const nextPath = buildAppPath(path);
+  if (`${window.location.pathname}${window.location.search}` === nextPath) return;
+  if (mode === "replace") {
+    window.history.replaceState({}, "", nextPath);
+    return;
+  }
+  window.history.pushState({}, "", nextPath);
+}
+
+function updateStandaloneHint() {
+  if (!elements.app) return;
+  const hint = document.getElementById("standalone-hint");
+  if (!hint) return;
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  hint.classList.toggle("hidden", isStandalone);
+}
 
 function persistReviewSelectorPrefs() {
   const payload = {
@@ -4280,19 +4316,18 @@ function initLexiconListener() {
 
 function syncRouteFromState(screenName) {
   const screen = screenName || "folders";
-  let path = "/";
+  let path = "";
   const activeRef = getActiveFolderRef();
   if (screen === "cards" && activeRef?.folderId) {
-    path = `/folder/${encodeURIComponent(activeRef.folderId)}`;
+    path = `folder/${encodeURIComponent(activeRef.folderId)}`;
   } else if (screen === "review") {
-    path = "/review";
+    path = "review";
   } else if (screen === "import") {
-    path = "/import";
+    path = "import";
   } else if (screen === "stats") {
-    path = "/stats";
+    path = "stats";
   }
-  if (`${window.location.pathname}${window.location.search}` === path) return;
-  window.history.pushState({}, "", path);
+  updateBrowserRoute(path, "push");
 }
 
 async function openFolderView({ ownerUid, folderId, role = "owner", isShared = false }, routeMode = "push") {
@@ -4310,14 +4345,14 @@ async function openFolderView({ ownerUid, folderId, role = "owner", isShared = f
   updateFolderAccessUI();
   setActiveScreen("cards", { skipRouteSync: true });
   if (routeMode === "replace") {
-    window.history.replaceState({}, "", `/folder/${encodeURIComponent(folderId)}`);
+    updateBrowserRoute(`folder/${encodeURIComponent(folderId)}`, "replace");
   } else if (routeMode === "push") {
-    window.history.pushState({}, "", `/folder/${encodeURIComponent(folderId)}`);
+    updateBrowserRoute(`folder/${encodeURIComponent(folderId)}`, "push");
   }
 }
 
 async function applyRoute() {
-  const path = window.location.pathname || "/";
+  const path = getRouteWithinApp();
   if (path.startsWith("/folder/")) {
     const folderId = decodeURIComponent(path.replace("/folder/", ""));
     if (!folderId) {
@@ -4336,7 +4371,7 @@ async function applyRoute() {
     }
     showToast("Carpeta no encontrada.", "error");
     setActiveScreen("folders", { skipRouteSync: true });
-    window.history.replaceState({}, "", "/");
+    updateBrowserRoute("", "replace");
     return;
   }
   if (path === "/import") {
@@ -4402,8 +4437,16 @@ function initFirebaseUi() {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => null);
+    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => null);
   });
+}
+
+updateStandaloneHint();
+const displayModeQuery = window.matchMedia("(display-mode: standalone)");
+if (typeof displayModeQuery.addEventListener === "function") {
+  displayModeQuery.addEventListener("change", updateStandaloneHint);
+} else if (typeof displayModeQuery.addListener === "function") {
+  displayModeQuery.addListener(updateStandaloneHint);
 }
 
 elements.tabs.forEach((tab) => {
