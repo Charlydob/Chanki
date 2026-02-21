@@ -12,10 +12,8 @@ import {
   fetchCardsByFolderId,
   fetchCardsByFolderQueue,
   fetchCardsForSearch,
-  fetchCard,
   fetchSampleCards,
   updateReview,
-  buildSessionQueue,
   fetchUserData,
   userRoot,
   fetchGlossaryWord,
@@ -71,6 +69,7 @@ import {
 import { refreshReviewBucketCounts } from "./screens/review.js";
 import { loadStats } from "./screens/stats.js";
 import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } from "./screens/folders.js";
+import { getReviewCandidates, loadReviewCards } from "./review-candidates.js";
 
 const APP_VERSION = "0.15.0";
 const APP_BASE = (() => {
@@ -3486,163 +3485,39 @@ async function buildReviewQueue() {
     state.currentIndex = 0;
     return;
   }
-  const db = getDb();
   const selections = getReviewFolderSelections();
   const primarySelection = selections.length === 1 ? selections[0] : null;
   state.reviewFolderOwnerUid = primarySelection?.ownerUid || null;
   state.reviewFolderRole = primarySelection?.role || null;
   state.reviewFolderIsShared = Boolean(primarySelection?.isShared);
-  const enabledBuckets = Object.entries(state.reviewBuckets)
+  const { includeTags, excludeTags } = getReviewTagFilters();
+  const selectedBuckets = Object.entries(state.reviewBuckets)
     .filter(([, active]) => active)
     .map(([bucket]) => canonicalizeBucketId(bucket))
     .filter(Boolean);
-  const uniqueBuckets = [...new Set(enabledBuckets)];
-  if (!uniqueBuckets.length) {
-    showToast("Activa al menos un bucket.", "error");
-    state.reviewQueue = [];
-    state.currentSessionQueue = [];
-    state.currentIndex = 0;
-    return;
-  }
-  const { includeTags: tagFilter, excludeTags } = getReviewTagFilters();
-
+  const normalizedState = {
+    ...state,
+    reviewIncludeTags: includeTags,
+    reviewExcludeTagsList: excludeTags,
+    selectedBuckets,
+  };
   const maxNew = Number(elements.reviewMaxNew.value || state.prefs.maxNew);
   const maxReviews = Number(elements.reviewMax.value || state.prefs.maxReviews);
-  const maxCards = maxNew + maxReviews;
+  const loadedCards = await loadReviewCards(state);
+  const { candidates, debug } = getReviewCandidates(normalizedState, loadedCards, state.folders || {});
+  console.log("[review-debug:start]", debug);
 
-  const bucketPriority = BUCKET_ORDER.filter((bucket) => uniqueBuckets.includes(bucket));
-  const combinedCardIds = [];
-  const combinedBucketCounts = BUCKET_ORDER.reduce((acc, bucket) => {
-    acc[bucket] = 0;
-    return acc;
-  }, {});
-  const cardMeta = new Map();
-  let usedFallback = false;
-  let repaired = false;
-  let fallbackCount = 0;
+  const newCards = shuffle(candidates.filter((card) => (canonicalizeBucketId(card.srs?.bucket) || "new") === "new")).slice(0, maxNew);
+  const reviewCards = shuffle(candidates.filter((card) => (canonicalizeBucketId(card.srs?.bucket) || "new") !== "new")).slice(0, maxReviews);
+  const limited = shuffle([...newCards, ...reviewCards]);
 
-  for (const selection of selections) {
-    const sessionResult = await buildSessionQueue({
-      db,
-      username: selection.ownerUid,
-      folderIdOrAll: selection.folderId ?? "all",
-      buckets: bucketPriority,
-      maxCards,
-      maxNew,
-      maxReviews,
-      tagFilter,
-      excludeTags,
-      tagFilterMode: state.reviewTagFilterMode || "or",
-      allowRepair: !state.repairAttempted,
-    });
-
-    BUCKET_ORDER.forEach((bucket) => {
-      combinedBucketCounts[bucket] += sessionResult.bucketCounts?.[bucket] || 0;
-    });
-    fallbackCount += sessionResult.fallbackCount || 0;
-    usedFallback = usedFallback || sessionResult.usedFallback;
-    repaired = repaired || sessionResult.repaired;
-
-    sessionResult.cardIds.forEach((cardId) => {
-      if (cardMeta.has(cardId)) return;
-      cardMeta.set(cardId, {
-        ownerUid: selection.ownerUid,
-        role: selection.role,
-        isShared: selection.isShared,
-        shareKey: selection.shareKey,
-      });
-      combinedCardIds.push(cardId);
-    });
-  }
-
-  if (usedFallback || repaired) {
-    state.repairAttempted = true;
-  }
-
-  console.debug("Review session init", {
-    selections,
-    activeBuckets: bucketPriority,
-    queueCounts: combinedBucketCounts,
-    fallbackCards: fallbackCount,
-  });
-
-  const cards = await Promise.all(
-    combinedCardIds.map(async (cardId) => {
-      if (state.cardCache.has(cardId)) {
-        const cached = state.cardCache.get(cardId);
-        return { ...cached };
-      }
-      const meta = cardMeta.get(cardId);
-      const card = await fetchCard(db, meta?.ownerUid || state.username, cardId);
-      if (card) state.cardCache.set(cardId, card);
-      return card;
-    })
-  );
-
-  const filtered = cards.filter((card) => {
-    if (!card) return false;
-    return cardMatchesTagFilter(card, tagFilter, state.reviewTagFilterMode || "or") && !cardMatchesTagFilter(card, excludeTags, "or");
-  });
-
-  console.debug("[review-debug]", {
-    totalCardsLoaded: cards.filter(Boolean).length,
-    totalFoldersLoaded: Object.keys(state.folders || {}).length,
-    reviewFolderIds: (state.reviewSelectedFolderIds || []).slice(),
-    filteredCardsCount: filtered.length,
-    sampleCards: cards.filter(Boolean).slice(0, 3).map((card) => ({ id: card.id, folderId: card.folderId ?? null, tags: Object.keys(card.tags || {}) })),
-  });
-  if (!filtered.length) {
-    const reason = !cards.filter(Boolean).length
-      ? "No se cargaron tarjetas para las carpetas seleccionadas."
-      : tagFilter.length || excludeTags.length
-        ? "Los filtros include/exclude tags dejan 0 resultados."
-        : "No hay tarjetas en esas carpetas/buckets.";
-    console.debug("[review-debug] empty-reason", {
-      reason,
-      includeTags: tagFilter,
-      excludeTags,
-      includeMode: state.reviewTagFilterMode || "or",
-      buckets: bucketPriority,
-    });
-  }
-
-  const bucketed = new Map();
-  filtered.forEach((card) => {
-    const bucketId = canonicalizeBucketId(card.srs?.bucket) || "new";
-    if (!bucketed.has(bucketId)) {
-      bucketed.set(bucketId, []);
-    }
-    bucketed.get(bucketId).push(card);
-  });
-
-  const orderedBuckets = bucketPriority.length ? bucketPriority : BUCKET_ORDER;
-  const ordered = [];
-  orderedBuckets.forEach((bucket) => {
-    const bucketCards = bucketed.get(bucket);
-    if (bucketCards?.length) {
-      ordered.push(...shuffle(bucketCards));
-    }
-  });
-  bucketed.forEach((bucketCards, bucket) => {
-    if (orderedBuckets.includes(bucket)) return;
-    ordered.push(...shuffle(bucketCards));
-  });
-
-  const limited = ordered.slice(0, maxCards);
   state.reviewLastEmptyReason = "";
   if (!limited.length) {
-    state.reviewLastEmptyReason = (tagFilter.length || excludeTags.length)
-      ? "No hay tarjetas: los filtros de tags excluyen todo."
-      : "No hay tarjetas en las carpetas/buckets seleccionados.";
+    const explain = (debug.reductions || [])
+      .map((step) => `${step.filter} (${step.before}->${step.after})`)
+      .join(", ");
+    state.reviewLastEmptyReason = `0 tarjetas: ${explain}`;
   }
-  limited.forEach((card) => {
-    const meta = cardMeta.get(card.id);
-    if (!meta) return;
-    card._reviewOwnerUid = meta.ownerUid;
-    card._reviewRole = meta.role;
-    card._reviewIsShared = meta.isShared;
-    card._reviewShareKey = meta.shareKey;
-  });
   state.reviewQueue = limited;
   state.currentSessionQueue = limited.map((card) => card.id);
   state.currentIndex = 0;

@@ -1,12 +1,11 @@
-import { getDb } from "../../lib/firebase.js";
-import { buildSessionQueue } from "../../lib/rtdb.js";
 import {
   BUCKET_ORDER,
+  canonicalizeBucketId,
   elements,
-  getReviewFolderSelections,
   getReviewTagFilters,
   state,
 } from "../shared.js";
+import { getReviewCandidates, loadReviewCards } from "../review-candidates.js";
 
 export function renderBucketFilterCounts(bucketCounts) {
   const values = BUCKET_ORDER.map((bucket) => bucketCounts[bucket] || 0);
@@ -27,35 +26,36 @@ export function renderBucketFilterCounts(bucketCounts) {
 
 export async function refreshReviewBucketCounts() {
   if (!state.username || !elements.reviewBucketChart) return;
-  const db = getDb();
   const { includeTags, excludeTags } = getReviewTagFilters();
-  const selections = getReviewFolderSelections();
+  const selectedBuckets = Object.entries(state.reviewBuckets)
+    .filter(([, active]) => active)
+    .map(([bucket]) => canonicalizeBucketId(bucket))
+    .filter(Boolean);
+  const normalizedState = {
+    ...state,
+    reviewIncludeTags: includeTags,
+    reviewExcludeTagsList: excludeTags,
+    selectedBuckets,
+  };
+  const cards = await loadReviewCards(state);
+  const { candidates } = getReviewCandidates(normalizedState, cards, state.folders || {});
   const combinedCounts = BUCKET_ORDER.reduce((acc, bucket) => {
     acc[bucket] = 0;
     return acc;
   }, {});
-  for (const selection of selections) {
-    const result = await buildSessionQueue({
-      db,
-      username: selection.ownerUid,
-      folderIdOrAll: selection.folderId ?? "all",
-      buckets: BUCKET_ORDER,
-      maxCards: 0,
-      tagFilter: includeTags,
-      excludeTags,
-      tagFilterMode: state.reviewTagFilterMode || "or",
-      countsOnly: true,
-    });
-    BUCKET_ORDER.forEach((bucket) => {
-      combinedCounts[bucket] += result.bucketCounts?.[bucket] || 0;
-    });
-  }
+  candidates.forEach((card) => {
+    const bucket = canonicalizeBucketId(card.srs?.bucket) || "new";
+    combinedCounts[bucket] = (combinedCounts[bucket] || 0) + 1;
+  });
   state.reviewBucketCounts = combinedCounts;
   state.reviewFilterVisibleCount = Object.values(combinedCounts).reduce((sum, value) => sum + value, 0);
   if (elements.reviewFilterSummary) {
     elements.reviewFilterSummary.textContent = state.reviewFilterVisibleCount
       ? `Tarjetas visibles: ${state.reviewFilterVisibleCount}`
       : "Sin resultados con el filtro actual.";
+  }
+  if (elements.startReview) {
+    elements.startReview.disabled = state.reviewFilterVisibleCount === 0;
   }
   renderBucketFilterCounts(state.reviewBucketCounts);
 }
