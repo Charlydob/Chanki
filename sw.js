@@ -1,4 +1,4 @@
-const CACHE_NAME = "chanki-static-v2";
+const CACHE_NAME = "chanki-static-v3";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -14,6 +14,7 @@ const STATIC_ASSETS = [
   "./js/screens/folders.js",
   "./manifest.webmanifest",
   "./lib/firebase.js",
+  "./lib/data-layer.js",
   "./lib/rtdb.js",
   "./lib/srs.js",
   "./lib/parser.js",
