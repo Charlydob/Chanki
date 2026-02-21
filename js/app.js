@@ -5,21 +5,14 @@ import {
   listenCardsByUser,
   listenSharedFoldersByUser,
   listenFolderShares,
-  createFolder,
-  updateFolder,
-  deleteFolder,
   upsertCardWithDedupe,
-  updateCard,
   deleteCard,
   moveCardFolder,
-  getOrCreateFolderByPath,
   fetchCardsByFolder,
   fetchCardsByFolderId,
-  fetchCardsByFolderPathCompat,
   fetchCardsByFolderQueue,
   fetchCardsForSearch,
   fetchCard,
-  fetchFolders,
   fetchSampleCards,
   updateReview,
   buildSessionQueue,
@@ -33,14 +26,22 @@ import {
   upsertUserPublic,
   shareFolder,
   unshareFolder,
-  migrateCardsFolderIdsOnce,
   migrateDedupeV2Once,
   ensureVocabFolders,
   createOrUpdateVocabCard,
   listenTagsIndex,
   normalizeFolderPath,
-  normalizeFoldersSnapshot,
 } from "../lib/rtdb.js";
+import {
+  createFolder,
+  deleteFolder,
+  ensureFolderIdForImportPath,
+  importCards,
+  loadFolders,
+  migrateLegacyCardFoldersOnce,
+  updateCard,
+  updateFolder,
+} from "../lib/data-layer.js";
 import { parseChankiImport } from "../lib/parser.js";
 import { computeNextSrs } from "../lib/srs.js";
 import { recordReviewStats } from "../lib/stats.js";
@@ -2030,31 +2031,19 @@ async function debugFolderSelection(folderId) {
   if (!state.username || !folderId) return;
   const activeRef = getActiveFolderRef();
   const ownerUid = activeRef?.ownerUid || state.username;
-  const folder = activeRef?.isShared ? getActiveFolderInfo() : state.folders[folderId];
-  const folderPath = folder?.path || folder?.name || "";
-  console.log("selectedFolderId", folderId, "selectedFolderPath", folderPath, "username", ownerUid);
+  console.log("selectedFolderId", folderId, "username", ownerUid);
   try {
     const db = getDb();
     const [sampleCards, folders] = await Promise.all([
       fetchSampleCards(db, ownerUid, 5),
-      fetchFolders(db, ownerUid),
+      loadFolders(db, ownerUid),
     ]);
     sampleCards.forEach((card) => {
-      console.log(
-        "sampleCard",
-        "cardId",
-        card.id,
-        "folderId",
-        card.folderId,
-        "folderPath",
-        card.folderPath,
-        "front",
-        card.front
-      );
+      console.log("sampleCard", { cardId: card.id, folderId: card.folderId, tags: Object.keys(card.tags || {}) });
     });
     const folderEntries = Object.values(folders || {}).map((entry) => ({
       id: entry.id,
-      path: entry.path,
+      name: entry.name,
     }));
     console.log("foldersSnapshot", folderEntries);
   } catch (error) {
@@ -2064,12 +2053,10 @@ async function debugFolderSelection(folderId) {
 
 async function runFolderIdMigration() {
   if (!state.username) return;
-  if (localStorage.getItem("chanki_migrated_folderIds") === "1") return;
   try {
     const db = getDb();
-    const result = await migrateCardsFolderIdsOnce(db, state.username, 2000);
+    const result = await migrateLegacyCardFoldersOnce(db, state.username, 2000);
     console.log("MIGRATE folderIds", result);
-    localStorage.setItem("chanki_migrated_folderIds", "1");
   } catch (error) {
     handleErrorToast(error, "No se pudo migrar las carpetas.");
   }
@@ -2117,20 +2104,6 @@ async function loadInitialFolderCards() {
     state.cardsPageCursor = null;
     state.cardsLoadMode = "folderId";
     return;
-  }
-  const folderInfo = getActiveFolderInfo();
-  const folderPath = normalizeFolderPath(folderInfo?.path || folderInfo?.name || "");
-  if (folderPath) {
-    const legacyCards = await fetchCardsByFolderPathCompat(db, ownerUid, folderPath, 500);
-    if (legacyCards.length) {
-      state.cards = legacyCards;
-      state.cardsCache = legacyCards;
-      state.cardsLoadedIds = new Set(legacyCards.map((card) => card.id));
-      state.cardsHasMore = false;
-      state.cardsPageCursor = null;
-      state.cardsLoadMode = "folderPathCompat";
-      return;
-    }
   }
   state.cardsLoadMode = "paged";
   await loadMoreCardsPage();
@@ -2321,11 +2294,12 @@ function buildImportPreview(parsed, options = {}) {
   return { text: lines.join("\n"), cardCount, folderCount: folderPaths.size };
 }
 
-function findFolderIdByPath(path) {
+function findFolderIdByImportPath(path) {
   const normalized = normalizeFolderPath(path);
   if (!normalized) return null;
+  const name = normalized.split("/").pop()?.toLowerCase() || "";
   return Object.values(state.folders || {}).find((folder) =>
-    normalizeFolderPath(folder.path || folder.name) === normalized
+    String(folder?.name || "").trim().toLowerCase() === name
   )?.id || null;
 }
 
@@ -2420,19 +2394,16 @@ async function initFolders() {
     return;
   }
   const db = getDb();
-  activeUnsubscribe = listenFolders(db, state.username, (folders) => {
-    normalizeFoldersSnapshot(db, state.username, folders || {})
-      .then((result) => {
-        state.folders = result.folders || {};
-        if (result.repaired) {
-          console.info(`Reparadas ${result.repaired} carpetas con datos incompletos.`);
-        }
+  activeUnsubscribe = listenFolders(db, state.username, () => {
+    loadFolders(db, state.username)
+      .then((folders) => {
+        state.folders = folders || {};
         renderFolders();
         renderImportFolderSelect();
       })
       .catch((error) => {
-        console.error("No se pudo normalizar carpetas", error);
-        state.folders = folders || {};
+        console.error("No se pudo cargar carpetas", error);
+        state.folders = {};
         renderFolders();
         renderImportFolderSelect();
       });
@@ -3613,6 +3584,28 @@ async function buildReviewQueue() {
     return cardMatchesTagFilter(card, tagFilter, state.reviewTagFilterMode || "or") && !cardMatchesTagFilter(card, excludeTags, "or");
   });
 
+  console.debug("[review-debug]", {
+    totalCardsLoaded: cards.filter(Boolean).length,
+    totalFoldersLoaded: Object.keys(state.folders || {}).length,
+    reviewFolderIds: (state.reviewSelectedFolderIds || []).slice(),
+    filteredCardsCount: filtered.length,
+    sampleCards: cards.filter(Boolean).slice(0, 3).map((card) => ({ id: card.id, folderId: card.folderId ?? null, tags: Object.keys(card.tags || {}) })),
+  });
+  if (!filtered.length) {
+    const reason = !cards.filter(Boolean).length
+      ? "No se cargaron tarjetas para las carpetas seleccionadas."
+      : tagFilter.length || excludeTags.length
+        ? "Los filtros include/exclude tags dejan 0 resultados."
+        : "No hay tarjetas en esas carpetas/buckets.";
+    console.debug("[review-debug] empty-reason", {
+      reason,
+      includeTags: tagFilter,
+      excludeTags,
+      includeMode: state.reviewTagFilterMode || "or",
+      buckets: bucketPriority,
+    });
+  }
+
   const bucketed = new Map();
   filtered.forEach((card) => {
     const bucketId = canonicalizeBucketId(card.srs?.bucket) || "new";
@@ -3636,6 +3629,12 @@ async function buildReviewQueue() {
   });
 
   const limited = ordered.slice(0, maxCards);
+  state.reviewLastEmptyReason = "";
+  if (!limited.length) {
+    state.reviewLastEmptyReason = (tagFilter.length || excludeTags.length)
+      ? "No hay tarjetas: los filtros de tags excluyen todo."
+      : "No hay tarjetas en las carpetas/buckets seleccionados.";
+  }
   limited.forEach((card) => {
     const meta = cardMeta.get(card.id);
     if (!meta) return;
@@ -3895,60 +3894,42 @@ async function importBlocks(blocks, options = {}) {
   const activeRef = getActiveFolderRef();
   const ownerUid = activeRef?.ownerUid || state.username;
   const folderFallback = options.folderFallback || "Importadas";
-  const summary = {
-    created: 0,
-    updated: 0,
-    duplicates: 0,
-    createdFolders: 0,
-    processedCards: 0,
-  };
+  const summary = { created: 0, updated: 0, duplicates: 0, createdFolders: 0, processedCards: 0 };
   const resolvedFolders = new Map();
   for (const block of blocks) {
-    const folderPath = options.forcedFolderId || options.forceNoFolder
-      ? null
-      : resolveBlockFolderPath(block, folderFallback);
+    const folderPath = options.forcedFolderId || options.forceNoFolder ? null : resolveBlockFolderPath(block, folderFallback);
     let folderId = options.forcedFolderId || null;
     if (options.forceNoFolder) {
       folderId = null;
     } else if (!folderId) {
-      if (activeRef?.isShared) {
-        throw new Error("No puedes crear carpetas en una compartida.");
-      }
+      if (activeRef?.isShared) throw new Error("No puedes crear carpetas en una compartida.");
       const normalizedPath = normalizeFolderPath(folderPath);
       if (resolvedFolders.has(normalizedPath)) {
         folderId = resolvedFolders.get(normalizedPath);
       } else {
-        const existingId = findFolderIdByPath(normalizedPath);
-        folderId = await getOrCreateFolderByPath(db, ownerUid, normalizedPath, state.folders);
+        const existingId = findFolderIdByImportPath(normalizedPath);
+        folderId = await ensureFolderIdForImportPath(db, ownerUid, normalizedPath, state.folders);
         resolvedFolders.set(normalizedPath, folderId);
-        if (!existingId) {
-          summary.createdFolders += 1;
-        }
+        if (!existingId) summary.createdFolders += 1;
       }
     }
-    for (const card of block.cards) {
-      const id = `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-      const result = await upsertCardWithDedupe(db, ownerUid, {
-        id,
-        folderId,
-        type: card.type || "basic",
-        front: card.front,
-        back: card.back,
-        clozeText: card.clozeText,
-        clozeAnswers: card.clozeAnswers || [],
-        orderTokens: card.orderTokens || [],
-        orderAnswer: card.orderAnswer || [],
-        tags: tagsToMap(card.tags || block.tags || []),
-      });
-      summary.processedCards += 1;
-      if (result.status === "created") {
-        summary.created += 1;
-      } else if (result.status === "updated") {
-        summary.updated += 1;
-      } else {
-        summary.duplicates += 1;
-      }
-    }
+    const cardsToImport = block.cards.map((card) => ({
+      id: `card_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+      folderId,
+      type: card.type || "basic",
+      front: card.front,
+      back: card.back,
+      clozeText: card.clozeText,
+      clozeAnswers: card.clozeAnswers || [],
+      orderTokens: card.orderTokens || [],
+      orderAnswer: card.orderAnswer || [],
+      tags: tagsToMap(card.tags || block.tags || []),
+    }));
+    const result = await importCards(db, ownerUid, cardsToImport, folderId);
+    summary.created += result.created;
+    summary.updated += result.updated;
+    summary.duplicates += result.duplicates;
+    summary.processedCards += cardsToImport.length;
   }
   return summary;
 }
@@ -4866,7 +4847,7 @@ if (elements.reviewCard) {
 elements.startReview.addEventListener("click", async () => {
   await buildReviewQueue();
   if (!state.reviewQueue.length) {
-    showToast("No hay tarjetas para repasar con esos filtros.", "error");
+    showToast(state.reviewLastEmptyReason || "No hay tarjetas para repasar con esos filtros.", "error");
     state.sessionActive = false;
     state.sessionTotal = 0;
     return;
