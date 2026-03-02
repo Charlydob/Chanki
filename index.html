@@ -88,6 +88,28 @@
           <button id="load-more" class="button ghost">Cargar más</button>
         </section>
 
+        <section id="screen-all-cards" class="screen">
+          <div class="screen__header">
+            <h2>Todas las tarjetas</h2>
+            <span id="all-cards-selected-count" class="muted">Seleccionadas: 0</span>
+          </div>
+          <div id="all-cards-list" class="all-cards-list"></div>
+          <div id="all-cards-bulk-bar" class="all-cards-bulk-bar hidden">
+            <div class="all-cards-bulk-bar__left">
+              <button id="all-cards-select-all" class="button ghost small" type="button">Seleccionar todo</button>
+              <button id="all-cards-clear-all" class="button ghost small" type="button">Deseleccionar todo</button>
+            </div>
+            <div class="all-cards-bulk-bar__right">
+              <select id="all-cards-move-target">
+                <option value="">Mover a carpeta…</option>
+                <option value="__none__">Sin asignar</option>
+              </select>
+              <button id="all-cards-move" class="button ghost" type="button">Mover seleccionadas</button>
+              <button id="all-cards-delete" class="button danger" type="button">Eliminar seleccionadas</button>
+            </div>
+          </div>
+        </section>
+
         <section id="screen-review" class="screen">
           <div id="screen-review-config" class="review-screen">
             <div class="screen__header">
@@ -431,6 +453,18 @@
             <circle cx="12" cy="12.5" r="2.2" fill="currentColor" />
           </svg>
           <span>Repasar</span>
+        </button>
+        <button class="tab" data-screen="all-cards">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M5 6h14M5 12h14M5 18h14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span>Todas</span>
         </button>
         <button class="tab" data-screen="import">
           <svg viewBox="0 0 24 24" aria-hidden="true">

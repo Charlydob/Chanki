@@ -2373,13 +2373,20 @@ function initCardCountsListener() {
   const db = getDb();
   cardsCountUnsubscribe = listenCardsByUser(db, state.username, (cardsMap) => {
     const counts = {};
-    Object.values(cardsMap || {}).forEach((card) => {
+    const allCards = Object.values(cardsMap || {}).filter(Boolean);
+    allCards.forEach((card) => {
       const folderId = card?.folderId;
       if (!folderId) return;
       counts[folderId] = (counts[folderId] || 0) + 1;
     });
     state.folderCardCounts = counts;
+    state.allCards = allCards;
+    const validIds = new Set(allCards.map((card) => card.id));
+    state.allCardsSelectedIds = new Set([...state.allCardsSelectedIds].filter((id) => validIds.has(id)));
     renderFolders();
+    if (document.getElementById("screen-all-cards")?.classList.contains("active")) {
+      renderAllCardsView();
+    }
   });
 }
 
@@ -2743,6 +2750,113 @@ function openShareModal(folder) {
   loadUsersPublic().then(() => renderShareResults());
 }
 
+function getAllCardsGroups() {
+  const groups = new Map();
+  const sortedCards = [...(state.allCards || [])].sort((a, b) => {
+    const aFront = String(resolveLegacyOrderCard(a).front || "").toLowerCase();
+    const bFront = String(resolveLegacyOrderCard(b).front || "").toLowerCase();
+    return aFront.localeCompare(bFront, "es");
+  });
+  sortedCards.forEach((card) => {
+    const folderId = card.folderId || "__unassigned__";
+    if (!groups.has(folderId)) groups.set(folderId, []);
+    groups.get(folderId).push(card);
+  });
+  const assigned = [...groups.entries()].filter(([folderId]) => folderId !== "__unassigned__").sort((a, b) => {
+    const aName = state.folders[a[0]]?.name || "Carpeta";
+    const bName = state.folders[b[0]]?.name || "Carpeta";
+    return aName.localeCompare(bName, "es");
+  });
+  const unassigned = groups.has("__unassigned__") ? [["__unassigned__", groups.get("__unassigned__")]] : [];
+  return [...assigned, ...unassigned];
+}
+
+function renderAllCardsMoveTargets() {
+  if (!elements.allCardsMoveTarget) return;
+  const select = elements.allCardsMoveTarget;
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">Mover a carpeta…</option><option value="__none__">Sin asignar</option>';
+  Object.values(state.folders || {})
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "es"))
+    .forEach((folder) => {
+      const option = document.createElement("option");
+      option.value = folder.id;
+      option.textContent = `${folder.emoji || "📁"} ${folder.name}`;
+      select.appendChild(option);
+    });
+  if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+    select.value = currentValue;
+  }
+}
+
+function updateAllCardsBulkBar(totalCards = 0) {
+  const count = state.allCardsSelectedIds.size;
+  if (elements.allCardsSelectedCount) {
+    elements.allCardsSelectedCount.textContent = `Seleccionadas: ${count}`;
+  }
+  if (elements.allCardsBulkBar) {
+    elements.allCardsBulkBar.classList.toggle("hidden", count === 0);
+  }
+  if (elements.allCardsMove) elements.allCardsMove.disabled = count === 0;
+  if (elements.allCardsDelete) elements.allCardsDelete.disabled = count === 0;
+  if (elements.allCardsSelectAll) elements.allCardsSelectAll.disabled = totalCards === 0 || count === totalCards;
+  if (elements.allCardsClearAll) elements.allCardsClearAll.disabled = count === 0;
+}
+
+function renderAllCardsView() {
+  if (!elements.allCardsList) return;
+  renderAllCardsMoveTargets();
+  const groups = getAllCardsGroups();
+  const list = elements.allCardsList;
+  list.innerHTML = "";
+  if (!groups.length) {
+    list.innerHTML = '<div class="card">No hay tarjetas para mostrar.</div>';
+    updateAllCardsBulkBar(0);
+    return;
+  }
+  let totalCards = 0;
+  const fragment = document.createDocumentFragment();
+  groups.forEach(([folderId, cards]) => {
+    totalCards += cards.length;
+    const isUnassigned = folderId === "__unassigned__";
+    const folder = isUnassigned ? null : state.folders[folderId];
+    const groupName = isUnassigned ? "Sin asignar" : (folder?.name || "Carpeta eliminada");
+    const collapsed = state.allCardsCollapsedGroups.has(folderId);
+    const selectedCount = cards.filter((card) => state.allCardsSelectedIds.has(card.id)).length;
+
+    const groupEl = document.createElement("section");
+    groupEl.className = "all-cards-group";
+    groupEl.dataset.groupId = folderId;
+    groupEl.innerHTML = `
+      <header class="all-cards-group__header">
+        <label class="all-cards-group__check"><input type="checkbox" data-action="toggle-group" data-group-id="${folderId}" ${selectedCount && selectedCount === cards.length ? "checked" : ""} /></label>
+        <button class="all-cards-group__toggle" type="button" data-action="toggle-collapse" data-group-id="${folderId}">${collapsed ? "▸" : "▾"}</button>
+        <h3>${groupName} (${cards.length})</h3>
+      </header>
+      <div class="all-cards-group__rows${collapsed ? " hidden" : ""}"></div>
+    `;
+    const rows = groupEl.querySelector('.all-cards-group__rows');
+    cards.forEach((card) => {
+      const resolved = resolveLegacyOrderCard(card);
+      const row = document.createElement("div");
+      row.className = "all-cards-row";
+      row.dataset.cardId = card.id;
+      row.innerHTML = `
+        <input type="checkbox" data-action="toggle-card" data-id="${card.id}" ${state.allCardsSelectedIds.has(card.id) ? "checked" : ""} />
+        <div class="all-cards-row__text">
+          <span class="all-cards-row__front" title="${formatCardText(resolved.front || resolved.clozeText || "(sin frente)")}">${formatCardText(resolved.front || resolved.clozeText || "(sin frente)")}</span>
+          <span class="all-cards-row__meta">${resolved.type || "basic"}${(resolved.tags && Object.keys(resolved.tags).length) ? ` · ${Object.keys(resolved.tags).slice(0, 3).join(", ")}` : ""}</span>
+        </div>
+        <button class="icon-button icon-button--compact" data-action="open" data-id="${card.id}" type="button" aria-label="Ver tarjeta">👁️</button>
+      `;
+      rows.appendChild(row);
+    });
+    fragment.appendChild(groupEl);
+  });
+  list.appendChild(fragment);
+  updateAllCardsBulkBar(totalCards);
+}
+
 async function handleSaveFolder() {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
@@ -2845,7 +2959,7 @@ async function handleCardListAction(event) {
 }
 
 async function handleSaveCard() {
-  if (!state.selectedFolderId) {
+  if (!state.selectedFolderId && !editingCardId) {
     showToast("Selecciona una carpeta primero.", "error");
     return;
   }
@@ -4178,6 +4292,8 @@ function syncRouteFromState(screenName) {
     path = `folder/${encodeURIComponent(activeRef.folderId)}`;
   } else if (screen === "review") {
     path = "review";
+  } else if (screen === "all-cards") {
+    path = "cards/all";
   } else if (screen === "import") {
     path = "import";
   } else if (screen === "stats") {
@@ -4228,6 +4344,11 @@ async function applyRoute() {
     showToast("Carpeta no encontrada.", "error");
     setActiveScreen("folders", { skipRouteSync: true });
     updateBrowserRoute("", "replace");
+    return;
+  }
+  if (path === "/cards/all") {
+    setActiveScreen("all-cards", { skipRouteSync: true });
+    renderAllCardsView();
     return;
   }
   if (path === "/import") {
@@ -4312,6 +4433,9 @@ elements.tabs.forEach((tab) => {
       resetImportPreview();
     }
     setActiveScreen(tab.dataset.screen);
+    if (tab.dataset.screen === "all-cards") {
+      renderAllCardsView();
+    }
   });
 });
 
@@ -4453,6 +4577,106 @@ if (elements.importFolder) {
 }
 
 elements.cardsList.addEventListener("click", handleCardListAction);
+
+if (elements.allCardsList) {
+  elements.allCardsList.addEventListener("click", (event) => {
+    const actionEl = event.target.closest("[data-action]");
+    if (!actionEl) return;
+    const action = actionEl.dataset.action;
+    const cardId = actionEl.dataset.id;
+    const groupId = actionEl.dataset.groupId;
+    if (action === "toggle-collapse" && groupId) {
+      if (state.allCardsCollapsedGroups.has(groupId)) state.allCardsCollapsedGroups.delete(groupId);
+      else state.allCardsCollapsedGroups.add(groupId);
+      renderAllCardsView();
+      return;
+    }
+    if (!cardId) return;
+    if (action === "open") {
+      const card = (state.allCards || []).find((entry) => entry.id === cardId);
+      if (card) openCardModal(card);
+    }
+  });
+  elements.allCardsList.addEventListener("change", (event) => {
+    const input = event.target.closest('input[type="checkbox"][data-action]');
+    if (!input) return;
+    const action = input.dataset.action;
+    const cardId = input.dataset.id;
+    const groupId = input.dataset.groupId;
+    if (action === "toggle-card" && cardId) {
+      if (input.checked) state.allCardsSelectedIds.add(cardId);
+      else state.allCardsSelectedIds.delete(cardId);
+      updateAllCardsBulkBar((state.allCards || []).length);
+      return;
+    }
+    if (action === "toggle-group" && groupId) {
+      const groupCards = (state.allCards || []).filter((card) => (card.folderId || "__unassigned__") === groupId);
+      groupCards.forEach((card) => {
+        if (input.checked) state.allCardsSelectedIds.add(card.id);
+        else state.allCardsSelectedIds.delete(card.id);
+      });
+      renderAllCardsView();
+    }
+  });
+}
+
+if (elements.allCardsSelectAll) {
+  elements.allCardsSelectAll.addEventListener("click", () => {
+    state.allCardsSelectedIds = new Set((state.allCards || []).map((card) => card.id));
+    renderAllCardsView();
+  });
+}
+
+if (elements.allCardsClearAll) {
+  elements.allCardsClearAll.addEventListener("click", () => {
+    state.allCardsSelectedIds = new Set();
+    renderAllCardsView();
+  });
+}
+
+if (elements.allCardsMove) {
+  elements.allCardsMove.addEventListener("click", async () => {
+    const ids = [...state.allCardsSelectedIds];
+    if (!ids.length) return;
+    const selectedTarget = elements.allCardsMoveTarget?.value;
+    if (!selectedTarget) {
+      showToast("Selecciona una carpeta destino.", "error");
+      return;
+    }
+    if (selectedTarget !== "__none__" && !state.folders[selectedTarget]) {
+      showToast("La carpeta destino ya no existe.", "error");
+      return;
+    }
+    const db = getDb();
+    const moveToFolderId = selectedTarget === "__none__" ? null : selectedTarget;
+    for (const id of ids) {
+      const card = (state.allCards || []).find((entry) => entry.id === id);
+      if (!card) continue;
+      await moveCardFolder(db, state.username, card, moveToFolderId);
+      state.allCardsSelectedIds.delete(id);
+    }
+    if (elements.allCardsMoveTarget) elements.allCardsMoveTarget.value = "";
+    showToast("Tarjetas movidas.");
+    renderAllCardsView();
+  });
+}
+
+if (elements.allCardsDelete) {
+  elements.allCardsDelete.addEventListener("click", async () => {
+    const ids = [...state.allCardsSelectedIds];
+    if (!ids.length) return;
+    if (!window.confirm(`¿Borrar ${ids.length} tarjetas seleccionadas?`)) return;
+    const db = getDb();
+    for (const id of ids) {
+      const card = (state.allCards || []).find((entry) => entry.id === id);
+      if (!card) continue;
+      await deleteCard(db, state.username, card);
+      state.allCardsSelectedIds.delete(id);
+    }
+    showToast("Tarjetas eliminadas.");
+    renderAllCardsView();
+  });
+}
 
 if (elements.cardsSelectToggle) {
   elements.cardsSelectToggle.addEventListener("click", () => {
