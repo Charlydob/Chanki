@@ -1,0 +1,722 @@
+[
+  {
+    "id": "verb_001",
+    "german": "machen",
+    "spanish": "hacer",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_002",
+    "german": "gehen",
+    "spanish": "ir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_003",
+    "german": "kommen",
+    "spanish": "venir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_004",
+    "german": "sehen",
+    "spanish": "ver",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_005",
+    "german": "finden",
+    "spanish": "encontrar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_006",
+    "german": "lernen",
+    "spanish": "aprender",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_007",
+    "german": "arbeiten",
+    "spanish": "trabajar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_008",
+    "german": "spielen",
+    "spanish": "jugar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_009",
+    "german": "kaufen",
+    "spanish": "comprar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_010",
+    "german": "kochen",
+    "spanish": "cocinar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_011",
+    "german": "lesen",
+    "spanish": "leer",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_012",
+    "german": "schreiben",
+    "spanish": "escribir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_013",
+    "german": "wohnen",
+    "spanish": "vivir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_014",
+    "german": "fragen",
+    "spanish": "preguntar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_015",
+    "german": "antworten",
+    "spanish": "responder",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_016",
+    "german": "sprechen",
+    "spanish": "hablar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_017",
+    "german": "reisen",
+    "spanish": "viajar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_018",
+    "german": "brauchen",
+    "spanish": "necesitar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_019",
+    "german": "öffnen",
+    "spanish": "abrir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_020",
+    "german": "schließen",
+    "spanish": "cerrar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_021",
+    "german": "machen",
+    "spanish": "hacer",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_022",
+    "german": "gehen",
+    "spanish": "ir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_023",
+    "german": "kommen",
+    "spanish": "venir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_024",
+    "german": "sehen",
+    "spanish": "ver",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_025",
+    "german": "finden",
+    "spanish": "encontrar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_026",
+    "german": "lernen",
+    "spanish": "aprender",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_027",
+    "german": "arbeiten",
+    "spanish": "trabajar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_028",
+    "german": "spielen",
+    "spanish": "jugar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_029",
+    "german": "kaufen",
+    "spanish": "comprar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_030",
+    "german": "kochen",
+    "spanish": "cocinar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_031",
+    "german": "lesen",
+    "spanish": "leer",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_032",
+    "german": "schreiben",
+    "spanish": "escribir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_033",
+    "german": "wohnen",
+    "spanish": "vivir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_034",
+    "german": "fragen",
+    "spanish": "preguntar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_035",
+    "german": "antworten",
+    "spanish": "responder",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_036",
+    "german": "sprechen",
+    "spanish": "hablar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_037",
+    "german": "reisen",
+    "spanish": "viajar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_038",
+    "german": "brauchen",
+    "spanish": "necesitar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_039",
+    "german": "öffnen",
+    "spanish": "abrir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_040",
+    "german": "schließen",
+    "spanish": "cerrar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_041",
+    "german": "machen",
+    "spanish": "hacer",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_042",
+    "german": "gehen",
+    "spanish": "ir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_043",
+    "german": "kommen",
+    "spanish": "venir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_044",
+    "german": "sehen",
+    "spanish": "ver",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_045",
+    "german": "finden",
+    "spanish": "encontrar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_046",
+    "german": "lernen",
+    "spanish": "aprender",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_047",
+    "german": "arbeiten",
+    "spanish": "trabajar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_048",
+    "german": "spielen",
+    "spanish": "jugar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_049",
+    "german": "kaufen",
+    "spanish": "comprar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_050",
+    "german": "kochen",
+    "spanish": "cocinar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_051",
+    "german": "lesen",
+    "spanish": "leer",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_052",
+    "german": "schreiben",
+    "spanish": "escribir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_053",
+    "german": "wohnen",
+    "spanish": "vivir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_054",
+    "german": "fragen",
+    "spanish": "preguntar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_055",
+    "german": "antworten",
+    "spanish": "responder",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_056",
+    "german": "sprechen",
+    "spanish": "hablar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_057",
+    "german": "reisen",
+    "spanish": "viajar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_058",
+    "german": "brauchen",
+    "spanish": "necesitar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_059",
+    "german": "öffnen",
+    "spanish": "abrir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_060",
+    "german": "schließen",
+    "spanish": "cerrar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_061",
+    "german": "machen",
+    "spanish": "hacer",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_062",
+    "german": "gehen",
+    "spanish": "ir",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_063",
+    "german": "kommen",
+    "spanish": "venir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_064",
+    "german": "sehen",
+    "spanish": "ver",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_065",
+    "german": "finden",
+    "spanish": "encontrar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_066",
+    "german": "lernen",
+    "spanish": "aprender",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_067",
+    "german": "arbeiten",
+    "spanish": "trabajar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_068",
+    "german": "spielen",
+    "spanish": "jugar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_069",
+    "german": "kaufen",
+    "spanish": "comprar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_070",
+    "german": "kochen",
+    "spanish": "cocinar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_071",
+    "german": "lesen",
+    "spanish": "leer",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_072",
+    "german": "schreiben",
+    "spanish": "escribir",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_073",
+    "german": "wohnen",
+    "spanish": "vivir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_074",
+    "german": "fragen",
+    "spanish": "preguntar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_075",
+    "german": "antworten",
+    "spanish": "responder",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_076",
+    "german": "sprechen",
+    "spanish": "hablar",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_077",
+    "german": "reisen",
+    "spanish": "viajar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  },
+  {
+    "id": "verb_078",
+    "german": "brauchen",
+    "spanish": "necesitar",
+    "level": "B1",
+    "tags": [
+      "estudio"
+    ]
+  },
+  {
+    "id": "verb_079",
+    "german": "öffnen",
+    "spanish": "abrir",
+    "level": "A1",
+    "tags": [
+      "acción"
+    ]
+  },
+  {
+    "id": "verb_080",
+    "german": "schließen",
+    "spanish": "cerrar",
+    "level": "A2",
+    "tags": [
+      "uso-diario"
+    ]
+  }
+]

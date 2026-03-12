@@ -68,6 +68,7 @@ import {
 } from "./shared.js";
 import { refreshReviewBucketCounts } from "./screens/review.js";
 import { loadStats } from "./screens/stats.js";
+import { initDailyScreen } from "./screens/daily.js";
 import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } from "./screens/folders.js";
 import { getReviewCandidates, loadReviewCards } from "./review-candidates.js";
 
@@ -4298,8 +4299,62 @@ function syncRouteFromState(screenName) {
     path = "import";
   } else if (screen === "stats") {
     path = "stats";
+  } else if (screen === "daily") {
+    path = "daily";
   }
   updateBrowserRoute(path, "push");
+}
+
+
+
+function getFolderChoicePrompt() {
+  const options = Object.values(state.folders || {});
+  if (!options.length) return null;
+  const lines = options.map((folder) => `${folder.id}:${folder.name}`).join("
+");
+  return prompt(`Selecciona carpeta destino (id:nombre)
+${lines}`);
+}
+
+async function createCardFromDailyItem(type, item, extra = null) {
+  if (!item) return;
+  const db = getDb();
+  const folderId = getFolderChoicePrompt();
+  if (!folderId || !state.folders[folderId]) {
+    showToast("Carpeta no válida.", "error");
+    return;
+  }
+  let front = item.german;
+  let back = item.spanish;
+  const tags = dedupeTags(["daily", type, ...(item.tags || [])]);
+  if (type === "noun") {
+    const bits = [item.spanish];
+    if (item.article) bits.push(`Artículo: ${item.article}`);
+    if (item.plural) bits.push(`Plural: ${item.plural}`);
+    back = bits.join("
+");
+  }
+  if (type === "verb" && extra) {
+    const tenseLines = Object.entries(extra)
+      .map(([tense, values]) => `${tense}: ${Object.entries(values || {}).map(([k, v]) => `${k} ${v || ""}`).join(" · ")}`)
+      .join("
+");
+    if (tenseLines.trim()) back = `${item.spanish}
+
+Conjugaciones (usuario):
+${tenseLines}`;
+  }
+  const id = `daily_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
+  const result = await upsertCardWithDedupe(db, state.username, {
+    id,
+    folderId,
+    type: "basic",
+    front,
+    back,
+    tags: tagsToMap(tags),
+  });
+  if (result.status === "duplicate") showToast("Tarjeta duplicada omitida.");
+  else showToast("Tarjeta creada.");
 }
 
 async function openFolderView({ ownerUid, folderId, role = "owner", isShared = false }, routeMode = "push") {
@@ -4363,6 +4418,10 @@ async function applyRoute() {
     setActiveScreen("stats", { skipRouteSync: true });
     return;
   }
+  if (path === "/daily") {
+    setActiveScreen("daily", { skipRouteSync: true });
+    return;
+  }
   setActiveScreen("folders", { skipRouteSync: true });
 }
 
@@ -4376,7 +4435,7 @@ function initApp() {
   initFirebaseUi();
 }
 
-function initFirebaseUi() {
+async function initFirebaseUi() {
   getDb();
   restoreReviewSelectorPrefs();
   sanitizeReviewFolderSelections();
@@ -4409,6 +4468,13 @@ function initFirebaseUi() {
   refreshReviewBucketCounts();
   setImportContext("generic", { sourceScreen: "import" });
   renderImportFolderSelect();
+  await initDailyScreen({
+    getDb,
+    state,
+    elements,
+    showToast,
+    createCardFromDailyItem,
+  });
   applyRoute();
 }
 
@@ -4435,6 +4501,9 @@ elements.tabs.forEach((tab) => {
     setActiveScreen(tab.dataset.screen);
     if (tab.dataset.screen === "all-cards") {
       renderAllCardsView();
+    }
+    if (tab.dataset.screen === "daily") {
+      initDailyScreen({ getDb, state, elements, showToast, createCardFromDailyItem });
     }
   });
 });

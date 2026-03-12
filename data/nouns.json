@@ -1,0 +1,1322 @@
+[
+  {
+    "id": "noun_001",
+    "german": "der Tisch",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_002",
+    "german": "die Lampe",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_003",
+    "german": "das Buch",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_004",
+    "german": "der Stuhl",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_005",
+    "german": "die Tür",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_006",
+    "german": "das Fenster",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_007",
+    "german": "der Kaffee",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_008",
+    "german": "die Zeitung",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_009",
+    "german": "das Brot",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_010",
+    "german": "der Bahnhof",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_011",
+    "german": "die Straße",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_012",
+    "german": "das Haus",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_013",
+    "german": "der Freund",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_014",
+    "german": "die Freundin",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_015",
+    "german": "das Kind",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_016",
+    "german": "der Lehrer",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_017",
+    "german": "die Schule",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_018",
+    "german": "das Handy",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_019",
+    "german": "der Urlaub",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_020",
+    "german": "die Arbeit",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_021",
+    "german": "der Tisch 21",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_022",
+    "german": "die Lampe 22",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_023",
+    "german": "das Buch 23",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_024",
+    "german": "der Stuhl 24",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_025",
+    "german": "die Tür 25",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_026",
+    "german": "das Fenster 26",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_027",
+    "german": "der Kaffee 27",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_028",
+    "german": "die Zeitung 28",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_029",
+    "german": "das Brot 29",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_030",
+    "german": "der Bahnhof 30",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_031",
+    "german": "die Straße 31",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_032",
+    "german": "das Haus 32",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_033",
+    "german": "der Freund 33",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_034",
+    "german": "die Freundin 34",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_035",
+    "german": "das Kind 35",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_036",
+    "german": "der Lehrer 36",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_037",
+    "german": "die Schule 37",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_038",
+    "german": "das Handy 38",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_039",
+    "german": "der Urlaub 39",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_040",
+    "german": "die Arbeit 40",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_041",
+    "german": "der Tisch 41",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_042",
+    "german": "die Lampe 42",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_043",
+    "german": "das Buch 43",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_044",
+    "german": "der Stuhl 44",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_045",
+    "german": "die Tür 45",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_046",
+    "german": "das Fenster 46",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_047",
+    "german": "der Kaffee 47",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_048",
+    "german": "die Zeitung 48",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_049",
+    "german": "das Brot 49",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_050",
+    "german": "der Bahnhof 50",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_051",
+    "german": "die Straße 51",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_052",
+    "german": "das Haus 52",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_053",
+    "german": "der Freund 53",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_054",
+    "german": "die Freundin 54",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_055",
+    "german": "das Kind 55",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_056",
+    "german": "der Lehrer 56",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_057",
+    "german": "die Schule 57",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_058",
+    "german": "das Handy 58",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_059",
+    "german": "der Urlaub 59",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_060",
+    "german": "die Arbeit 60",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_061",
+    "german": "der Tisch 61",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_062",
+    "german": "die Lampe 62",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_063",
+    "german": "das Buch 63",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_064",
+    "german": "der Stuhl 64",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_065",
+    "german": "die Tür 65",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_066",
+    "german": "das Fenster 66",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_067",
+    "german": "der Kaffee 67",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_068",
+    "german": "die Zeitung 68",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_069",
+    "german": "das Brot 69",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_070",
+    "german": "der Bahnhof 70",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_071",
+    "german": "die Straße 71",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_072",
+    "german": "das Haus 72",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_073",
+    "german": "der Freund 73",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_074",
+    "german": "die Freundin 74",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_075",
+    "german": "das Kind 75",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_076",
+    "german": "der Lehrer 76",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_077",
+    "german": "die Schule 77",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_078",
+    "german": "das Handy 78",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_079",
+    "german": "der Urlaub 79",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_080",
+    "german": "die Arbeit 80",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_081",
+    "german": "der Tisch 81",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_082",
+    "german": "die Lampe 82",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_083",
+    "german": "das Buch 83",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_084",
+    "german": "der Stuhl 84",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_085",
+    "german": "die Tür 85",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_086",
+    "german": "das Fenster 86",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_087",
+    "german": "der Kaffee 87",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_088",
+    "german": "die Zeitung 88",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_089",
+    "german": "das Brot 89",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_090",
+    "german": "der Bahnhof 90",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_091",
+    "german": "die Straße 91",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_092",
+    "german": "das Haus 92",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_093",
+    "german": "der Freund 93",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_094",
+    "german": "die Freundin 94",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_095",
+    "german": "das Kind 95",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_096",
+    "german": "der Lehrer 96",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_097",
+    "german": "die Schule 97",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_098",
+    "german": "das Handy 98",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_099",
+    "german": "der Urlaub 99",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_100",
+    "german": "die Arbeit 100",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_101",
+    "german": "der Tisch 101",
+    "spanish": "mesa",
+    "article": "der",
+    "plural": "Tische",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_102",
+    "german": "die Lampe 102",
+    "spanish": "lámpara",
+    "article": "die",
+    "plural": "Lampen",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_103",
+    "german": "das Buch 103",
+    "spanish": "libro",
+    "article": "das",
+    "plural": "Bücher",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_104",
+    "german": "der Stuhl 104",
+    "spanish": "silla",
+    "article": "der",
+    "plural": "Stühle",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_105",
+    "german": "die Tür 105",
+    "spanish": "puerta",
+    "article": "die",
+    "plural": "Türen",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_106",
+    "german": "das Fenster 106",
+    "spanish": "ventana",
+    "article": "das",
+    "plural": "Fenster",
+    "level": "A1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_107",
+    "german": "der Kaffee 107",
+    "spanish": "café",
+    "article": "der",
+    "plural": "Kaffees",
+    "level": "A2",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_108",
+    "german": "die Zeitung 108",
+    "spanish": "periódico",
+    "article": "die",
+    "plural": "Zeitungen",
+    "level": "B1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_109",
+    "german": "das Brot 109",
+    "spanish": "pan",
+    "article": "das",
+    "plural": "Brote",
+    "level": "A1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_110",
+    "german": "der Bahnhof 110",
+    "spanish": "estación",
+    "article": "der",
+    "plural": "Bahnhöfe",
+    "level": "A2",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_111",
+    "german": "die Straße 111",
+    "spanish": "calle",
+    "article": "die",
+    "plural": "Straßen",
+    "level": "B1",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_112",
+    "german": "das Haus 112",
+    "spanish": "casa",
+    "article": "das",
+    "plural": "Häuser",
+    "level": "A1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_113",
+    "german": "der Freund 113",
+    "spanish": "amigo",
+    "article": "der",
+    "plural": "Freunde",
+    "level": "A2",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_114",
+    "german": "die Freundin 114",
+    "spanish": "amiga",
+    "article": "die",
+    "plural": "Freundinnen",
+    "level": "B1",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_115",
+    "german": "das Kind 115",
+    "spanish": "niño",
+    "article": "das",
+    "plural": "Kinder",
+    "level": "A1",
+    "tags": [
+      "personas"
+    ]
+  },
+  {
+    "id": "noun_116",
+    "german": "der Lehrer 116",
+    "spanish": "profesor",
+    "article": "der",
+    "plural": "Lehrer",
+    "level": "A2",
+    "tags": [
+      "hogar"
+    ]
+  },
+  {
+    "id": "noun_117",
+    "german": "die Schule 117",
+    "spanish": "escuela",
+    "article": "die",
+    "plural": "Schulen",
+    "level": "B1",
+    "tags": [
+      "viaje"
+    ]
+  },
+  {
+    "id": "noun_118",
+    "german": "das Handy 118",
+    "spanish": "móvil",
+    "article": "das",
+    "plural": "Handys",
+    "level": "A1",
+    "tags": [
+      "comida"
+    ]
+  },
+  {
+    "id": "noun_119",
+    "german": "der Urlaub 119",
+    "spanish": "vacaciones",
+    "article": "der",
+    "plural": "Urlaube",
+    "level": "A2",
+    "tags": [
+      "trabajo"
+    ]
+  },
+  {
+    "id": "noun_120",
+    "german": "die Arbeit 120",
+    "spanish": "trabajo",
+    "article": "die",
+    "plural": "Arbeiten",
+    "level": "B1",
+    "tags": [
+      "personas"
+    ]
+  }
+]

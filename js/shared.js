@@ -214,6 +214,8 @@ export const elements = {
   statsTotalNew: document.getElementById("stats-total-new"),
   statsTotalLearned: document.getElementById("stats-total-learned"),
   statsBucketCounts: document.getElementById("stats-bucket-counts"),
+  dailyDate: document.getElementById("daily-date"),
+  dailyContent: document.getElementById("daily-content"),
   settingsUsername: document.getElementById("settings-username"),
   settingsMaxNew: document.getElementById("settings-max-new"),
   settingsMax: document.getElementById("settings-max"),

@@ -1,0 +1,1502 @@
+[
+  {
+    "id": "sentence_001",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_001"
+    ],
+    "linkedVerbIds": [
+      "verb_001"
+    ]
+  },
+  {
+    "id": "sentence_002",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_002"
+    ],
+    "linkedVerbIds": [
+      "verb_002"
+    ]
+  },
+  {
+    "id": "sentence_003",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_003"
+    ],
+    "linkedVerbIds": [
+      "verb_003"
+    ]
+  },
+  {
+    "id": "sentence_004",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_004"
+    ],
+    "linkedVerbIds": [
+      "verb_004"
+    ]
+  },
+  {
+    "id": "sentence_005",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_005"
+    ],
+    "linkedVerbIds": [
+      "verb_005"
+    ]
+  },
+  {
+    "id": "sentence_006",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_006"
+    ],
+    "linkedVerbIds": [
+      "verb_006"
+    ]
+  },
+  {
+    "id": "sentence_007",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_007"
+    ],
+    "linkedVerbIds": [
+      "verb_007"
+    ]
+  },
+  {
+    "id": "sentence_008",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_008"
+    ],
+    "linkedVerbIds": [
+      "verb_008"
+    ]
+  },
+  {
+    "id": "sentence_009",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_009"
+    ],
+    "linkedVerbIds": [
+      "verb_009"
+    ]
+  },
+  {
+    "id": "sentence_010",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_010"
+    ],
+    "linkedVerbIds": [
+      "verb_010"
+    ]
+  },
+  {
+    "id": "sentence_011",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_011"
+    ],
+    "linkedVerbIds": [
+      "verb_011"
+    ]
+  },
+  {
+    "id": "sentence_012",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_012"
+    ],
+    "linkedVerbIds": [
+      "verb_012"
+    ]
+  },
+  {
+    "id": "sentence_013",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_013"
+    ],
+    "linkedVerbIds": [
+      "verb_013"
+    ]
+  },
+  {
+    "id": "sentence_014",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_014"
+    ],
+    "linkedVerbIds": [
+      "verb_014"
+    ]
+  },
+  {
+    "id": "sentence_015",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_015"
+    ],
+    "linkedVerbIds": [
+      "verb_015"
+    ]
+  },
+  {
+    "id": "sentence_016",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_016"
+    ],
+    "linkedVerbIds": [
+      "verb_016"
+    ]
+  },
+  {
+    "id": "sentence_017",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_017"
+    ],
+    "linkedVerbIds": [
+      "verb_017"
+    ]
+  },
+  {
+    "id": "sentence_018",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_018"
+    ],
+    "linkedVerbIds": [
+      "verb_018"
+    ]
+  },
+  {
+    "id": "sentence_019",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_019"
+    ],
+    "linkedVerbIds": [
+      "verb_019"
+    ]
+  },
+  {
+    "id": "sentence_020",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_020"
+    ],
+    "linkedVerbIds": [
+      "verb_020"
+    ]
+  },
+  {
+    "id": "sentence_021",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_021"
+    ],
+    "linkedVerbIds": [
+      "verb_021"
+    ]
+  },
+  {
+    "id": "sentence_022",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_022"
+    ],
+    "linkedVerbIds": [
+      "verb_022"
+    ]
+  },
+  {
+    "id": "sentence_023",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_023"
+    ],
+    "linkedVerbIds": [
+      "verb_023"
+    ]
+  },
+  {
+    "id": "sentence_024",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_024"
+    ],
+    "linkedVerbIds": [
+      "verb_024"
+    ]
+  },
+  {
+    "id": "sentence_025",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_025"
+    ],
+    "linkedVerbIds": [
+      "verb_025"
+    ]
+  },
+  {
+    "id": "sentence_026",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_026"
+    ],
+    "linkedVerbIds": [
+      "verb_026"
+    ]
+  },
+  {
+    "id": "sentence_027",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_027"
+    ],
+    "linkedVerbIds": [
+      "verb_027"
+    ]
+  },
+  {
+    "id": "sentence_028",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_028"
+    ],
+    "linkedVerbIds": [
+      "verb_028"
+    ]
+  },
+  {
+    "id": "sentence_029",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_029"
+    ],
+    "linkedVerbIds": [
+      "verb_029"
+    ]
+  },
+  {
+    "id": "sentence_030",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_030"
+    ],
+    "linkedVerbIds": [
+      "verb_030"
+    ]
+  },
+  {
+    "id": "sentence_031",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_031"
+    ],
+    "linkedVerbIds": [
+      "verb_031"
+    ]
+  },
+  {
+    "id": "sentence_032",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_032"
+    ],
+    "linkedVerbIds": [
+      "verb_032"
+    ]
+  },
+  {
+    "id": "sentence_033",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_033"
+    ],
+    "linkedVerbIds": [
+      "verb_033"
+    ]
+  },
+  {
+    "id": "sentence_034",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_034"
+    ],
+    "linkedVerbIds": [
+      "verb_034"
+    ]
+  },
+  {
+    "id": "sentence_035",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_035"
+    ],
+    "linkedVerbIds": [
+      "verb_035"
+    ]
+  },
+  {
+    "id": "sentence_036",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_036"
+    ],
+    "linkedVerbIds": [
+      "verb_036"
+    ]
+  },
+  {
+    "id": "sentence_037",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_037"
+    ],
+    "linkedVerbIds": [
+      "verb_037"
+    ]
+  },
+  {
+    "id": "sentence_038",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_038"
+    ],
+    "linkedVerbIds": [
+      "verb_038"
+    ]
+  },
+  {
+    "id": "sentence_039",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_039"
+    ],
+    "linkedVerbIds": [
+      "verb_039"
+    ]
+  },
+  {
+    "id": "sentence_040",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_040"
+    ],
+    "linkedVerbIds": [
+      "verb_040"
+    ]
+  },
+  {
+    "id": "sentence_041",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_041"
+    ],
+    "linkedVerbIds": [
+      "verb_041"
+    ]
+  },
+  {
+    "id": "sentence_042",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_042"
+    ],
+    "linkedVerbIds": [
+      "verb_042"
+    ]
+  },
+  {
+    "id": "sentence_043",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_043"
+    ],
+    "linkedVerbIds": [
+      "verb_043"
+    ]
+  },
+  {
+    "id": "sentence_044",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_044"
+    ],
+    "linkedVerbIds": [
+      "verb_044"
+    ]
+  },
+  {
+    "id": "sentence_045",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_045"
+    ],
+    "linkedVerbIds": [
+      "verb_045"
+    ]
+  },
+  {
+    "id": "sentence_046",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_046"
+    ],
+    "linkedVerbIds": [
+      "verb_046"
+    ]
+  },
+  {
+    "id": "sentence_047",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_047"
+    ],
+    "linkedVerbIds": [
+      "verb_047"
+    ]
+  },
+  {
+    "id": "sentence_048",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_048"
+    ],
+    "linkedVerbIds": [
+      "verb_048"
+    ]
+  },
+  {
+    "id": "sentence_049",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_049"
+    ],
+    "linkedVerbIds": [
+      "verb_049"
+    ]
+  },
+  {
+    "id": "sentence_050",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_050"
+    ],
+    "linkedVerbIds": [
+      "verb_050"
+    ]
+  },
+  {
+    "id": "sentence_051",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_051"
+    ],
+    "linkedVerbIds": [
+      "verb_051"
+    ]
+  },
+  {
+    "id": "sentence_052",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_052"
+    ],
+    "linkedVerbIds": [
+      "verb_052"
+    ]
+  },
+  {
+    "id": "sentence_053",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_053"
+    ],
+    "linkedVerbIds": [
+      "verb_053"
+    ]
+  },
+  {
+    "id": "sentence_054",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_054"
+    ],
+    "linkedVerbIds": [
+      "verb_054"
+    ]
+  },
+  {
+    "id": "sentence_055",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_055"
+    ],
+    "linkedVerbIds": [
+      "verb_055"
+    ]
+  },
+  {
+    "id": "sentence_056",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_056"
+    ],
+    "linkedVerbIds": [
+      "verb_056"
+    ]
+  },
+  {
+    "id": "sentence_057",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_057"
+    ],
+    "linkedVerbIds": [
+      "verb_057"
+    ]
+  },
+  {
+    "id": "sentence_058",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_058"
+    ],
+    "linkedVerbIds": [
+      "verb_058"
+    ]
+  },
+  {
+    "id": "sentence_059",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_059"
+    ],
+    "linkedVerbIds": [
+      "verb_059"
+    ]
+  },
+  {
+    "id": "sentence_060",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_060"
+    ],
+    "linkedVerbIds": [
+      "verb_060"
+    ]
+  },
+  {
+    "id": "sentence_061",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_061"
+    ],
+    "linkedVerbIds": [
+      "verb_061"
+    ]
+  },
+  {
+    "id": "sentence_062",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_062"
+    ],
+    "linkedVerbIds": [
+      "verb_062"
+    ]
+  },
+  {
+    "id": "sentence_063",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_063"
+    ],
+    "linkedVerbIds": [
+      "verb_063"
+    ]
+  },
+  {
+    "id": "sentence_064",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_064"
+    ],
+    "linkedVerbIds": [
+      "verb_064"
+    ]
+  },
+  {
+    "id": "sentence_065",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_065"
+    ],
+    "linkedVerbIds": [
+      "verb_065"
+    ]
+  },
+  {
+    "id": "sentence_066",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_066"
+    ],
+    "linkedVerbIds": [
+      "verb_066"
+    ]
+  },
+  {
+    "id": "sentence_067",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_067"
+    ],
+    "linkedVerbIds": [
+      "verb_067"
+    ]
+  },
+  {
+    "id": "sentence_068",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_068"
+    ],
+    "linkedVerbIds": [
+      "verb_068"
+    ]
+  },
+  {
+    "id": "sentence_069",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_069"
+    ],
+    "linkedVerbIds": [
+      "verb_069"
+    ]
+  },
+  {
+    "id": "sentence_070",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_070"
+    ],
+    "linkedVerbIds": [
+      "verb_070"
+    ]
+  },
+  {
+    "id": "sentence_071",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_071"
+    ],
+    "linkedVerbIds": [
+      "verb_071"
+    ]
+  },
+  {
+    "id": "sentence_072",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_072"
+    ],
+    "linkedVerbIds": [
+      "verb_072"
+    ]
+  },
+  {
+    "id": "sentence_073",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_073"
+    ],
+    "linkedVerbIds": [
+      "verb_073"
+    ]
+  },
+  {
+    "id": "sentence_074",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_074"
+    ],
+    "linkedVerbIds": [
+      "verb_074"
+    ]
+  },
+  {
+    "id": "sentence_075",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_075"
+    ],
+    "linkedVerbIds": [
+      "verb_075"
+    ]
+  },
+  {
+    "id": "sentence_076",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_076"
+    ],
+    "linkedVerbIds": [
+      "verb_076"
+    ]
+  },
+  {
+    "id": "sentence_077",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_077"
+    ],
+    "linkedVerbIds": [
+      "verb_077"
+    ]
+  },
+  {
+    "id": "sentence_078",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_078"
+    ],
+    "linkedVerbIds": [
+      "verb_078"
+    ]
+  },
+  {
+    "id": "sentence_079",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_079"
+    ],
+    "linkedVerbIds": [
+      "verb_079"
+    ]
+  },
+  {
+    "id": "sentence_080",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_080"
+    ],
+    "linkedVerbIds": [
+      "verb_080"
+    ]
+  },
+  {
+    "id": "sentence_081",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_081"
+    ],
+    "linkedVerbIds": [
+      "verb_001"
+    ]
+  },
+  {
+    "id": "sentence_082",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_082"
+    ],
+    "linkedVerbIds": [
+      "verb_002"
+    ]
+  },
+  {
+    "id": "sentence_083",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_083"
+    ],
+    "linkedVerbIds": [
+      "verb_003"
+    ]
+  },
+  {
+    "id": "sentence_084",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_084"
+    ],
+    "linkedVerbIds": [
+      "verb_004"
+    ]
+  },
+  {
+    "id": "sentence_085",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_085"
+    ],
+    "linkedVerbIds": [
+      "verb_005"
+    ]
+  },
+  {
+    "id": "sentence_086",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_086"
+    ],
+    "linkedVerbIds": [
+      "verb_006"
+    ]
+  },
+  {
+    "id": "sentence_087",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_087"
+    ],
+    "linkedVerbIds": [
+      "verb_007"
+    ]
+  },
+  {
+    "id": "sentence_088",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_088"
+    ],
+    "linkedVerbIds": [
+      "verb_008"
+    ]
+  },
+  {
+    "id": "sentence_089",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_089"
+    ],
+    "linkedVerbIds": [
+      "verb_009"
+    ]
+  },
+  {
+    "id": "sentence_090",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_090"
+    ],
+    "linkedVerbIds": [
+      "verb_010"
+    ]
+  },
+  {
+    "id": "sentence_091",
+    "german": "Ich trinke morgens Kaffee.",
+    "spanish": "Yo tomo café por la mañana.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_091"
+    ],
+    "linkedVerbIds": [
+      "verb_011"
+    ]
+  },
+  {
+    "id": "sentence_092",
+    "german": "Wir gehen heute in den Park.",
+    "spanish": "Nosotros vamos hoy al parque.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_092"
+    ],
+    "linkedVerbIds": [
+      "verb_012"
+    ]
+  },
+  {
+    "id": "sentence_093",
+    "german": "Sie lernt jeden Abend Deutsch.",
+    "spanish": "Ella estudia alemán cada noche.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_093"
+    ],
+    "linkedVerbIds": [
+      "verb_013"
+    ]
+  },
+  {
+    "id": "sentence_094",
+    "german": "Der Zug kommt um acht Uhr.",
+    "spanish": "El tren llega a las ocho.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_094"
+    ],
+    "linkedVerbIds": [
+      "verb_014"
+    ]
+  },
+  {
+    "id": "sentence_095",
+    "german": "Kannst du mir bitte helfen?",
+    "spanish": "¿Puedes ayudarme por favor?",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_095"
+    ],
+    "linkedVerbIds": [
+      "verb_015"
+    ]
+  },
+  {
+    "id": "sentence_096",
+    "german": "Heute ist das Wetter sehr schön.",
+    "spanish": "Hoy hace muy buen tiempo.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_096"
+    ],
+    "linkedVerbIds": [
+      "verb_016"
+    ]
+  },
+  {
+    "id": "sentence_097",
+    "german": "Ich habe keine Zeit am Montag.",
+    "spanish": "No tengo tiempo el lunes.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_097"
+    ],
+    "linkedVerbIds": [
+      "verb_017"
+    ]
+  },
+  {
+    "id": "sentence_098",
+    "german": "Wir kaufen Brot und Milch.",
+    "spanish": "Compramos pan y leche.",
+    "level": "A2",
+    "tags": [
+      "rutina"
+    ],
+    "linkedWordIds": [
+      "noun_098"
+    ],
+    "linkedVerbIds": [
+      "verb_018"
+    ]
+  },
+  {
+    "id": "sentence_099",
+    "german": "Er arbeitet im Büro in Berlin.",
+    "spanish": "Él trabaja en una oficina en Berlín.",
+    "level": "B1",
+    "tags": [
+      "conversación"
+    ],
+    "linkedWordIds": [
+      "noun_099"
+    ],
+    "linkedVerbIds": [
+      "verb_019"
+    ]
+  },
+  {
+    "id": "sentence_100",
+    "german": "Am Wochenende besuche ich meine Familie.",
+    "spanish": "El fin de semana visito a mi familia.",
+    "level": "A1",
+    "tags": [
+      "frase"
+    ],
+    "linkedWordIds": [
+      "noun_100"
+    ],
+    "linkedVerbIds": [
+      "verb_020"
+    ]
+  }
+]
