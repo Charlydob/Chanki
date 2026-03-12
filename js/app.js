@@ -4322,7 +4322,7 @@ async function createCardFromDailyItem(type, item, extra = null) {
   const folderId = getFolderChoicePrompt();
   if (!folderId || !state.folders[folderId]) {
     showToast("Carpeta no válida.", "error");
-    return;
+    return null;
   }
   let front = item.german;
   let back = item.spanish;
@@ -4353,8 +4353,12 @@ ${tenseLines}`;
     back,
     tags: tagsToMap(tags),
   });
-  if (result.status === "duplicate") showToast("Tarjeta duplicada omitida.");
-  else showToast("Tarjeta creada.");
+  if (result.status === "duplicate") {
+    showToast("Tarjeta duplicada omitida.");
+    return { status: "duplicate", cardId: id, folderId };
+  }
+  showToast("Tarjeta creada.");
+  return { status: "created", cardId: id, folderId };
 }
 
 async function openFolderView({ ownerUid, folderId, role = "owner", isShared = false }, routeMode = "push") {
