@@ -4310,10 +4310,8 @@ function syncRouteFromState(screenName) {
 function getFolderChoicePrompt() {
   const options = Object.values(state.folders || {});
   if (!options.length) return null;
-  const lines = options.map((folder) => `${folder.id}:${folder.name}`).join("
-");
-  return prompt(`Selecciona carpeta destino (id:nombre)
-${lines}`);
+  const lines = options.map((folder) => `${folder.id}:${folder.name}`).join("\n");
+  return prompt(`Selecciona carpeta destino (id:nombre)\n${lines}`);
 }
 
 async function createCardFromDailyItem(type, item, extra = null) {
@@ -4331,18 +4329,13 @@ async function createCardFromDailyItem(type, item, extra = null) {
     const bits = [item.spanish];
     if (item.article) bits.push(`Artículo: ${item.article}`);
     if (item.plural) bits.push(`Plural: ${item.plural}`);
-    back = bits.join("
-");
+    back = bits.join("\n");
   }
   if (type === "verb" && extra) {
     const tenseLines = Object.entries(extra)
       .map(([tense, values]) => `${tense}: ${Object.entries(values || {}).map(([k, v]) => `${k} ${v || ""}`).join(" · ")}`)
-      .join("
-");
-    if (tenseLines.trim()) back = `${item.spanish}
-
-Conjugaciones (usuario):
-${tenseLines}`;
+      .join("\n");
+    if (tenseLines.trim()) back = `${item.spanish}\n\nConjugaciones (usuario):\n${tenseLines}`;
   }
   const id = `daily_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
   const result = await upsertCardWithDedupe(db, state.username, {
