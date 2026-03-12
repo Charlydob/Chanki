@@ -1,8 +1,8 @@
 import {
   getDailyBundle,
   getDateKey,
-  loadDailySeed,
   markItemKnown,
+  registerCardCreated,
   replaceDailyItem,
   saveVerbExerciseAnswers,
   updateItemProgress,
@@ -106,7 +106,7 @@ async function swap(type, id, asKnown = false) {
     ctx.dateKey,
     type,
     id,
-    ctx.seed,
+    ctx.catalog,
     ctx.progressItems,
     ctx.bundle
   );
@@ -125,7 +125,15 @@ async function createCard(type, id) {
   const item = findByType(type, id);
   if (!item) return;
   const extra = type === "verb" ? ctx.verbAnswers?.[id] : null;
-  await ctx.createCardFromDailyItem(type, item, extra);
+  const created = await ctx.createCardFromDailyItem(type, item, extra);
+  if (created?.cardId) {
+    await registerCardCreated(ctx.getDb(), ctx.state.username, ctx.dateKey, {
+      ...created,
+      dailyItemId: id,
+      type,
+      at: Date.now(),
+    });
+  }
 }
 
 async function handleClick(event) {
@@ -142,16 +150,23 @@ async function handleClick(event) {
 export async function initDailyScreen(config) {
   ctx = { ...config };
   ctx.dateKey = getDateKey();
-  ctx.seed = await loadDailySeed();
-  const daily = await getDailyBundle(ctx.getDb(), ctx.state.username, ctx.dateKey, ctx.seed);
+  const daily = await getDailyBundle(ctx.getDb(), ctx.state.username, ctx.dateKey);
   ctx.bundle = daily.bundle;
+  ctx.catalog = daily.catalog;
   ctx.progressItems = daily.progressItems || {};
   ctx.verbAnswers = daily.verbAnswers || {};
 
   ctx.items = {
-    nouns: ctx.bundle.nounIds.map((id) => ctx.seed.nouns.find((item) => item.id === id)).filter(Boolean).map((item) => ({ ...item, type: "noun" })),
-    verb: ctx.seed.verbs.find((item) => item.id === ctx.bundle.verbId) ? { ...ctx.seed.verbs.find((item) => item.id === ctx.bundle.verbId), type: "verb" } : null,
-    sentence: ctx.seed.sentences.find((item) => item.id === ctx.bundle.sentenceId) ? { ...ctx.seed.sentences.find((item) => item.id === ctx.bundle.sentenceId), type: "sentence" } : null,
+    nouns: ctx.bundle.nounIds
+      .map((id) => ctx.catalog.nouns.find((item) => item.id === id))
+      .filter(Boolean)
+      .map((item) => ({ ...item, type: "noun" })),
+    verb: ctx.catalog.verbs.find((item) => item.id === ctx.bundle.verbId)
+      ? { ...ctx.catalog.verbs.find((item) => item.id === ctx.bundle.verbId), type: "verb" }
+      : null,
+    sentence: ctx.catalog.sentences.find((item) => item.id === ctx.bundle.sentenceId)
+      ? { ...ctx.catalog.sentences.find((item) => item.id === ctx.bundle.sentenceId), type: "sentence" }
+      : null,
   };
 
   ctx.elements.dailyContent?.removeEventListener("click", handleClick);
