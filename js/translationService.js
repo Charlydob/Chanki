@@ -16,6 +16,43 @@ function normalizeVariantList(items = []) {
   return out;
 }
 
+function normalizeSenseKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[.,;:!?¡¿'"“”‘’()\[\]{}]/g, " ")
+    .replace(/\b(el|la|los|las|un|una|unos|unas|the|a|an)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isNearDuplicateSense(a, b) {
+  const aa = normalizeSenseKey(a);
+  const bb = normalizeSenseKey(b);
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.includes(bb) || bb.includes(aa);
+}
+
+function dedupeSenseObjects(items = []) {
+  const out = [];
+  for (const item of items) {
+    const translation = safeTrim(item?.translation);
+    if (!translation) continue;
+    const nuance = safeTrim(item?.nuance);
+    const next = { translation, nuance, source: item?.source || "unknown" };
+    const existing = out.find((entry) => isNearDuplicateSense(entry.translation, translation));
+    if (!existing) {
+      out.push(next);
+      continue;
+    }
+    if (!existing.nuance && nuance) existing.nuance = nuance;
+  }
+  return out;
+}
+
 async function fetchWithLogs(endpoint, options, { sourceLang, targetLang, text, mode, signal }) {
   const payload = { sourceLang, targetLang, text, mode, endpoint };
   console.info("[translate:request]", payload);
@@ -62,23 +99,80 @@ async function translateWithLibre(ctx, libreBase) {
 async function translateWithMyMemory(ctx) {
   const endpoint = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(ctx.text)}&langpair=${ctx.sourceLang}|${ctx.targetLang}`;
   const body = await fetchWithLogs(endpoint, { method: "GET" }, ctx);
-  const main = safeTrim(body?.responseData?.translatedText);
-  const isSingleWord = ctx.mode === "word";
-  if (!isSingleWord) return main;
-
-  const alternatives = normalizeVariantList((body?.matches || []).map((m) => m?.translation));
-  const combined = normalizeVariantList([main, ...alternatives]).slice(0, 3);
-  if (!combined.length) return "";
-  if (combined.length === 1) return combined[0];
-  return combined.map((item, idx) => `${idx + 1}. ${item}`).join("\n");
+  return {
+    main: safeTrim(body?.responseData?.translatedText),
+    matches: normalizeVariantList((body?.matches || []).map((m) => m?.translation)),
+  };
 }
 
-export async function translateTextWithFallback({ text, sourceLang, targetLang, mode = "phrase", signal }) {
+async function fetchWiktionarySenses(ctx) {
+  const endpoint = `https://${ctx.sourceLang}.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(ctx.text)}&prop=wikitext&format=json&origin=*`;
+  const body = await fetchWithLogs(endpoint, { method: "GET" }, ctx);
+  const wiki = String(body?.parse?.wikitext?.["*"] || "");
+  if (!wiki) return [];
+  const regex = new RegExp(`\\{\\{t\\+?\\|${ctx.targetLang}\\|([^|}]+)`, "gi");
+  const senses = [];
+  let match;
+  while ((match = regex.exec(wiki)) !== null) {
+    senses.push({ translation: safeTrim(match[1]), nuance: "Wiktionary", source: "wiktionary" });
+  }
+  return dedupeSenseObjects(senses).slice(0, 8);
+}
+
+function scoreSenseWithContext(sense, contextText = "") {
+  const ctx = normalizeSenseKey(contextText);
+  if (!ctx) return 0;
+  const trans = normalizeSenseKey(sense.translation);
+  const nuance = normalizeSenseKey(sense.nuance);
+  let score = 0;
+  if (trans && ctx.includes(trans)) score += 6;
+  if (nuance && ctx.includes(nuance)) score += 3;
+  return score;
+}
+
+function formatWordSenses(senses = []) {
+  if (!senses.length) return "";
+  if (senses.length === 1) return senses[0].translation;
+  return senses.map((item, idx) => `${idx + 1}. ${item.translation}${item.nuance ? ` — ${item.nuance}` : ""}`).join("\n");
+}
+
+async function translateWordWithEnrichment(ctx, { deeplKey, libreBase }) {
+  const [wikiSenses, myMemory] = await Promise.allSettled([
+    fetchWiktionarySenses(ctx),
+    translateWithMyMemory(ctx),
+  ]);
+  const senses = [];
+  if (wikiSenses.status === "fulfilled") senses.push(...wikiSenses.value);
+  if (myMemory.status === "fulfilled") {
+    senses.push(...myMemory.value.matches.map((translation) => ({ translation, nuance: "uso frecuente", source: "mymemory" })));
+    if (myMemory.value.main) senses.unshift({ translation: myMemory.value.main, nuance: "principal", source: "mymemory" });
+  }
+
+  if (!senses.length) {
+    const fallback = deeplKey
+      ? await translateWithDeepL(ctx, deeplKey)
+      : await translateWithLibre(ctx, libreBase);
+    if (!fallback) return "";
+    return fallback;
+  }
+
+  const ranked = dedupeSenseObjects(senses)
+    .map((item) => ({ ...item, contextScore: scoreSenseWithContext(item, ctx.contextText) }))
+    .sort((a, b) => b.contextScore - a.contextScore)
+    .slice(0, 5);
+  return formatWordSenses(ranked);
+}
+
+export async function translateTextWithFallback({ text, sourceLang, targetLang, mode = "phrase", signal, contextText = "" }) {
   const cleanText = safeTrim(text);
   if (!cleanText) return "";
 
   const deeplKey = safeTrim(window.__CHANKI_DEEPL_KEY__ || localStorage.getItem("chanki_deepl_key"));
   const libreBase = safeTrim(window.__CHANKI_LIBRETRANSLATE_URL__ || localStorage.getItem("chanki_libretranslate_url") || "https://libretranslate.de").replace(/\/+$/, "");
+
+  if (mode === "word") {
+    return translateWordWithEnrichment({ text: cleanText, sourceLang, targetLang, mode, signal, contextText }, { deeplKey, libreBase });
+  }
 
   const providers = [];
   if (deeplKey) providers.push({ name: "deepl", run: (ctx) => translateWithDeepL(ctx, deeplKey) });
