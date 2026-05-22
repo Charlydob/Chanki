@@ -573,11 +573,11 @@
           </label>
           <label class="field" id="card-basic-front-field">
             <span id="card-front-label">Frente (Español)</span>
-            <textarea id="card-front" rows="3"></textarea>
+            <textarea id="card-front" class="auto-grow-textarea" rows="3"></textarea>
           </label>
           <label class="field" id="card-basic-back-field">
             <span id="card-back-label">Reverso (Alemán)</span>
-            <textarea id="card-back" rows="3"></textarea>
+            <textarea id="card-back" class="auto-grow-textarea" rows="3"></textarea>
           </label>
           <div class="field">
             <span>Tipo gramatical</span>
@@ -696,6 +696,24 @@
         <label class="field field-inline">
           <span>Repasar por ambos lados</span>
           <input id="folder-both-sides-input" type="checkbox" />
+        </label>
+        <label class="field">
+          <span>Idioma origen</span>
+          <select id="folder-source-lang">
+            <option value="es">Español</option>
+            <option value="de">Alemán</option>
+            <option value="ru">Ruso</option>
+            <option value="en">Inglés</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Idioma objetivo</span>
+          <select id="folder-target-lang">
+            <option value="de">Alemán</option>
+            <option value="es">Español</option>
+            <option value="ru">Ruso</option>
+            <option value="en">Inglés</option>
+          </select>
         </label>
         <div class="row">
           <button id="save-folder" class="button" type="button">Crear</button>

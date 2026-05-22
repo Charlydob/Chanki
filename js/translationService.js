@@ -53,6 +53,22 @@ function dedupeSenseObjects(items = []) {
   return out;
 }
 
+function isInstitutionalNoise(text = "") {
+  const sample = String(text || "").toLowerCase();
+  return /(reglamento|ministerio|art(ículo)?\.?|secci[oó]n|bolet[ií]n|resoluci[oó]n|parlamento|gmbh|inc\.?|ltd\.?|copyright)/i.test(sample);
+}
+
+function isCleanWordSense(text = "", { strictWord = true } = {}) {
+  const clean = safeTrim(text);
+  if (!clean) return false;
+  if (/\b\d{2,}\b/.test(clean)) return false;
+  if (isInstitutionalNoise(clean)) return false;
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (strictWord && words.length > 10) return false;
+  if (strictWord && words.length > 4 && /[.,;:!?]/.test(clean)) return false;
+  return true;
+}
+
 async function fetchWithLogs(endpoint, options, { sourceLang, targetLang, text, mode, signal }) {
   const payload = { sourceLang, targetLang, text, mode, endpoint };
   console.info("[translate:request]", payload);
@@ -157,9 +173,10 @@ async function translateWordWithEnrichment(ctx, { deeplKey, libreBase }) {
   }
 
   const ranked = dedupeSenseObjects(senses)
+    .filter((item) => isCleanWordSense(item.translation, { strictWord: true }))
     .map((item) => ({ ...item, contextScore: scoreSenseWithContext(item, ctx.contextText) }))
     .sort((a, b) => b.contextScore - a.contextScore)
-    .slice(0, 5);
+    .slice(0, 3);
   return formatWordSenses(ranked);
 }
 
