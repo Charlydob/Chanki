@@ -240,11 +240,9 @@ const swipeState = {
   action: null,
 };
 
-let cardAutoTranslateTimer = null;
 let cardBackManuallyEdited = false;
 let cardFrontManuallyEdited = false;
-let cardLastAutoTranslation = "";
-let activeTranslateSide = null;
+let cardLastTranslation = "";
 let cardTranslateAbortController = null;
 const translationCache = new Map();
 
@@ -287,7 +285,23 @@ function postProcessEsToDe(sourceText, translatedText) {
   return out.trim();
 }
 
-async function translateText(text, source, target, signal) {
+function isSingleWord(text = "") {
+  return String(text || "").trim().split(/\s+/).filter(Boolean).length === 1;
+}
+function setTranslateStatus(text = "", level = "info") {
+  if (!elements.cardTranslateStatus) return;
+  elements.cardTranslateStatus.textContent = text;
+  elements.cardTranslateStatus.dataset.level = level;
+}
+function refreshTranslateCta() {
+  if (!elements.cardTranslate) return;
+  const hasAnyTarget = String(elements.cardBack?.value || "").trim() || String(elements.cardFront?.value || "").trim();
+  elements.cardTranslate.textContent = hasAnyTarget ? "Retraducir" : "Traducir";
+}
+function normalizeSenses(text = "") {
+  return String(text || "").replace(/\s+/g, " ").trim().replace(/[.;:]+$/, "");
+}
+async function translateText(text, source, target, signal, { verify = true } = {}) {
   const q = String(text || "").trim();
   if (!q) return "";
   const cacheKey = `${source}:${target}:${q}`;
@@ -309,46 +323,69 @@ async function translateText(text, source, target, signal) {
     translated = String(data?.responseData?.translatedText || "").trim();
   }
 
-  if (!translated || translated.toLowerCase() === q.toLowerCase()) throw new Error("invalid translation");
+  if (!translated || (verify && translated.toLowerCase() === q.toLowerCase())) throw new Error("invalid translation");
   if (source === "es" && target === "de") translated = postProcessEsToDe(q, translated);
   translationCache.set(cacheKey, translated);
   return translated;
+}
+async function translateWordWithSenses(word, source, target, signal) {
+  const clean = String(word || "").trim();
+  const url = `https://api.dictionaryapi.dev/api/v2/entries/${source}/${encodeURIComponent(clean)}`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error("dictionary failed");
+  const data = await res.json();
+  const glosses = [];
+  (Array.isArray(data) ? data : []).forEach((entry) => {
+    (entry.meanings || []).forEach((meaning) => {
+      (meaning.definitions || []).forEach((def) => {
+        const g = normalizeSenses(def.definition);
+        if (g) glosses.push(g);
+      });
+    });
+  });
+  const unique = [...new Set(glosses)].slice(0, 6);
+  const translated = [];
+  for (const sense of unique) {
+    try {
+      const t = await translateText(sense, "en", target, signal, { verify: false });
+      if (t) translated.push(normalizeSenses(t));
+    } catch (_) { /* ignore single sense */ }
+  }
+  const deduped = [...new Set(translated.filter(Boolean))].slice(0, 4);
+  if (!deduped.length) throw new Error("unverified");
+  return deduped.map((item, idx) => `${idx + 1}. ${item}`).join("\n");
 }
 function updateCardLanguageLabels() {
   if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS.es})`;
   if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${LANGUAGE_LABELS.de})`;
 }
-function queueAutoTranslate(sourceField = "front") {
+async function runCardTranslation(direction, { force = false } = {}) {
   if (elements.cardType?.value !== "basic") return;
-  clearTimeout(cardAutoTranslateTimer);
   if (cardTranslateAbortController) cardTranslateAbortController.abort();
-  cardAutoTranslateTimer = setTimeout(async () => {
-    const source = sourceField === "back" ? "de" : "es";
+  cardTranslateAbortController = new AbortController();
+  const sourceText = direction === "es-de" ? elements.cardFront.value : elements.cardBack.value;
+  const hasTarget = direction === "es-de" ? String(elements.cardBack.value || "").trim() : String(elements.cardFront.value || "").trim();
+  if (hasTarget && !force) {
+    const ok = window.confirm("El campo destino tiene texto. ¿Sobrescribir?");
+    if (!ok) return;
+  }
+  setTranslateStatus("Traduciendo…");
+  try {
+    const source = direction === "es-de" ? "es" : "de";
     const target = oppositeLanguage(source);
-    const sourceText = sourceField === "back" ? elements.cardBack.value : elements.cardFront.value;
-    if (sourceField === "front" && cardBackManuallyEdited) return;
-    if (sourceField === "back" && cardFrontManuallyEdited) return;
-    cardTranslateAbortController = new AbortController();
-    try {
-      const translated = await translateText(sourceText, source, target, cardTranslateAbortController.signal);
-      if (!translated) return;
-      if (sourceField === "front") {
-        if (cardBackManuallyEdited) return;
-        activeTranslateSide = "front";
-        elements.cardBack.value = translated;
-      } else {
-        if (cardFrontManuallyEdited) return;
-        activeTranslateSide = "back";
-        elements.cardFront.value = translated;
-      }
-      activeTranslateSide = null;
-      cardLastAutoTranslation = translated;
-    } catch (err) {
-      activeTranslateSide = null;
-      if (err?.name === "AbortError") return;
-      showToast("No se pudo traducir", "info");
-    }
-  }, 700);
+    const translated = isSingleWord(sourceText)
+      ? await translateWordWithSenses(sourceText, source, target, cardTranslateAbortController.signal)
+      : await translateText(sourceText, source, target, cardTranslateAbortController.signal);
+    if (direction === "es-de") elements.cardBack.value = translated;
+    else elements.cardFront.value = translated;
+    refreshTranslateCta();
+    cardLastTranslation = translated;
+    setTranslateStatus("Listo");
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    setTranslateStatus("Traducción no verificada", "warn");
+    showToast("No se pudo traducir", "info");
+  }
 }
 function speakText(text, lang) {
   if (!('speechSynthesis' in window) || !text) return;
@@ -1662,8 +1699,7 @@ function openCardModal(card = null) {
   }
   cardFrontManuallyEdited = false;
   cardBackManuallyEdited = false;
-  activeTranslateSide = null;
-  cardLastAutoTranslation = "";
+  cardLastTranslation = "";
   hydrateOrderEditorState(resolvedCard);
   renderOrderEditor();
   elements.cardTags.value = "";
@@ -1672,6 +1708,10 @@ function openCardModal(card = null) {
   updateTagSuggestions("card", "");
   updateCardTypeFields(type);
   updateCardLanguageLabels();
+  setTranslateStatus("");
+  elements.cardTranslateEsDe?.classList.add("hidden");
+  elements.cardTranslateDeEs?.classList.add("hidden");
+  refreshTranslateCta();
   showOverlay(elements.cardModal, true);
 }
 
@@ -5150,15 +5190,28 @@ if (cardOrderAddLabelButton) {
 
 
 if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
-  if (activeTranslateSide === "back") return;
   cardFrontManuallyEdited = true;
-  queueAutoTranslate("front");
+  refreshTranslateCta();
 });
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
-  if (activeTranslateSide === "front") return;
   cardBackManuallyEdited = true;
-  queueAutoTranslate("back");
+  refreshTranslateCta();
 });
+if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", async () => {
+  const front = String(elements.cardFront?.value || "").trim();
+  const back = String(elements.cardBack?.value || "").trim();
+  if (front && !back) return runCardTranslation("es-de");
+  if (back && !front) return runCardTranslation("de-es");
+  if (front && back) {
+    elements.cardTranslateEsDe?.classList.remove("hidden");
+    elements.cardTranslateDeEs?.classList.remove("hidden");
+    setTranslateStatus("Elige dirección");
+    return;
+  }
+  showToast("Escribe texto para traducir.", "info");
+});
+if (elements.cardTranslateEsDe) elements.cardTranslateEsDe.addEventListener("click", () => runCardTranslation("es-de", { force: true }));
+if (elements.cardTranslateDeEs) elements.cardTranslateDeEs.addEventListener("click", () => runCardTranslation("de-es", { force: true }));
 elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);
