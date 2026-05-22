@@ -41,6 +41,7 @@ import {
   updateFolder,
 } from "../lib/data-layer.js";
 import { parseChankiImport } from "../lib/parser.js";
+import { parseGermanConjugationPaste } from "../lib/verb-conjugation-parser.js";
 import { computeNextSrs } from "../lib/srs.js";
 import { recordReviewStats } from "../lib/stats.js";
 import {
@@ -2081,28 +2082,8 @@ function updateVerbReversoLink() {
 }
 
 function applyReversoConjugationPaste(raw = "") {
-  const compact = String(raw || "").replace(/\s+/g, " ").trim();
-  if (!compact) return;
-  const forms = ["ich", "du", "er\/sie\/es", "wir", "ihr", "Sie"];
-  const pattern = new RegExp("\\bich\\s+(.+?)\\s+du\\s+(.+?)\\s+er\\/sie\\/es\\s+(.+?)\\s+wir\\s+(.+?)\\s+ihr\\s+(.+?)\\s+Sie\\s+(.+)$", "i");
-  const m = compact.match(pattern);
-  let values = [];
-  if (m) values = m.slice(1).map((v) => v.trim());
-  if (!values.length) {
-    const lines = String(raw || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
-    for (const key of forms) {
-      const line = lines.find((l) => new RegExp(`^${key}\\s+`, "i").test(l));
-      values.push(line ? line.replace(new RegExp(`^${key}\\s+`, "i"), "").trim() : "-");
-    }
-  }
-  const lemma = (values[0] || "").trim() || "verbo";
-  const normalized = `[${lemma}]
-ich - ${values[0] || "-"}
-du - ${values[1] || "-"}
-er / sie / es - ${values[2] || "-"}
-wir - ${values[3] || "-"}
-ihr - ${values[4] || "-"}
-sie / Sie - ${values[5] || "-"}`;
+  const normalized = parseGermanConjugationPaste(raw);
+  if (!normalized) return;
   elements.cardBack.value = normalized;
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
