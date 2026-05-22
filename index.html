@@ -579,6 +579,22 @@
             <span id="card-back-label">Reverso (Alemán)</span>
             <textarea id="card-back" rows="3"></textarea>
           </label>
+          <div class="field">
+            <span>Tipo gramatical</span>
+            <div id="card-grammar-type" class="chip-toggle-group">
+              <button type="button" class="chip-toggle active" data-grammar-type="normal">Normal</button>
+              <button type="button" class="chip-toggle" data-grammar-type="verb">Verbo</button>
+              <button type="button" class="chip-toggle" data-grammar-type="noun">Sustantivo</button>
+            </div>
+          </div>
+          <div class="field hidden" id="card-noun-gender-field">
+            <span>Género</span>
+            <div id="card-noun-gender" class="chip-toggle-group">
+              <button type="button" class="chip-toggle chip-toggle--der" data-noun-gender="der">der</button>
+              <button type="button" class="chip-toggle chip-toggle--die" data-noun-gender="die">die</button>
+              <button type="button" class="chip-toggle chip-toggle--das" data-noun-gender="das">das</button>
+            </div>
+          </div>
           <div class="row" id="card-translate-controls">
             <button id="card-translate" class="button ghost small" type="button">Traducir</button>
             <button id="card-translate-es-de" class="button ghost small hidden" type="button">Traducir Español → Alemán</button>

@@ -244,6 +244,8 @@ const swipeState = {
 
 let cardBackManuallyEdited = false;
 let cardFrontManuallyEdited = false;
+let cardGrammarType = "normal";
+let cardNounGender = null;
 let cardLastTranslation = "";
 let cardTranslateAbortController = null;
 const translationCache = new Map();
@@ -315,7 +317,7 @@ async function translatePhrase(text, source, target, signal, { verify = true } =
     targetLang: target,
     mode: "phrase",
     signal,
-    contextText,
+    contextText: "",
   });
 
   if (!translated || (verify && translated.toLowerCase() === q.toLowerCase())) throw new Error("invalid translation");
@@ -324,6 +326,49 @@ async function translatePhrase(text, source, target, signal, { verify = true } =
   translationCache.set(cacheKey, translated);
   console.info("[translate:success]", { mode: "phrase", source, target, text: q, translated });
   return translated;
+}
+function detectNumberedLinePrefix(line) {
+  const match = String(line || "").match(/^(\s*)(\d+)\.\s/);
+  if (!match) return null;
+  return { indent: match[1] || "", number: Number(match[2] || 0) };
+}
+function maybeSeedNumberedTextarea(event) {
+  const textarea = event?.target;
+  if (!textarea || textarea.value !== "") return;
+  textarea.value = "1. ";
+  textarea.setSelectionRange(3, 3);
+}
+function maybeHandleNumberedEnter(event) {
+  const textarea = event?.target;
+  if (!textarea || event.key !== "Enter") return;
+  const value = textarea.value || "";
+  const before = value.slice(0, textarea.selectionStart);
+  const after = value.slice(textarea.selectionEnd);
+  const line = before.split("\n").pop() || "";
+  const marker = detectNumberedLinePrefix(line);
+  if (!marker) return;
+  event.preventDefault();
+  const nextMarker = `\n${marker.indent}${marker.number + 1}. `;
+  const nextValue = `${before}${nextMarker}${after}`;
+  const pos = before.length + nextMarker.length;
+  textarea.value = nextValue;
+  textarea.setSelectionRange(pos, pos);
+}
+async function translateStructuredText(text, source, target, signal, contextText = "") {
+  const clean = String(text || "").trim();
+  if (!clean) return "";
+  const lines = clean.split(/\r?\n/);
+  const out = [];
+  for (const line of lines) {
+    const marker = detectNumberedLinePrefix(line);
+    const body = marker ? line.replace(/^(\s*)\d+\.\s/, "").trim() : line.trim();
+    if (!body) { out.push(line); continue; }
+    const translated = isSingleWord(body)
+      ? await lookupWord(body, source, target, signal, contextText)
+      : await translatePhrase(body, source, target, signal, { verify: true });
+    out.push(marker ? `${marker.indent}${marker.number}. ${translated}` : translated);
+  }
+  return out.join("\n");
 }
 async function lookupWord(word, source, target, signal, contextText = "") {
   const clean = String(word || "").trim();
@@ -363,9 +408,7 @@ async function runCardTranslation(direction, { force = false } = {}) {
     const source = direction === "es-de" ? "es" : "de";
     const target = oppositeLanguage(source);
     console.info("[translate:phrase]", { direction, source, target });
-    const translated = isSingleWord(sourceText)
-      ? await lookupWord(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "")
-      : await translatePhrase(sourceText, source, target, cardTranslateAbortController.signal);
+    const translated = await translateStructuredText(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "");
     if (!isSingleWord(sourceText)) elements.cardTranslateContextField?.classList.add("hidden");
     if (direction === "es-de") elements.cardBack.value = translated;
     else elements.cardFront.value = translated;
@@ -1412,7 +1455,8 @@ function getCardDedupeValues(card) {
 function buildCardListItem(card, isDuplicate, readOnly) {
   const item = document.createElement("div");
   const isSelected = state.selectedCardIds.has(card.id);
-  item.className = `list-item${isDuplicate ? " is-dup" : ""}${isSelected ? " is-selected" : ""}`;
+  const nounAccent = card?.cardGrammarType === "noun" && card?.nounGender ? ` list-item--${card.nounGender}` : "";
+  item.className = `list-item${isDuplicate ? " is-dup" : ""}${isSelected ? " is-selected" : ""}${nounAccent}`;
   const resolvedCard = resolveLegacyOrderCard(card);
   const summary = resolvedCard.type === "cloze"
     ? `${resolvedCard.clozeText || "(cloze sin texto)"}`
@@ -1678,6 +1722,8 @@ function openCardModal(card = null) {
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
+  cardGrammarType = resolvedCard?.cardGrammarType || "normal";
+  cardNounGender = resolvedCard?.nounGender || null;
   elements.cardClozeText.value = resolvedCard ? resolvedCard.clozeText || "" : "";
   elements.cardClozeAnswers.value = resolvedCard ? (resolvedCard.clozeAnswers || []).join(" | ") : "";
   if (elements.cardOrderTokens) {
@@ -1699,6 +1745,7 @@ function openCardModal(card = null) {
   renderTagPanels();
   updateTagSuggestions("card", "");
   updateCardTypeFields(type);
+  syncGrammarControls();
   updateCardLanguageLabels();
   setTranslateStatus("");
   elements.cardTranslateEsDe?.classList.add("hidden");
@@ -1983,6 +2030,15 @@ async function handleReviewEditSave() {
 function closeCardModal() {
   showOverlay(elements.cardModal, false);
   editingCardId = null;
+}
+function syncGrammarControls() {
+  elements.cardGrammarType?.querySelectorAll("[data-grammar-type]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.grammarType === cardGrammarType);
+  });
+  elements.cardNounGenderField?.classList.toggle("hidden", cardGrammarType !== "noun");
+  elements.cardNounGender?.querySelectorAll("[data-noun-gender]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.nounGender === cardNounGender);
+  });
 }
 
 function updateCardTypeFields(type) {
@@ -3014,6 +3070,9 @@ function renderAllCardsView() {
       const resolved = resolveLegacyOrderCard(card);
       const row = document.createElement("div");
       row.className = "all-cards-row";
+      if (resolved?.cardGrammarType === "noun" && resolved?.nounGender) {
+        row.classList.add(`all-cards-row--${resolved.nounGender}`);
+      }
       row.dataset.cardId = card.id;
       row.innerHTML = `
         <input type="checkbox" data-action="toggle-card" data-id="${card.id}" ${state.allCardsSelectedIds.has(card.id) ? "checked" : ""} />
@@ -3211,6 +3270,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
+        cardGrammarType,
+        nounGender: cardGrammarType === "noun" ? (cardNounGender || null) : null,
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3238,6 +3299,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
+        cardGrammarType,
+        nounGender: cardGrammarType === "noun" ? (cardNounGender || null) : null,
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3355,6 +3418,10 @@ function ensureOrderState(card) {
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const resolvedCard = resolveLegacyOrderCard(card);
+  elements.reviewCard.classList.remove("review-card--der", "review-card--die", "review-card--das");
+  if (resolvedCard?.cardGrammarType === "noun" && resolvedCard?.nounGender) {
+    elements.reviewCard.classList.add(`review-card--${resolvedCard.nounGender}`);
+  }
   const wrapper = document.createElement("div");
   wrapper.className = showBack ? "review-text review-text--reveal" : "review-text";
   const glossaryMap = buildGlossaryMap(resolvedCard);
@@ -5218,6 +5285,32 @@ if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
   console.info("[translate:auto-disabled]", { field: "front" });
   refreshTranslateCta();
 });
+if (elements.cardFront) elements.cardFront.addEventListener("focus", maybeSeedNumberedTextarea);
+if (elements.cardBack) elements.cardBack.addEventListener("focus", maybeSeedNumberedTextarea);
+if (elements.cardFront) elements.cardFront.addEventListener("keydown", maybeHandleNumberedEnter);
+if (elements.cardBack) elements.cardBack.addEventListener("keydown", maybeHandleNumberedEnter);
+if (elements.cardGrammarType) {
+  elements.cardGrammarType.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-grammar-type]");
+    if (!button) return;
+    const next = button.dataset.grammarType || "normal";
+    if (next === cardGrammarType) return;
+    cardGrammarType = next;
+    if (cardGrammarType !== "noun") cardNounGender = null;
+    if (cardGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
+      elements.cardBack.value = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie / Sie -";
+    }
+    syncGrammarControls();
+  });
+}
+if (elements.cardNounGender) {
+  elements.cardNounGender.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-noun-gender]");
+    if (!button) return;
+    cardNounGender = button.dataset.nounGender || null;
+    syncGrammarControls();
+  });
+}
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
   cardBackManuallyEdited = true;
   console.info("[translate:auto-disabled]", { field: "back" });
