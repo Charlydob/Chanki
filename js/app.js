@@ -315,6 +315,7 @@ async function translatePhrase(text, source, target, signal, { verify = true } =
     targetLang: target,
     mode: "phrase",
     signal,
+    contextText,
   });
 
   if (!translated || (verify && translated.toLowerCase() === q.toLowerCase())) throw new Error("invalid translation");
@@ -324,10 +325,11 @@ async function translatePhrase(text, source, target, signal, { verify = true } =
   console.info("[translate:success]", { mode: "phrase", source, target, text: q, translated });
   return translated;
 }
-async function lookupWord(word, source, target, signal) {
+async function lookupWord(word, source, target, signal, contextText = "") {
   const clean = String(word || "").trim();
   if (!clean) return "";
-  const cacheKey = `${source}:${target}:word:${clean}`;
+  const contextKey = String(contextText || "").trim();
+  const cacheKey = `${source}:${target}:word:${clean}:${contextKey}`;
   if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
   const translated = await translateTextWithFallback({
     text: clean,
@@ -335,6 +337,7 @@ async function lookupWord(word, source, target, signal) {
     targetLang: target,
     mode: "word",
     signal,
+    contextText,
   });
   if (!translated) throw new Error("invalid translation");
   translationCache.set(cacheKey, translated);
@@ -361,8 +364,9 @@ async function runCardTranslation(direction, { force = false } = {}) {
     const target = oppositeLanguage(source);
     console.info("[translate:phrase]", { direction, source, target });
     const translated = isSingleWord(sourceText)
-      ? await lookupWord(sourceText, source, target, cardTranslateAbortController.signal)
+      ? await lookupWord(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "")
       : await translatePhrase(sourceText, source, target, cardTranslateAbortController.signal);
+    if (!isSingleWord(sourceText)) elements.cardTranslateContextField?.classList.add("hidden");
     if (direction === "es-de") elements.cardBack.value = translated;
     else elements.cardFront.value = translated;
     refreshTranslateCta();
@@ -5191,8 +5195,14 @@ if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", asy
   console.info("[translate:manual-click]");
   const front = String(elements.cardFront?.value || "").trim();
   const back = String(elements.cardBack?.value || "").trim();
-  if (front && !back) return runCardTranslation("es-de");
-  if (back && !front) return runCardTranslation("de-es");
+  if (front && !back) {
+    if (isSingleWord(front)) elements.cardTranslateContextField?.classList.remove("hidden");
+    return runCardTranslation("es-de");
+  }
+  if (back && !front) {
+    if (isSingleWord(back)) elements.cardTranslateContextField?.classList.remove("hidden");
+    return runCardTranslation("de-es");
+  }
   if (front && back) {
     elements.cardTranslateEsDe?.classList.remove("hidden");
     elements.cardTranslateDeEs?.classList.remove("hidden");

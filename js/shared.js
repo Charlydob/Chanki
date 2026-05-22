@@ -139,6 +139,8 @@ export const elements = {
   cardTranslateEsDe: document.getElementById("card-translate-es-de"),
   cardTranslateDeEs: document.getElementById("card-translate-de-es"),
   cardTranslateStatus: document.getElementById("card-translate-status"),
+  cardTranslateContextField: document.getElementById("card-translate-context-field"),
+  cardTranslateContext: document.getElementById("card-translate-context"),
   cardClozeText: document.getElementById("card-cloze-text"),
   cardClozeAnswers: document.getElementById("card-cloze-answers"),
   cardOrderTokens: document.getElementById("card-order-tokens"),
