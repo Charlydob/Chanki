@@ -242,7 +242,9 @@ const swipeState = {
 
 let cardAutoTranslateTimer = null;
 let cardBackManuallyEdited = false;
+let cardFrontManuallyEdited = false;
 let cardLastAutoTranslation = "";
+let activeTranslateSide = null;
 
 const LANGUAGE_LABELS = { es: "Español", de: "Alemán", en: "Inglés" };
 
@@ -264,27 +266,38 @@ async function translateText(text, source, target) {
   return String(data?.responseData?.translatedText || "").trim();
 }
 function updateCardLanguageLabels() {
-  const source = elements.cardSourceLanguage?.value || "es";
-  const target = oppositeLanguage(source);
-  if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS[source] || source})`;
-  if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${LANGUAGE_LABELS[target] || target})`;
+  if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS.es})`;
+  if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${LANGUAGE_LABELS.de})`;
 }
-function queueAutoTranslate() {
+function queueAutoTranslate(sourceField = "front") {
   if (elements.cardType?.value !== "basic") return;
   clearTimeout(cardAutoTranslateTimer);
   cardAutoTranslateTimer = setTimeout(async () => {
-    if (cardBackManuallyEdited) return;
-    const source = elements.cardSourceLanguage?.value || "es";
+    const source = sourceField === "back" ? "de" : "es";
     const target = oppositeLanguage(source);
+    const sourceText = sourceField === "back" ? elements.cardBack.value : elements.cardFront.value;
+    if (sourceField === "front" && cardBackManuallyEdited) return;
+    if (sourceField === "back" && cardFrontManuallyEdited) return;
     try {
-      const translated = await translateText(elements.cardFront.value, source, target);
-      if (!translated || cardBackManuallyEdited) return;
-      elements.cardBack.value = translated;
+      const translated = await translateText(sourceText, source, target);
+      if (!translated) return;
+      if (sourceField === "front") {
+        if (cardBackManuallyEdited) return;
+        activeTranslateSide = "front";
+        elements.cardBack.value = translated;
+        activeTranslateSide = null;
+      } else {
+        if (cardFrontManuallyEdited) return;
+        activeTranslateSide = "back";
+        elements.cardFront.value = translated;
+        activeTranslateSide = null;
+      }
       cardLastAutoTranslation = translated;
     } catch (_) {
-      showToast("No se pudo traducir automáticamente. Puedes escribir el reverso.", "info");
+      activeTranslateSide = null;
+      showToast("No se pudo traducir automáticamente. Puedes completar ambos campos manualmente.", "info");
     }
-  }, 450);
+  }, 650);
 }
 function speakText(text, lang) {
   if (!('speechSynthesis' in window) || !text) return;
@@ -844,6 +857,9 @@ function setActiveScreen(name, { skipRouteSync = false } = {}) {
   });
   elements.tabs.forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.screen === tabName);
+    if (tab.dataset.screen === tabName) {
+      tab.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
   });
   if (name !== "review") {
     setReviewMode(false);
@@ -1593,8 +1609,9 @@ function openCardModal(card = null) {
   if (elements.cardOrderAnswer) {
     elements.cardOrderAnswer.value = resolvedCard ? buildOrderAnswerInput(resolvedCard) : "";
   }
-  if (elements.cardSourceLanguage) elements.cardSourceLanguage.value = "es";
+  cardFrontManuallyEdited = false;
   cardBackManuallyEdited = false;
+  activeTranslateSide = null;
   cardLastAutoTranslation = "";
   hydrateOrderEditorState(resolvedCard);
   renderOrderEditor();
@@ -4140,6 +4157,14 @@ function handleResetLocal() {
   }
 }
 
+function applyTheme(theme = "dark") {
+  const isDark = theme !== "light";
+  document.documentElement.classList.toggle("theme-dark", isDark);
+  document.documentElement.classList.toggle("theme-light", !isDark);
+  document.body.classList.toggle("theme-dark", isDark);
+  document.body.classList.toggle("theme-light", !isDark);
+}
+
 function handleSaveSettings() {
   const newUsername = elements.settingsUsername.value.trim();
   if (!newUsername) {
@@ -4165,8 +4190,7 @@ function handleSaveSettings() {
   }
   const clozeCase = elements.settingsClozeCase.checked;
   const themeDark = Boolean(elements.settingsThemeDark?.checked);
-  document.body.classList.toggle("theme-dark", themeDark);
-  document.body.classList.toggle("theme-light", !themeDark);
+  applyTheme(themeDark ? "dark" : "light");
   localStorage.setItem("chanki_theme", themeDark ? "dark" : "light");
   localStorage.setItem("chanki_cloze_case", clozeCase ? "true" : "false");
   state.prefs.clozeCaseInsensitive = clozeCase;
@@ -4558,8 +4582,7 @@ async function initFirebaseUi() {
   elements.settingsMax.value = state.prefs.maxReviews;
   elements.settingsClozeCase.checked = state.prefs.clozeCaseInsensitive;
   const savedTheme = localStorage.getItem("chanki_theme") || "dark";
-  document.body.classList.toggle("theme-dark", savedTheme !== "light");
-  document.body.classList.toggle("theme-light", savedTheme === "light");
+  applyTheme(savedTheme);
   if (elements.settingsThemeDark) elements.settingsThemeDark.checked = savedTheme !== "light";
   renderBucketFilter();
   refreshReviewBucketCounts();
@@ -5073,16 +5096,15 @@ if (cardOrderAddLabelButton) {
 }
 
 
-if (elements.cardSourceLanguage) {
-  elements.cardSourceLanguage.addEventListener("change", () => {
-    updateCardLanguageLabels();
-    cardBackManuallyEdited = false;
-    queueAutoTranslate();
-  });
-}
-if (elements.cardFront) elements.cardFront.addEventListener("input", queueAutoTranslate);
+if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
+  if (activeTranslateSide === "back") return;
+  cardFrontManuallyEdited = true;
+  queueAutoTranslate("front");
+});
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
-  if (elements.cardBack.value !== cardLastAutoTranslation) cardBackManuallyEdited = true;
+  if (activeTranslateSide === "front") return;
+  cardBackManuallyEdited = true;
+  queueAutoTranslate("back");
 });
 elements.saveCard.addEventListener("click", handleSaveCard);
 
