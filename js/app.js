@@ -2061,12 +2061,61 @@ function closeCardModal() {
   showOverlay(elements.cardModal, false);
   editingCardId = null;
 }
+function detectGermanVerbForReverso(text = "") {
+  const lines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const bracket = lines[0]?.match(/^\[([^\]]+)\]$/);
+  if (bracket?.[1]) return bracket[1].trim().toLowerCase();
+  for (const line of lines) {
+    const match = line.match(/^(?:ich|du|er\/?sie\/?es|er\s*\/\s*sie\s*\/\s*es|wir|ihr|sie|Sie)\s+([a-zäöüß]+)\b/i);
+    if (match?.[1] && /(en|n)$/i.test(match[1])) return match[1].toLowerCase();
+  }
+  return null;
+}
+
+function updateVerbReversoLink() {
+  const verb = detectGermanVerbForReverso(elements.cardBack?.value || "");
+  const href = verb
+    ? `https://conjugador.reverso.net/conjugacion-aleman-verbo-${encodeURIComponent(verb)}.html`
+    : "https://conjugador.reverso.net/conjugacion-aleman.html";
+  if (elements.cardVerbReversoLink) elements.cardVerbReversoLink.href = href;
+}
+
+function applyReversoConjugationPaste(raw = "") {
+  const compact = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!compact) return;
+  const forms = ["ich", "du", "er\/sie\/es", "wir", "ihr", "Sie"];
+  const pattern = new RegExp("\\bich\\s+(.+?)\\s+du\\s+(.+?)\\s+er\\/sie\\/es\\s+(.+?)\\s+wir\\s+(.+?)\\s+ihr\\s+(.+?)\\s+Sie\\s+(.+)$", "i");
+  const m = compact.match(pattern);
+  let values = [];
+  if (m) values = m.slice(1).map((v) => v.trim());
+  if (!values.length) {
+    const lines = String(raw || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    for (const key of forms) {
+      const line = lines.find((l) => new RegExp(`^${key}\\s+`, "i").test(l));
+      values.push(line ? line.replace(new RegExp(`^${key}\\s+`, "i"), "").trim() : "-");
+    }
+  }
+  const lemma = (values[0] || "").trim() || "verbo";
+  const normalized = `[${lemma}]
+ich - ${values[0] || "-"}
+du - ${values[1] || "-"}
+er / sie / es - ${values[2] || "-"}
+wir - ${values[3] || "-"}
+ihr - ${values[4] || "-"}
+sie / Sie - ${values[5] || "-"}`;
+  elements.cardBack.value = normalized;
+  autoResizeTextarea(elements.cardBack);
+  updateVerbReversoLink();
+}
+
 function syncGrammarControls() {
   elements.cardGrammarType?.querySelectorAll("[data-grammar-type]").forEach((btn) => {
     const isActive = btn.dataset.grammarType === currentGrammarType;
     btn.classList.toggle("active", isActive);
     btn.classList.toggle("is-active", isActive);
   });
+  elements.cardVerbToolsField?.classList.toggle("hidden", currentGrammarType !== "verb");
+  elements.cardNounToolsField?.classList.toggle("hidden", currentGrammarType !== "noun");
   elements.cardNounGenderField?.classList.toggle("hidden", currentGrammarType !== "noun");
   elements.cardNounGender?.querySelectorAll("[data-noun-gender]").forEach((btn) => {
     const isActive = btn.dataset.nounGender === cardNounGender;
@@ -2090,6 +2139,7 @@ function setGrammarType(nextGrammarType = "normal") {
   }
   console.info("[grammar:set]", { previous, next: currentGrammarType });
   syncGrammarControls();
+  updateVerbReversoLink();
 }
 
 function updateCardTypeFields(type) {
@@ -5506,6 +5556,14 @@ if (elements.cardNounGender) {
     syncGrammarControls();
   });
 }
+if (elements.cardVerbPaste) {
+  elements.cardVerbPaste.addEventListener("paste", (event) => {
+    const pasted = event.clipboardData?.getData("text") || "";
+    if (!pasted.trim()) return;
+    event.preventDefault();
+    applyReversoConjugationPaste(pasted);
+  });
+}
 if (elements.cardFront) elements.cardFront.addEventListener("paste", () => setTimeout(() => autoResizeTextarea(elements.cardFront), 0));
 if (elements.cardBack) elements.cardBack.addEventListener("paste", () => setTimeout(() => autoResizeTextarea(elements.cardBack), 0));
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
@@ -5513,6 +5571,7 @@ if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
   autoResizeTextarea(elements.cardBack);
   console.info("[translate:auto-disabled]", { field: "back" });
   refreshTranslateCta();
+  updateVerbReversoLink();
 });
 if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", async () => {
   console.info("[translate:manual-click]");
