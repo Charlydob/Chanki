@@ -10,6 +10,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="CHANKI" />
     <meta name="app-base" content="./" />
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("chanki_theme") || "dark";
+        const isDark = savedTheme !== "light";
+        const root = document.documentElement;
+        root.classList.toggle("theme-dark", isDark);
+        root.classList.toggle("theme-light", !isDark);
+        document.body?.classList.toggle("theme-dark", isDark);
+        document.body?.classList.toggle("theme-light", !isDark);
+      })();
+    </script>
     <title>CHANKI</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./css/chanki-touch-icon.svg" />
@@ -568,13 +579,6 @@
           <label class="field" id="card-basic-back-field">
             <span id="card-back-label">Reverso (Alemán)</span>
             <textarea id="card-back" rows="3"></textarea>
-          </label>
-          <label class="field">
-            <span>Idioma fuente</span>
-            <select id="card-source-language">
-              <option value="es">Español</option>
-              <option value="de">Alemán</option>
-            </select>
           </label>
           <label class="field hidden" id="card-cloze-text-field">
             <span>TARGET_DE con huecos (usa ____ para el hueco)</span>

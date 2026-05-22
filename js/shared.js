@@ -133,7 +133,6 @@ export const elements = {
   cardType: document.getElementById("card-type"),
   cardFront: document.getElementById("card-front"),
   cardBack: document.getElementById("card-back"),
-  cardSourceLanguage: document.getElementById("card-source-language"),
   cardFrontLabel: document.getElementById("card-front-label"),
   cardBackLabel: document.getElementById("card-back-label"),
   cardClozeText: document.getElementById("card-cloze-text"),
