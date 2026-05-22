@@ -85,25 +85,26 @@ let reviewFolderSearchDebounce = null;
 
 function buildAppPath(path = "") {
   const safePath = String(path).replace(/^\/+/, "");
-  return new URL(safePath, `${window.location.origin}${APP_BASE}`).pathname;
+  return `/${safePath}`;
 }
 
 function getRouteWithinApp() {
-  const path = window.location.pathname || "/";
-  if (path === APP_BASE || path === APP_BASE.slice(0, -1)) return "/";
-  if (!path.startsWith(APP_BASE)) return "/";
-  const relative = path.slice(APP_BASE.length);
-  return relative ? `/${relative}` : "/";
+  const hash = String(window.location.hash || "").replace(/^#/, "");
+  if (!hash) return "/";
+  const clean = hash.startsWith("/") ? hash : `/${hash}`;
+  const [pathOnly] = clean.split("?");
+  return pathOnly || "/";
 }
 
 function updateBrowserRoute(path, mode = "push") {
   const nextPath = buildAppPath(path);
-  if (`${window.location.pathname}${window.location.search}` === nextPath) return;
+  const currentHashPath = String(window.location.hash || "").replace(/^#/, "") || "/";
+  if (currentHashPath === nextPath) return;
   if (mode === "replace") {
-    window.history.replaceState({}, "", nextPath);
+    window.history.replaceState({}, "", `#${nextPath}`);
     return;
   }
-  window.history.pushState({}, "", nextPath);
+  window.history.pushState({}, "", `#${nextPath}`);
 }
 
 function updateStandaloneHint() {
@@ -301,7 +302,7 @@ function refreshTranslateCta() {
 function normalizeSenses(text = "") {
   return String(text || "").replace(/\s+/g, " ").trim().replace(/[.;:]+$/, "");
 }
-async function translateText(text, source, target, signal, { verify = true } = {}) {
+async function translatePhrase(text, source, target, signal, { verify = true } = {}) {
   const q = String(text || "").trim();
   if (!q) return "";
   const cacheKey = `${source}:${target}:${q}`;
@@ -338,7 +339,7 @@ async function translateText(text, source, target, signal, { verify = true } = {
   console.info("[translate:success]", { mode: "phrase", source, target, text: q, translated });
   return translated;
 }
-async function translateWordWithSenses(word, source, target, signal) {
+async function lookupWord(word, source, target, signal) {
   const clean = String(word || "").trim();
   console.info("[translate:request]", { mode: "dictionary", source, target, word: clean });
   const url = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(clean)}`;
@@ -361,7 +362,7 @@ async function translateWordWithSenses(word, source, target, signal) {
   const translated = [];
   for (const sense of unique) {
     try {
-      const t = await translateText(sense, "en", target, signal, { verify: false });
+      const t = await translatePhrase(sense, "en", target, signal, { verify: false });
       if (t) translated.push(normalizeSenses(t));
     } catch (_) { /* ignore single sense */ }
   }
@@ -392,8 +393,8 @@ async function runCardTranslation(direction, { force = false } = {}) {
     const target = oppositeLanguage(source);
     console.info("[translate:phrase]", { direction, source, target });
     const translated = isSingleWord(sourceText)
-      ? await translateWordWithSenses(sourceText, source, target, cardTranslateAbortController.signal)
-      : await translateText(sourceText, source, target, cardTranslateAbortController.signal);
+      ? await lookupWord(sourceText, source, target, cardTranslateAbortController.signal)
+      : await translatePhrase(sourceText, source, target, cardTranslateAbortController.signal);
     if (direction === "es-de") elements.cardBack.value = translated;
     else elements.cardFront.value = translated;
     refreshTranslateCta();
@@ -5210,13 +5211,16 @@ if (cardOrderAddLabelButton) {
 
 if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
   cardFrontManuallyEdited = true;
+  console.info("[translate:auto-disabled]", { field: "front" });
   refreshTranslateCta();
 });
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
   cardBackManuallyEdited = true;
+  console.info("[translate:auto-disabled]", { field: "back" });
   refreshTranslateCta();
 });
 if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", async () => {
+  console.info("[translate:manual-click]");
   const front = String(elements.cardFront?.value || "").trim();
   const back = String(elements.cardBack?.value || "").trim();
   if (front && !back) return runCardTranslation("es-de");
@@ -5621,6 +5625,10 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("popstate", () => {
+  applyRoute();
+});
+
+window.addEventListener("hashchange", () => {
   applyRoute();
 });
 
