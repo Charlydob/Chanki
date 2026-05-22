@@ -2919,7 +2919,7 @@ async function handleFolderAction(event) {
   if (!actionEl) return;
   const action = actionEl.dataset.action;
   const folderId = actionEl.dataset.id;
-  if (!action || !folderId) return;
+  if (!action) return;
   closeAllMenus();
   if (action === "browse-root") { state.folderBrowseId = null; renderFolders(); return; }
   if (action === "browse-up") {
@@ -2928,6 +2928,7 @@ async function handleFolderAction(event) {
     renderFolders();
     return;
   }
+  if (!folderId) return;
   if (action === "browse") { state.folderBrowseId = folderId; renderFolders(); return; }
   if (action === "toggle-folder-select") {
     if (state.selectedFolderIds.has(folderId)) state.selectedFolderIds.delete(folderId);
@@ -2937,6 +2938,10 @@ async function handleFolderAction(event) {
     return;
   }
   if (action === "select") {
+    if (suppressNextFolderSelect) {
+      suppressNextFolderSelect = false;
+      return;
+    }
     if (state.folderSelectionMode) {
       if (state.selectedFolderIds.has(folderId)) state.selectedFolderIds.delete(folderId);
       else state.selectedFolderIds.add(folderId);
@@ -2953,6 +2958,27 @@ async function handleFolderAction(event) {
   }
   if (action === "rename" || action === "delete" || action === "share") {
     handleFolderMenuAction(action, folderId);
+  }
+}
+let folderLongPressTimer = null;
+let suppressNextFolderSelect = false;
+function handleFolderLongPressStart(event) {
+  const actionEl = event.target.closest("[data-action='select']");
+  if (!actionEl || state.folderSelectionMode) return;
+  const folderId = actionEl.dataset.id;
+  if (!folderId) return;
+  folderLongPressTimer = window.setTimeout(() => {
+    setFolderSelectionMode(true);
+    state.selectedFolderIds.add(folderId);
+    suppressNextFolderSelect = true;
+    if (elements.folderSelectedCount) elements.folderSelectedCount.textContent = `${state.selectedFolderIds.size} seleccionadas`;
+    renderFolders();
+  }, 450);
+}
+function cancelFolderLongPress() {
+  if (folderLongPressTimer) {
+    clearTimeout(folderLongPressTimer);
+    folderLongPressTimer = null;
   }
 }
 
@@ -4964,6 +4990,10 @@ if (elements.folderGroupConfirm) elements.folderGroupConfirm.addEventListener("c
 
 elements.folderTree.addEventListener("click", handleFolderAction);
 if (elements.folderTree) {
+  elements.folderTree.addEventListener("pointerdown", handleFolderLongPressStart);
+  elements.folderTree.addEventListener("pointerup", cancelFolderLongPress);
+  elements.folderTree.addEventListener("pointercancel", cancelFolderLongPress);
+  elements.folderTree.addEventListener("pointerleave", cancelFolderLongPress);
   elements.folderTree.addEventListener("dragstart", handleFolderDragStart);
   elements.folderTree.addEventListener("dragover", handleFolderDragOver);
   elements.folderTree.addEventListener("drop", handleFolderDrop);

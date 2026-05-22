@@ -804,23 +804,23 @@ textarea {
 .lang-bg-es {
   border-color: rgba(255, 82, 82, 0.55) !important;
   box-shadow: 0 0 0 1px rgba(255, 196, 0, 0.2), 0 0 0 4px rgba(255, 82, 82, 0.06);
-  background-image: linear-gradient(90deg, rgba(198, 0, 43, .42) 0 25%, rgba(255, 205, 0, .36) 25% 75%, rgba(198, 0, 43, .42) 75% 100%);
+  background-image: linear-gradient(90deg, rgba(198, 0, 43, .58) 0 25%, rgba(255, 205, 0, .5) 25% 75%, rgba(198, 0, 43, .58) 75% 100%);
   background-color: var(--input-bg);
-  background-blend-mode: soft-light, normal;
+  background-blend-mode: soft-light;
 }
 .lang-bg-de {
   border-color: rgba(239, 68, 68, 0.6) !important;
   box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.3), 0 0 0 4px rgba(239, 68, 68, 0.08);
-  background-image: linear-gradient(180deg, rgba(0,0,0,.42) 0 33%, rgba(221,0,0,.36) 33% 66%, rgba(255,206,0,.34) 66% 100%);
+  background-image: linear-gradient(180deg, rgba(0,0,0,.58) 0 33%, rgba(221,0,0,.5) 33% 66%, rgba(255,206,0,.5) 66% 100%);
   background-color: var(--input-bg);
-  background-blend-mode: soft-light, normal;
+  background-blend-mode: soft-light;
 }
 .lang-bg-ru {
   border-color: rgba(59, 130, 246, 0.6) !important;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 4px rgba(59, 130, 246, 0.08);
-  background-image: linear-gradient(180deg, rgba(255,255,255,.34) 0 33%, rgba(0,57,166,.34) 33% 66%, rgba(213,43,30,.36) 66% 100%);
+  background-image: linear-gradient(180deg, rgba(255,255,255,.5) 0 33%, rgba(0,57,166,.5) 33% 66%, rgba(213,43,30,.58) 66% 100%);
   background-color: var(--input-bg);
-  background-blend-mode: soft-light, normal;
+  background-blend-mode: soft-light;
 }
 
 .row {
