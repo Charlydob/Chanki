@@ -239,6 +239,73 @@ const swipeState = {
   pointerId: null,
   action: null,
 };
+
+let cardAutoTranslateTimer = null;
+let cardBackManuallyEdited = false;
+let cardLastAutoTranslation = "";
+
+const LANGUAGE_LABELS = { es: "Español", de: "Alemán", en: "Inglés" };
+
+function oppositeLanguage(lang) { return lang === "de" ? "es" : "de"; }
+function speechLocaleFor(lang) { return lang === "de" ? "de-DE" : (lang === "en" ? "en-US" : "es-ES"); }
+function resolveVoiceLang(text = "") {
+  const lower = String(text).toLowerCase();
+  if (/[äöüß]|\b(der|die|das|und|ich|nicht)\b/.test(lower)) return "de";
+  if (/[ñ¿¡]|\b(el|la|de|que|con|para)\b/.test(lower)) return "es";
+  return "en";
+}
+async function translateText(text, source, target) {
+  const q = String(text || "").trim();
+  if (!q) return "";
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${source}|${target}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("translation failed");
+  const data = await res.json();
+  return String(data?.responseData?.translatedText || "").trim();
+}
+function updateCardLanguageLabels() {
+  const source = elements.cardSourceLanguage?.value || "es";
+  const target = oppositeLanguage(source);
+  if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS[source] || source})`;
+  if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${LANGUAGE_LABELS[target] || target})`;
+}
+function queueAutoTranslate() {
+  if (elements.cardType?.value !== "basic") return;
+  clearTimeout(cardAutoTranslateTimer);
+  cardAutoTranslateTimer = setTimeout(async () => {
+    if (cardBackManuallyEdited) return;
+    const source = elements.cardSourceLanguage?.value || "es";
+    const target = oppositeLanguage(source);
+    try {
+      const translated = await translateText(elements.cardFront.value, source, target);
+      if (!translated || cardBackManuallyEdited) return;
+      elements.cardBack.value = translated;
+      cardLastAutoTranslation = translated;
+    } catch (_) {
+      showToast("No se pudo traducir automáticamente. Puedes escribir el reverso.", "info");
+    }
+  }, 450);
+}
+function speakText(text, lang) {
+  if (!('speechSynthesis' in window) || !text) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = speechLocaleFor(lang);
+  const voices = window.speechSynthesis.getVoices() || [];
+  const voice = voices.find((v) => v.lang?.toLowerCase().startsWith(utter.lang.slice(0,2).toLowerCase()));
+  if (voice) utter.voice = voice;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+}
+function buildAudioButton(text, lang) {
+  const btn = document.createElement("button");
+  btn.className = "icon-button icon-button--compact";
+  btn.type = "button";
+  btn.textContent = "🔊";
+  btn.setAttribute("aria-label", "Reproducir audio");
+  btn.addEventListener("click", () => speakText(String(text || "").trim(), lang || resolveVoiceLang(text)));
+  return btn;
+}
+
 const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee"];
 const ORDER_DEFAULT_LABELS = ["Suj", "V", "CCL", "CD", "CI"];
 const orderEditorState = {
@@ -1195,6 +1262,7 @@ function openFolderModal(folder = null) {
   elements.folderNameInput.value = folder ? folder.name : "";
   if (elements.folderEmojiInput) elements.folderEmojiInput.value = folder?.emoji || "📁";
   if (elements.folderColorInput) elements.folderColorInput.value = folder?.color || "#8b5cf6";
+  if (elements.folderBothSidesInput) elements.folderBothSidesInput.checked = Boolean(folder?.reviewBothSides);
   elements.saveFolder.disabled = false;
   showOverlay(elements.folderModal, true);
   elements.folderNameInput.focus();
@@ -1205,6 +1273,7 @@ function closeFolderModal() {
   elements.folderNameInput.value = "";
   if (elements.folderEmojiInput) elements.folderEmojiInput.value = "📁";
   if (elements.folderColorInput) elements.folderColorInput.value = "#8b5cf6";
+  if (elements.folderBothSidesInput) elements.folderBothSidesInput.checked = false;
   editingFolderId = null;
 }
 
@@ -1524,6 +1593,9 @@ function openCardModal(card = null) {
   if (elements.cardOrderAnswer) {
     elements.cardOrderAnswer.value = resolvedCard ? buildOrderAnswerInput(resolvedCard) : "";
   }
+  if (elements.cardSourceLanguage) elements.cardSourceLanguage.value = "es";
+  cardBackManuallyEdited = false;
+  cardLastAutoTranslation = "";
   hydrateOrderEditorState(resolvedCard);
   renderOrderEditor();
   elements.cardTags.value = "";
@@ -1531,6 +1603,7 @@ function openCardModal(card = null) {
   renderTagPanels();
   updateTagSuggestions("card", "");
   updateCardTypeFields(type);
+  updateCardLanguageLabels();
   showOverlay(elements.cardModal, true);
 }
 
@@ -2866,6 +2939,7 @@ async function handleSaveFolder() {
   const name = elements.folderNameInput.value.trim();
   const emoji = (elements.folderEmojiInput?.value || "📁").trim() || "📁";
   const color = (elements.folderColorInput?.value || "#8b5cf6").trim() || "#8b5cf6";
+  const reviewBothSides = Boolean(elements.folderBothSidesInput?.checked);
   if (!name) {
     showToast("Escribe un nombre.", "error");
     return;
@@ -2874,9 +2948,9 @@ async function handleSaveFolder() {
   elements.saveFolder.disabled = true;
   try {
     if (editingFolderId) {
-      await updateFolder(db, state.username, editingFolderId, { name, emoji, color });
+      await updateFolder(db, state.username, editingFolderId, { name, emoji, color, reviewBothSides });
     } else {
-      await createFolder(db, state.username, { name, emoji, color });
+      await createFolder(db, state.username, { name, emoji, color, reviewBothSides });
     }
     showToast("Guardado");
     closeFolderModal();
@@ -3237,6 +3311,7 @@ function renderReviewCard(card, showBack = false) {
     }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -3273,6 +3348,7 @@ function renderReviewCard(card, showBack = false) {
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
     wrapper.appendChild(frontSection);
 
     const orderCard = document.createElement("div");
@@ -3485,6 +3561,7 @@ function renderReviewCard(card, showBack = false) {
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -3498,6 +3575,7 @@ function renderReviewCard(card, showBack = false) {
       backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
+      backSection.appendChild(buildAudioButton((resolvedCard.back || ""), resolveVoiceLang(resolvedCard.back || "")));
       wrapper.appendChild(backSection);
     }
   }
@@ -3625,6 +3703,10 @@ async function buildReviewQueue() {
   const newCards = shuffle(candidates.filter((card) => (canonicalizeBucketId(card.srs?.bucket) || "new") === "new")).slice(0, maxNew);
   const reviewCards = shuffle(candidates.filter((card) => (canonicalizeBucketId(card.srs?.bucket) || "new") !== "new")).slice(0, maxReviews);
   const limited = shuffle([...newCards, ...reviewCards]);
+  const shouldRandomBothSides = Boolean(primarySelection && !primarySelection.isShared && state.folders?.[primarySelection.folderId]?.reviewBothSides);
+  if (shouldRandomBothSides) {
+    limited.forEach((card) => { card.__reversePrompt = Math.random() < 0.5; });
+  }
 
   state.reviewLastEmptyReason = "";
   if (!limited.length) {
@@ -3671,10 +3753,18 @@ function showNextReviewCard() {
   state.reviewOrder = null;
   state.reviewShowingBack = false;
   const resolvedCard = resolveLegacyOrderCard(card);
-  elements.flipCard.textContent = resolvedCard.type === "cloze" || resolvedCard.type === "order"
+  if (resolvedCard.type === "basic" && card?.__reversePrompt) {
+    const swapped = { ...resolvedCard, front: resolvedCard.back, back: resolvedCard.front };
+    state.reviewCurrentRenderedCard = swapped;
+    elements.flipCard.textContent = "Mostrar respuesta";
+    renderReviewCard(swapped, false);
+  } else {
+    state.reviewCurrentRenderedCard = resolvedCard;
+    elements.flipCard.textContent = resolvedCard.type === "cloze" || resolvedCard.type === "order"
     ? "Comprobar"
     : "Mostrar respuesta";
-  renderReviewCard(resolvedCard, false);
+  renderReviewCard(state.reviewCurrentRenderedCard || resolvedCard, false);
+  }
   resetSwipeVisuals({ animate: false });
   updateReviewAccessUI(card);
   updateReviewRatingButtons(card);
@@ -3722,7 +3812,7 @@ function revealReviewAnswer() {
   if (inputs.length) {
     state.reviewClozeAnswers = Array.from(inputs, (input) => input.value);
   }
-  const resolvedCard = resolveLegacyOrderCard(card);
+  const resolvedCard = state.reviewCurrentRenderedCard || resolveLegacyOrderCard(card);
   renderReviewCard(resolvedCard, true);
   state.reviewShowingBack = true;
   elements.reviewActions.classList.remove("hidden");
@@ -4074,10 +4164,16 @@ function handleSaveSettings() {
     state.prefs.maxReviews = maxReviews;
   }
   const clozeCase = elements.settingsClozeCase.checked;
+  const themeDark = Boolean(elements.settingsThemeDark?.checked);
+  document.body.classList.toggle("theme-dark", themeDark);
+  document.body.classList.toggle("theme-light", !themeDark);
+  localStorage.setItem("chanki_theme", themeDark ? "dark" : "light");
   localStorage.setItem("chanki_cloze_case", clozeCase ? "true" : "false");
   state.prefs.clozeCaseInsensitive = clozeCase;
   elements.reviewMaxNew.value = state.prefs.maxNew;
   elements.reviewMax.value = state.prefs.maxReviews;
+  const darkMode = document.body.classList.contains("theme-dark");
+  localStorage.setItem("chanki_theme", darkMode ? "dark" : "light");
   showToast("Preferencias guardadas.");
 }
 
@@ -4461,6 +4557,10 @@ async function initFirebaseUi() {
   elements.settingsMaxNew.value = state.prefs.maxNew;
   elements.settingsMax.value = state.prefs.maxReviews;
   elements.settingsClozeCase.checked = state.prefs.clozeCaseInsensitive;
+  const savedTheme = localStorage.getItem("chanki_theme") || "dark";
+  document.body.classList.toggle("theme-dark", savedTheme !== "light");
+  document.body.classList.toggle("theme-light", savedTheme === "light");
+  if (elements.settingsThemeDark) elements.settingsThemeDark.checked = savedTheme !== "light";
   renderBucketFilter();
   refreshReviewBucketCounts();
   setImportContext("generic", { sourceScreen: "import" });
@@ -4972,6 +5072,18 @@ if (cardOrderAddLabelButton) {
   });
 }
 
+
+if (elements.cardSourceLanguage) {
+  elements.cardSourceLanguage.addEventListener("change", () => {
+    updateCardLanguageLabels();
+    cardBackManuallyEdited = false;
+    queueAutoTranslate();
+  });
+}
+if (elements.cardFront) elements.cardFront.addEventListener("input", queueAutoTranslate);
+if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
+  if (elements.cardBack.value !== cardLastAutoTranslation) cardBackManuallyEdited = true;
+});
 elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);

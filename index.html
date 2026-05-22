@@ -422,6 +422,15 @@
             </div>
             <div class="card settings-block">
               <div class="section-header">
+                <h3>Tema</h3>
+              </div>
+              <label class="field field-inline">
+                <span>Modo oscuro</span>
+                <input id="settings-theme-dark" type="checkbox" checked />
+              </label>
+            </div>
+            <div class="card settings-block">
+              <div class="section-header">
                 <h3>Cloze</h3>
                 <p class="muted">Controla la comparación de respuestas en cloze.</p>
               </div>
@@ -553,12 +562,19 @@
             </select>
           </label>
           <label class="field" id="card-basic-front-field">
-            <span>FRONT_ES (pista en español)</span>
+            <span id="card-front-label">Frente (Español)</span>
             <textarea id="card-front" rows="3"></textarea>
           </label>
           <label class="field" id="card-basic-back-field">
-            <span>TARGET_DE (frase correcta en alemán)</span>
+            <span id="card-back-label">Reverso (Alemán)</span>
             <textarea id="card-back" rows="3"></textarea>
+          </label>
+          <label class="field">
+            <span>Idioma fuente</span>
+            <select id="card-source-language">
+              <option value="es">Español</option>
+              <option value="de">Alemán</option>
+            </select>
           </label>
           <label class="field hidden" id="card-cloze-text-field">
             <span>TARGET_DE con huecos (usa ____ para el hueco)</span>
@@ -647,6 +663,10 @@
         <label class="field">
           <span>Color</span>
           <input id="folder-color-input" type="color" value="#8b5cf6" />
+        </label>
+        <label class="field field-inline">
+          <span>Repasar por ambos lados</span>
+          <input id="folder-both-sides-input" type="checkbox" />
         </label>
         <div class="row">
           <button id="save-folder" class="button" type="button">Crear</button>
