@@ -307,7 +307,11 @@ async function translateText(text, source, target, signal, { verify = true } = {
   const cacheKey = `${source}:${target}:${q}`;
   if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
 
+  console.info("[translate:request]", { mode: "phrase", source, target, text: q });
   const deeplKey = (window.__CHANKI_DEEPL_KEY__ || localStorage.getItem("chanki_deepl_key") || "").trim();
+  const libreBase = (window.__CHANKI_LIBRETRANSLATE_URL__
+    || localStorage.getItem("chanki_libretranslate_url")
+    || "https://libretranslate.de").replace(/\/+$/, "");
   let translated = "";
   if (deeplKey) {
     const params = new URLSearchParams({ text: q, source_lang: source.toUpperCase(), target_lang: target.toUpperCase() });
@@ -316,29 +320,39 @@ async function translateText(text, source, target, signal, { verify = true } = {
     const data = await res.json();
     translated = String(data?.translations?.[0]?.text || "").trim();
   } else {
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${source}|${target}`;
-    const res = await fetch(url, { signal });
+    const res = await fetch(`${libreBase}/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q, source, target, format: "text" }),
+      signal,
+    });
     if (!res.ok) throw new Error("translation failed");
     const data = await res.json();
-    translated = String(data?.responseData?.translatedText || "").trim();
+    translated = String(data?.translatedText || "").trim();
   }
 
   if (!translated || (verify && translated.toLowerCase() === q.toLowerCase())) throw new Error("invalid translation");
   if (source === "es" && target === "de") translated = postProcessEsToDe(q, translated);
+  if (translated.toLowerCase() === q.toLowerCase()) throw new Error("same-as-source");
   translationCache.set(cacheKey, translated);
+  console.info("[translate:success]", { mode: "phrase", source, target, text: q, translated });
   return translated;
 }
 async function translateWordWithSenses(word, source, target, signal) {
   const clean = String(word || "").trim();
-  const url = `https://api.dictionaryapi.dev/api/v2/entries/${source}/${encodeURIComponent(clean)}`;
+  console.info("[translate:request]", { mode: "dictionary", source, target, word: clean });
+  const url = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(clean)}`;
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error("dictionary failed");
   const data = await res.json();
+  const langKey = source === "es" ? "Spanish" : "German";
+  const entries = Array.isArray(data?.[langKey]) ? data[langKey] : [];
   const glosses = [];
-  (Array.isArray(data) ? data : []).forEach((entry) => {
-    (entry.meanings || []).forEach((meaning) => {
-      (meaning.definitions || []).forEach((def) => {
-        const g = normalizeSenses(def.definition);
+  entries.forEach((entry) => {
+    (entry.definitions || []).forEach((defGroup) => {
+      (defGroup.definition || defGroup.definitions || []).forEach((def) => {
+        const text = typeof def === "string" ? def : def?.definition;
+        const g = normalizeSenses(text);
         if (g) glosses.push(g);
       });
     });
@@ -353,7 +367,10 @@ async function translateWordWithSenses(word, source, target, signal) {
   }
   const deduped = [...new Set(translated.filter(Boolean))].slice(0, 4);
   if (!deduped.length) throw new Error("unverified");
-  return deduped.map((item, idx) => `${idx + 1}. ${item}`).join("\n");
+  const numbered = deduped.map((item, idx) => `${idx + 1}. ${item}`).join("\n");
+  console.info("[translate:dictionary]", { source, target, word: clean, senses: deduped.length });
+  console.info("[translate:success]", { mode: "dictionary", source, target, word: clean });
+  return numbered;
 }
 function updateCardLanguageLabels() {
   if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS.es})`;
@@ -373,6 +390,7 @@ async function runCardTranslation(direction, { force = false } = {}) {
   try {
     const source = direction === "es-de" ? "es" : "de";
     const target = oppositeLanguage(source);
+    console.info("[translate:phrase]", { direction, source, target });
     const translated = isSingleWord(sourceText)
       ? await translateWordWithSenses(sourceText, source, target, cardTranslateAbortController.signal)
       : await translateText(sourceText, source, target, cardTranslateAbortController.signal);
@@ -383,7 +401,8 @@ async function runCardTranslation(direction, { force = false } = {}) {
     setTranslateStatus("Listo");
   } catch (err) {
     if (err?.name === "AbortError") return;
-    setTranslateStatus("Traducción no verificada", "warn");
+    console.error("[translate:error]", err);
+    setTranslateStatus("No se pudo traducir", "warn");
     showToast("No se pudo traducir", "info");
   }
 }
