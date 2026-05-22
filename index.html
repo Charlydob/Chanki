@@ -15,10 +15,9 @@
         const savedTheme = localStorage.getItem("chanki_theme") || "dark";
         const isDark = savedTheme !== "light";
         const root = document.documentElement;
+        root.dataset.theme = isDark ? "dark" : "light";
         root.classList.toggle("theme-dark", isDark);
         root.classList.toggle("theme-light", !isDark);
-        document.body?.classList.toggle("theme-dark", isDark);
-        document.body?.classList.toggle("theme-light", !isDark);
       })();
     </script>
     <title>CHANKI</title>

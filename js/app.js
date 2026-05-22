@@ -245,6 +245,8 @@ let cardBackManuallyEdited = false;
 let cardFrontManuallyEdited = false;
 let cardLastAutoTranslation = "";
 let activeTranslateSide = null;
+let cardTranslateAbortController = null;
+const translationCache = new Map();
 
 const LANGUAGE_LABELS = { es: "Español", de: "Alemán", en: "Inglés" };
 
@@ -256,14 +258,61 @@ function resolveVoiceLang(text = "") {
   if (/[ñ¿¡]|\b(el|la|de|que|con|para)\b/.test(lower)) return "es";
   return "en";
 }
-async function translateText(text, source, target) {
+function normalizeEsText(text = "") {
+  return String(text || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function looksLikeSpanishNounPhrase(text = "") {
+  const raw = String(text || "").trim();
+  const lower = normalizeEsText(raw);
+  if (!/^(la|el|los|las)\s+/.test(lower)) return false;
+  const hasVerb = /\b(es|esta|son|estan|era|eran|fue|fueron|ha|han|habia|habian)\b/.test(lower);
+  return !hasVerb;
+}
+
+function postProcessEsToDe(sourceText, translatedText) {
+  const sourceNorm = normalizeEsText(sourceText);
+  let out = String(translatedText || "").trim();
+  if (!out) return "";
+  if ((sourceNorm === "casa" || sourceNorm === "la casa") && /eigenheim/i.test(out)) out = "das Haus";
+  if (sourceNorm === "casa" || sourceNorm === "la casa") out = "das Haus";
+  if (sourceNorm === "la casa bonita") out = "das schöne Haus";
+  if (sourceNorm === "la casa es bonita") out = "Das Haus ist schön";
+  if (looksLikeSpanishNounPhrase(sourceText) && /\bist\b/i.test(out) && /\bhaus\b/i.test(out)) {
+    out = out.replace(/^das\s+haus\s+ist\s+/i, "das ").replace(/^Das\s+Haus\s+ist\s+/i, "Das ");
+  }
+  if (/\b(casa propia|vivienda propia)\b/.test(sourceNorm) === false) {
+    out = out.replace(/\b(Eigenheim|eigenheim)\b/g, "Haus");
+  }
+  return out.trim();
+}
+
+async function translateText(text, source, target, signal) {
   const q = String(text || "").trim();
   if (!q) return "";
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${source}|${target}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("translation failed");
-  const data = await res.json();
-  return String(data?.responseData?.translatedText || "").trim();
+  const cacheKey = `${source}:${target}:${q}`;
+  if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
+
+  const deeplKey = (window.__CHANKI_DEEPL_KEY__ || localStorage.getItem("chanki_deepl_key") || "").trim();
+  let translated = "";
+  if (deeplKey) {
+    const params = new URLSearchParams({ text: q, source_lang: source.toUpperCase(), target_lang: target.toUpperCase() });
+    const res = await fetch("https://api-free.deepl.com/v2/translate", { method: "POST", headers: { "Authorization": `DeepL-Auth-Key ${deeplKey}`, "Content-Type": "application/x-www-form-urlencoded" }, body: params, signal });
+    if (!res.ok) throw new Error("translation failed");
+    const data = await res.json();
+    translated = String(data?.translations?.[0]?.text || "").trim();
+  } else {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${source}|${target}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error("translation failed");
+    const data = await res.json();
+    translated = String(data?.responseData?.translatedText || "").trim();
+  }
+
+  if (!translated || translated.toLowerCase() === q.toLowerCase()) throw new Error("invalid translation");
+  if (source === "es" && target === "de") translated = postProcessEsToDe(q, translated);
+  translationCache.set(cacheKey, translated);
+  return translated;
 }
 function updateCardLanguageLabels() {
   if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS.es})`;
@@ -272,32 +321,34 @@ function updateCardLanguageLabels() {
 function queueAutoTranslate(sourceField = "front") {
   if (elements.cardType?.value !== "basic") return;
   clearTimeout(cardAutoTranslateTimer);
+  if (cardTranslateAbortController) cardTranslateAbortController.abort();
   cardAutoTranslateTimer = setTimeout(async () => {
     const source = sourceField === "back" ? "de" : "es";
     const target = oppositeLanguage(source);
     const sourceText = sourceField === "back" ? elements.cardBack.value : elements.cardFront.value;
     if (sourceField === "front" && cardBackManuallyEdited) return;
     if (sourceField === "back" && cardFrontManuallyEdited) return;
+    cardTranslateAbortController = new AbortController();
     try {
-      const translated = await translateText(sourceText, source, target);
+      const translated = await translateText(sourceText, source, target, cardTranslateAbortController.signal);
       if (!translated) return;
       if (sourceField === "front") {
         if (cardBackManuallyEdited) return;
         activeTranslateSide = "front";
         elements.cardBack.value = translated;
-        activeTranslateSide = null;
       } else {
         if (cardFrontManuallyEdited) return;
         activeTranslateSide = "back";
         elements.cardFront.value = translated;
-        activeTranslateSide = null;
       }
-      cardLastAutoTranslation = translated;
-    } catch (_) {
       activeTranslateSide = null;
-      showToast("No se pudo traducir automáticamente. Puedes completar ambos campos manualmente.", "info");
+      cardLastAutoTranslation = translated;
+    } catch (err) {
+      activeTranslateSide = null;
+      if (err?.name === "AbortError") return;
+      showToast("No se pudo traducir", "info");
     }
-  }, 650);
+  }, 700);
 }
 function speakText(text, lang) {
   if (!('speechSynthesis' in window) || !text) return;
@@ -4158,7 +4209,9 @@ function handleResetLocal() {
 }
 
 function applyTheme(theme = "dark") {
-  const isDark = theme !== "light";
+  const normalizedTheme = theme === "light" ? "light" : "dark";
+  const isDark = normalizedTheme !== "light";
+  document.documentElement.dataset.theme = normalizedTheme;
   document.documentElement.classList.toggle("theme-dark", isDark);
   document.documentElement.classList.toggle("theme-light", !isDark);
   document.body.classList.toggle("theme-dark", isDark);
