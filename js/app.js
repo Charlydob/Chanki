@@ -251,7 +251,7 @@ let cardTranslateAbortController = null;
 const translationCache = new Map();
 
 const LANGUAGE_LABELS = { es: "Español", de: "Alemán", ru: "Ruso", en: "Inglés" };
-const LANGUAGE_INPUT_CLASSES = ["lang-accent-es", "lang-accent-de", "lang-accent-ru"];
+const LANGUAGE_INPUT_CLASSES = ["lang-bg-es", "lang-bg-de", "lang-bg-ru"];
 
 function getActiveFolderLanguages() {
   const folder = state.folders?.[state.selectedFolderId] || {};
@@ -365,7 +365,7 @@ function maybeHandleNumberedEnter(event) {
 function autoResizeTextarea(textarea) {
   if (!textarea) return;
   textarea.style.height = "auto";
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 420)}px`;
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 async function translateStructuredText(text, source, target, signal, contextText = "") {
   const clean = String(text || "").trim();
@@ -412,8 +412,8 @@ function updateCardLanguageLabels() {
     elements.cardFront?.classList.remove(className);
     elements.cardBack?.classList.remove(className);
   });
-  elements.cardFront?.classList.add(`lang-accent-${sourceLang}`);
-  elements.cardBack?.classList.add(`lang-accent-${targetLang}`);
+  elements.cardFront?.classList.add(`lang-bg-${sourceLang}`);
+  elements.cardBack?.classList.add(`lang-bg-${targetLang}`);
 }
 async function runCardTranslation(direction, { force = false } = {}) {
   if (elements.cardType?.value !== "basic") return;
@@ -433,8 +433,8 @@ async function runCardTranslation(direction, { force = false } = {}) {
     console.info("[translate:phrase]", { direction, source, target });
     const translated = await translateStructuredText(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "");
     if (!isSingleWord(sourceText)) elements.cardTranslateContextField?.classList.add("hidden");
-    if (direction === "es-de") elements.cardBack.value = translated;
-    else elements.cardFront.value = translated;
+    if (direction === "es-de") { elements.cardBack.value = translated; autoResizeTextarea(elements.cardBack); }
+    else { elements.cardFront.value = translated; autoResizeTextarea(elements.cardFront); }
     refreshTranslateCta();
     cardLastTranslation = translated;
     setTranslateStatus("Listo");
@@ -2809,6 +2809,29 @@ async function syncUsersPublic() {
   }
 }
 
+function getFolderDescendantIds(folderId, all = state.folders || {}) {
+  const out = new Set();
+  const walk = (id) => {
+    Object.values(all).forEach((f) => {
+      if ((f?.parentId || null) === id && f.id) { out.add(f.id); walk(f.id); }
+    });
+  };
+  walk(folderId);
+  return out;
+}
+async function moveFolderToParent(folderId, targetParentId) {
+  if (!folderId || !state.folders[folderId]) return;
+  if (folderId === targetParentId) return showToast("Movimiento inválido.", "error");
+  const descendants = getFolderDescendantIds(folderId);
+  if (targetParentId && descendants.has(targetParentId)) return showToast("No se puede mover dentro de una descendiente.", "error");
+  const db = getDb();
+  await updateFolder(db, state.username, folderId, { parentId: targetParentId || null });
+  showToast("Carpeta movida.");
+}
+function handleFolderDragStart(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; state.movingFolderId = row.dataset.folderId; event.dataTransfer.effectAllowed = "move"; row.classList.add("is-dragging"); }
+function handleFolderDragOver(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; event.preventDefault(); row.classList.add("is-drop-target"); }
+async function handleFolderDrop(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; event.preventDefault(); document.querySelectorAll(".folder-row").forEach((el)=>el.classList.remove("is-drop-target")); if (!state.movingFolderId) return; await moveFolderToParent(state.movingFolderId, row.dataset.folderId || null); }
+
 function handleAddFolder() {
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
@@ -2881,6 +2904,16 @@ async function handleFolderAction(event) {
   const folderId = actionEl.dataset.id;
   if (!action || !folderId) return;
   closeAllMenus();
+  if (action === "browse-root") { state.folderBrowseId = null; renderFolders(); return; }
+  if (action === "browse") { state.folderBrowseId = folderId; renderFolders(); return; }
+  if (action === "move") {
+    const options = Object.values(state.folders || {}).filter((f)=>f.id!==folderId).map((f)=>`${f.id}:${f.name}`).join("\n");
+    const ans = prompt(`Mover a carpeta destino (vacío = raíz)\n${options}`, "");
+    if (ans === null) return;
+    const dest = (ans.split(":")[0] || "").trim();
+    moveFolderToParent(folderId, dest || null);
+    return;
+  }
   if (action === "select") {
     const ownerUid = actionEl.dataset.ownerUid || state.username;
     const isShared = actionEl.dataset.shared === "true";
@@ -3140,7 +3173,7 @@ async function handleSaveFolder() {
     if (editingFolderId) {
       await updateFolder(db, state.username, editingFolderId, { name, emoji, color, reviewBothSides, sourceLang, targetLang });
     } else {
-      await createFolder(db, state.username, { name, emoji, color, reviewBothSides, sourceLang, targetLang, parentId: null });
+      await createFolder(db, state.username, { name, emoji, color, reviewBothSides, sourceLang, targetLang, parentId: state.folderBrowseId || null });
     }
     showToast("Guardado");
     closeFolderModal();
@@ -4864,8 +4897,15 @@ if (elements.saveUsername) {
 }
 
 elements.addFolder.addEventListener("click", handleAddFolder);
+if (elements.addSubfolder) { elements.addSubfolder.addEventListener("click", () => { if (!state.folderBrowseId) return showToast("Abre una carpeta primero.", "info"); openFolderModal(); }); }
 
 elements.folderTree.addEventListener("click", handleFolderAction);
+if (elements.folderTree) {
+  elements.folderTree.addEventListener("dragstart", handleFolderDragStart);
+  elements.folderTree.addEventListener("dragover", handleFolderDragOver);
+  elements.folderTree.addEventListener("drop", handleFolderDrop);
+  elements.folderTree.addEventListener("dragend", () => { state.movingFolderId = null; document.querySelectorAll(".folder-row").forEach((el)=>el.classList.remove("is-dragging","is-drop-target")); });
+}
 
 if (elements.saveFolder) {
   elements.saveFolder.addEventListener("click", handleSaveFolder);
@@ -5319,8 +5359,8 @@ if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
   console.info("[translate:auto-disabled]", { field: "front" });
   refreshTranslateCta();
 });
-if (elements.cardFront) elements.cardFront.addEventListener("focus", maybeSeedNumberedTextarea);
-if (elements.cardBack) elements.cardBack.addEventListener("focus", maybeSeedNumberedTextarea);
+if (elements.cardFront) elements.cardFront.addEventListener("focus", (event) => { maybeSeedNumberedTextarea(event); autoResizeTextarea(elements.cardFront); });
+if (elements.cardBack) elements.cardBack.addEventListener("focus", (event) => { maybeSeedNumberedTextarea(event); autoResizeTextarea(elements.cardBack); });
 if (elements.cardFront) elements.cardFront.addEventListener("keydown", maybeHandleNumberedEnter);
 if (elements.cardBack) elements.cardBack.addEventListener("keydown", maybeHandleNumberedEnter);
 if (elements.cardGrammarType) {
@@ -5333,6 +5373,7 @@ if (elements.cardGrammarType) {
     if (cardGrammarType !== "noun") cardNounGender = null;
     if (cardGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
       elements.cardBack.value = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie / Sie -";
+      autoResizeTextarea(elements.cardBack);
     }
     syncGrammarControls();
   });
@@ -5345,6 +5386,8 @@ if (elements.cardNounGender) {
     syncGrammarControls();
   });
 }
+if (elements.cardFront) elements.cardFront.addEventListener("paste", () => setTimeout(() => autoResizeTextarea(elements.cardFront), 0));
+if (elements.cardBack) elements.cardBack.addEventListener("paste", () => setTimeout(() => autoResizeTextarea(elements.cardBack), 0));
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
   cardBackManuallyEdited = true;
   autoResizeTextarea(elements.cardBack);

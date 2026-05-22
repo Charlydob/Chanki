@@ -112,6 +112,8 @@ export const state = {
   sharedFolders: {},
   sharedFolderRefs: {},
   usersPublic: {},
+  folderBrowseId: null,
+  movingFolderId: null,
 };
 
 export const elements = {
@@ -124,6 +126,8 @@ export const elements = {
   saveUsername: document.getElementById("save-username"),
   folderTree: document.getElementById("folder-tree"),
   addFolder: document.getElementById("add-folder"),
+  addSubfolder: document.getElementById("add-subfolder"),
+  foldersBreadcrumb: document.getElementById("folders-breadcrumb"),
   cardsList: document.getElementById("cards-list"),
   addCard: document.getElementById("add-card"),
   loadMore: document.getElementById("load-more"),
