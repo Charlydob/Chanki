@@ -3241,20 +3241,52 @@ async function handleSaveCard() {
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
+        return;
       } else if (result.status === "updated") {
         showToast("Tarjeta actualizada.");
+        return;
       } else {
-        showToast("Guardado");
+        showToast("Tarjeta guardada");
       }
     } catch (error) {
       handleErrorToast(error, "Error al crear tarjeta.");
       return;
     }
+    elements.cardFront.value = "";
+    elements.cardBack.value = "";
+    elements.cardClozeText.value = "";
+    elements.cardClozeAnswers.value = "";
+    if (elements.cardOrderTokens) {
+      elements.cardOrderTokens.value = "";
+    }
+    if (elements.cardOrderLabels) {
+      elements.cardOrderLabels.value = "";
+    }
+    if (elements.cardOrderAnswer) {
+      elements.cardOrderAnswer.value = "";
+    }
+    cardFrontManuallyEdited = false;
+    cardBackManuallyEdited = false;
+    cardLastTranslation = "";
+    if (cardTranslateAbortController) cardTranslateAbortController.abort();
+    cardTranslateAbortController = null;
+    setTranslateStatus("");
+    elements.cardTranslateEsDe?.classList.add("hidden");
+    elements.cardTranslateDeEs?.classList.add("hidden");
+    elements.cardTranslateContextField?.classList.add("hidden");
+    if (elements.cardTranslateContext) {
+      elements.cardTranslateContext.value = "";
+    }
+    refreshTranslateCta();
+    hydrateOrderEditorState(null);
+    elements.cardTags.value = "";
+    state.selectedTags = new Set();
+    renderTagPanels();
+    elements.cardFront.focus();
+    await loadCards(true);
+    return;
   }
   closeCardModal();
-  elements.cardTags.value = "";
-  state.selectedTags = new Set();
-  renderTagPanels();
   await loadCards(true);
 }
 
