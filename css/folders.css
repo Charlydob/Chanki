@@ -80,3 +80,8 @@
   max-height: 90dvh;
   overflow-y: auto;
 }
+
+.folder-row.is-drop-target { outline: 2px dashed var(--accent); }
+.folder-row.is-dragging { opacity: .55; }
+#folders-breadcrumb { margin: 6px 0 10px; display:flex; gap:6px; flex-wrap:wrap; }
+#folders-breadcrumb button { background: transparent; border: 0; color: var(--muted); text-decoration: underline; }
