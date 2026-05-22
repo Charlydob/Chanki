@@ -46,10 +46,41 @@
             <h2>Carpetas</h2>
             <button id="add-folder" class="button">Nueva carpeta</button>
             <button id="add-subfolder" class="button ghost" type="button">Nueva subcarpeta</button>
+            <button id="folder-select-toggle" class="button ghost" type="button">Seleccionar</button>
+          </div>
+          <div id="folder-bulk-bar" class="all-cards-bulk-bar hidden">
+            <div class="all-cards-bulk-bar__left">
+              <span id="folder-selected-count" class="muted">0 seleccionadas</span>
+            </div>
+            <div class="all-cards-bulk-bar__right">
+              <button id="folder-bulk-move" class="button ghost small" type="button">Mover a…</button>
+              <button id="folder-bulk-group" class="button ghost small" type="button">Agrupar</button>
+              <button id="folder-bulk-cancel" class="button ghost small" type="button">Cancelar</button>
+            </div>
           </div>
           <div id="folders-breadcrumb" class="muted"></div>
           <div id="folder-tree" class="list"></div>
         </section>
+        <div id="folder-move-modal" class="overlay hidden">
+          <div class="modal">
+            <h3>Mover carpetas</h3>
+            <div id="folder-move-target-list" class="list"></div>
+            <button id="folder-move-cancel" class="button ghost" type="button">Cancelar</button>
+          </div>
+        </div>
+        <div id="folder-group-modal" class="overlay hidden">
+          <div class="modal">
+            <h3>Agrupar carpetas</h3>
+            <label class="field">
+              <span>Nombre de nueva carpeta</span>
+              <input id="folder-group-name" type="text" maxlength="80" />
+            </label>
+            <div class="row">
+              <button id="folder-group-confirm" class="button" type="button">Crear y agrupar</button>
+              <button id="folder-group-cancel" class="button ghost" type="button">Cancelar</button>
+            </div>
+          </div>
+        </div>
 
         <section id="screen-cards" class="screen">
           <div class="screen__header">

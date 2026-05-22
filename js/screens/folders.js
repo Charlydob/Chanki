@@ -95,17 +95,20 @@ export function renderFolders() {
   let walk = browseId;
   while (walk && state.folders?.[walk]) { const f = state.folders[walk]; breadcrumbs.unshift({ id: walk, name: f.name || "Carpeta" }); walk = f.parentId || null; }
   if (elements.foldersBreadcrumb) {
+    const backBtn = browseId ? `<button type="button" data-action="browse-up">← Volver</button>` : "";
     const rootBtn = `<button type="button" data-action="browse-root">Raíz</button>`;
     const trail = breadcrumbs.map((b)=>`<button type="button" data-action="browse" data-id="${b.id}">${b.name}</button>`).join(" / ");
-    elements.foldersBreadcrumb.innerHTML = [rootBtn, trail].filter(Boolean).join(" / ");
+    elements.foldersBreadcrumb.innerHTML = [backBtn, rootBtn, trail].filter(Boolean).join(" / ");
   }
+  if (elements.addSubfolder) elements.addSubfolder.classList.toggle("hidden", !browseId);
   if (!state.username) { container.innerHTML = "<div class=\"card\">Define tu usuario en Ajustes o al iniciar.</div>"; return; }
   if (!own.length && !shared.length) { container.innerHTML = "<div class=\"card\">Crea tu primera carpeta para organizar tus tarjetas.</div>"; return; }
   const list = document.createElement("div");
   list.className = "folder-list";
   own.forEach((folder) => {
     const item = document.createElement("div"); item.className = "folder-list-item";
-    item.innerHTML = folderRowMarkup(folder, `${state.folderCardCounts?.[folder.id] || 0} tarjetas`, `data-owner-uid="${state.username}"`, `<button class="icon-button icon-button--compact" data-action="browse" data-id="${folder.id}" type="button" aria-label="Abrir subcarpetas">📂</button><button class="icon-button icon-button--compact" data-action="move" data-id="${folder.id}" type="button">Mover a…</button><button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button" aria-label="Editar carpeta">✏️</button><button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${folder.id}" type="button" aria-label="Eliminar carpeta">🗑️</button>`);
+    const selected = state.selectedFolderIds?.has(folder.id);
+    item.innerHTML = folderRowMarkup(folder, `${state.folderCardCounts?.[folder.id] || 0} tarjetas`, `data-owner-uid="${state.username}"`, `${state.folderSelectionMode ? `<button class="icon-button icon-button--compact" data-action="toggle-folder-select" data-id="${folder.id}" type="button">${selected ? "☑️" : "⬜"}</button>` : `<button class="icon-button icon-button--compact" data-action="rename" data-id="${folder.id}" type="button" aria-label="Editar carpeta">✏️</button><button class="icon-button icon-button--compact icon-button--danger" data-action="delete" data-id="${folder.id}" type="button" aria-label="Eliminar carpeta">🗑️</button>`}`);
     list.appendChild(item);
   });
   if (!browseId) {

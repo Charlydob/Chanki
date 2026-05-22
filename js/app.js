@@ -2828,6 +2828,23 @@ async function moveFolderToParent(folderId, targetParentId) {
   await updateFolder(db, state.username, folderId, { parentId: targetParentId || null });
   showToast("Carpeta movida.");
 }
+async function moveFoldersToParent(folderIds, targetParentId) {
+  const selected = folderIds.filter((id) => state.folders[id]);
+  for (const folderId of selected) {
+    const descendants = getFolderDescendantIds(folderId);
+    if (folderId === targetParentId || (targetParentId && descendants.has(targetParentId))) continue;
+    await moveFolderToParent(folderId, targetParentId || null);
+  }
+}
+function setFolderSelectionMode(active) {
+  state.folderSelectionMode = !!active;
+  if (!active) state.selectedFolderIds = new Set();
+  if (elements.folderBulkBar) elements.folderBulkBar.classList.toggle("hidden", !active);
+  const count = state.selectedFolderIds.size;
+  if (elements.folderSelectedCount) elements.folderSelectedCount.textContent = `${count} seleccionadas`;
+  if (elements.folderSelectToggle) elements.folderSelectToggle.textContent = active ? "Cancelar selección" : "Seleccionar";
+  renderFolders();
+}
 function handleFolderDragStart(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; state.movingFolderId = row.dataset.folderId; event.dataTransfer.effectAllowed = "move"; row.classList.add("is-dragging"); }
 function handleFolderDragOver(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; event.preventDefault(); row.classList.add("is-drop-target"); }
 async function handleFolderDrop(event) { const row = event.target.closest("[data-folder-id]"); if (!row) return; event.preventDefault(); document.querySelectorAll(".folder-row").forEach((el)=>el.classList.remove("is-drop-target")); if (!state.movingFolderId) return; await moveFolderToParent(state.movingFolderId, row.dataset.folderId || null); }
@@ -2905,16 +2922,28 @@ async function handleFolderAction(event) {
   if (!action || !folderId) return;
   closeAllMenus();
   if (action === "browse-root") { state.folderBrowseId = null; renderFolders(); return; }
+  if (action === "browse-up") {
+    const current = state.folders?.[state.folderBrowseId || ""];
+    state.folderBrowseId = current?.parentId || null;
+    renderFolders();
+    return;
+  }
   if (action === "browse") { state.folderBrowseId = folderId; renderFolders(); return; }
-  if (action === "move") {
-    const options = Object.values(state.folders || {}).filter((f)=>f.id!==folderId).map((f)=>`${f.id}:${f.name}`).join("\n");
-    const ans = prompt(`Mover a carpeta destino (vacío = raíz)\n${options}`, "");
-    if (ans === null) return;
-    const dest = (ans.split(":")[0] || "").trim();
-    moveFolderToParent(folderId, dest || null);
+  if (action === "toggle-folder-select") {
+    if (state.selectedFolderIds.has(folderId)) state.selectedFolderIds.delete(folderId);
+    else state.selectedFolderIds.add(folderId);
+    if (elements.folderSelectedCount) elements.folderSelectedCount.textContent = `${state.selectedFolderIds.size} seleccionadas`;
+    renderFolders();
     return;
   }
   if (action === "select") {
+    if (state.folderSelectionMode) {
+      if (state.selectedFolderIds.has(folderId)) state.selectedFolderIds.delete(folderId);
+      else state.selectedFolderIds.add(folderId);
+      if (elements.folderSelectedCount) elements.folderSelectedCount.textContent = `${state.selectedFolderIds.size} seleccionadas`;
+      renderFolders();
+      return;
+    }
     const ownerUid = actionEl.dataset.ownerUid || state.username;
     const isShared = actionEl.dataset.shared === "true";
     const role = actionEl.dataset.role || (isShared ? "viewer" : "owner");
@@ -4898,6 +4927,40 @@ if (elements.saveUsername) {
 
 elements.addFolder.addEventListener("click", handleAddFolder);
 if (elements.addSubfolder) { elements.addSubfolder.addEventListener("click", () => { if (!state.folderBrowseId) return showToast("Abre una carpeta primero.", "info"); openFolderModal(); }); }
+if (elements.folderSelectToggle) elements.folderSelectToggle.addEventListener("click", () => setFolderSelectionMode(!state.folderSelectionMode));
+if (elements.folderBulkCancel) elements.folderBulkCancel.addEventListener("click", () => setFolderSelectionMode(false));
+if (elements.folderBulkMove) elements.folderBulkMove.addEventListener("click", () => {
+  const selected = [...(state.selectedFolderIds || new Set())];
+  if (!selected.length) return showToast("Selecciona al menos una carpeta.", "error");
+  const excluded = new Set(selected);
+  selected.forEach((id) => getFolderDescendantIds(id).forEach((d) => excluded.add(d)));
+  const browseId = state.folderBrowseId || null;
+  const candidates = Object.values(state.folders || {}).filter((f) => !excluded.has(f.id));
+  if (elements.folderMoveTargetList) {
+    elements.folderMoveTargetList.innerHTML = `<button class="button ghost small" data-target-parent="">Raíz</button>${candidates.map((f) => `<button class="button ghost small" data-target-parent="${f.id}">${f.name}</button>`).join("")}`;
+  }
+  showOverlay(elements.folderMoveModal, true);
+});
+if (elements.folderMoveTargetList) elements.folderMoveTargetList.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-target-parent]");
+  if (!btn) return;
+  await moveFoldersToParent([...(state.selectedFolderIds || new Set())], btn.dataset.targetParent || null);
+  showOverlay(elements.folderMoveModal, false);
+  setFolderSelectionMode(false);
+});
+if (elements.folderMoveCancel) elements.folderMoveCancel.addEventListener("click", () => showOverlay(elements.folderMoveModal, false));
+if (elements.folderBulkGroup) elements.folderBulkGroup.addEventListener("click", () => showOverlay(elements.folderGroupModal, true));
+if (elements.folderGroupCancel) elements.folderGroupCancel.addEventListener("click", () => showOverlay(elements.folderGroupModal, false));
+if (elements.folderGroupConfirm) elements.folderGroupConfirm.addEventListener("click", async () => {
+  const name = String(elements.folderGroupName?.value || "").trim();
+  if (!name) return showToast("Pon un nombre.", "error");
+  const db = getDb();
+  const createdFolderId = await createFolder(db, state.username, { name, emoji: "📁", color: "#8b5cf6", reviewBothSides: false, sourceLang: "es", targetLang: "de", parentId: state.folderBrowseId || null });
+  await moveFoldersToParent([...(state.selectedFolderIds || new Set())], createdFolderId || null);
+  showOverlay(elements.folderGroupModal, false);
+  if (elements.folderGroupName) elements.folderGroupName.value = "";
+  setFolderSelectionMode(false);
+});
 
 elements.folderTree.addEventListener("click", handleFolderAction);
 if (elements.folderTree) {
