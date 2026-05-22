@@ -244,8 +244,9 @@ const swipeState = {
 
 let cardBackManuallyEdited = false;
 let cardFrontManuallyEdited = false;
-let cardGrammarType = "normal";
+let currentGrammarType = "normal";
 let cardNounGender = null;
+const VERB_TEMPLATE = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie / Sie -";
 let cardLastTranslation = "";
 let cardTranslateAbortController = null;
 const translationCache = new Map();
@@ -1749,7 +1750,7 @@ function openCardModal(card = null) {
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
-  cardGrammarType = resolvedCard?.cardGrammarType || "normal";
+  currentGrammarType = resolvedCard?.cardGrammarType || "normal";
   cardNounGender = resolvedCard?.nounGender || null;
   elements.cardClozeText.value = resolvedCard ? resolvedCard.clozeText || "" : "";
   elements.cardClozeAnswers.value = resolvedCard ? (resolvedCard.clozeAnswers || []).join(" | ") : "";
@@ -2062,12 +2063,33 @@ function closeCardModal() {
 }
 function syncGrammarControls() {
   elements.cardGrammarType?.querySelectorAll("[data-grammar-type]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.grammarType === cardGrammarType);
+    const isActive = btn.dataset.grammarType === currentGrammarType;
+    btn.classList.toggle("active", isActive);
+    btn.classList.toggle("is-active", isActive);
   });
-  elements.cardNounGenderField?.classList.toggle("hidden", cardGrammarType !== "noun");
+  elements.cardNounGenderField?.classList.toggle("hidden", currentGrammarType !== "noun");
   elements.cardNounGender?.querySelectorAll("[data-noun-gender]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.nounGender === cardNounGender);
+    const isActive = btn.dataset.nounGender === cardNounGender;
+    btn.classList.toggle("active", isActive);
+    btn.classList.toggle("is-active", isActive);
   });
+  console.info("[grammar:render]", { currentGrammarType, cardNounGender });
+}
+
+function setGrammarType(nextGrammarType = "normal") {
+  const next = ["normal", "verb", "noun"].includes(nextGrammarType) ? nextGrammarType : "normal";
+  const previous = currentGrammarType;
+  currentGrammarType = next;
+  if (currentGrammarType !== "noun") {
+    cardNounGender = null;
+  }
+  if (currentGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
+    elements.cardBack.value = VERB_TEMPLATE;
+    autoResizeTextarea(elements.cardBack);
+    console.info("[grammar:apply-template]", { previous, next: currentGrammarType });
+  }
+  console.info("[grammar:set]", { previous, next: currentGrammarType });
+  syncGrammarControls();
 }
 
 function updateCardTypeFields(type) {
@@ -3389,8 +3411,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
-        cardGrammarType,
-        nounGender: cardGrammarType === "noun" ? (cardNounGender || null) : null,
+        cardGrammarType: currentGrammarType,
+        nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3418,8 +3440,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
-        cardGrammarType,
-        nounGender: cardGrammarType === "noun" ? (cardNounGender || null) : null,
+        cardGrammarType: currentGrammarType,
+        nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3466,6 +3488,15 @@ async function handleSaveCard() {
     elements.cardTags.value = "";
     state.selectedTags = new Set();
     renderTagPanels();
+    if (currentGrammarType === "verb" && !String(elements.cardBack.value || "").trim()) {
+      elements.cardBack.value = VERB_TEMPLATE;
+      autoResizeTextarea(elements.cardBack);
+      console.info("[grammar:apply-template]", { source: "after-save", next: currentGrammarType });
+    }
+    if (currentGrammarType === "noun") {
+      cardNounGender = null;
+      syncGrammarControls();
+    }
     elements.cardFront.focus();
     await loadCards(true);
     return;
@@ -5457,19 +5488,15 @@ if (elements.cardBack) elements.cardBack.addEventListener("focus", (event) => { 
 if (elements.cardFront) elements.cardFront.addEventListener("keydown", maybeHandleNumberedEnter);
 if (elements.cardBack) elements.cardBack.addEventListener("keydown", maybeHandleNumberedEnter);
 if (elements.cardGrammarType) {
-  elements.cardGrammarType.addEventListener("click", (event) => {
+  const handleGrammarTypePointer = (event) => {
     const button = event.target.closest("[data-grammar-type]");
     if (!button) return;
     const next = button.dataset.grammarType || "normal";
-    if (next === cardGrammarType) return;
-    cardGrammarType = next;
-    if (cardGrammarType !== "noun") cardNounGender = null;
-    if (cardGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
-      elements.cardBack.value = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie / Sie -";
-      autoResizeTextarea(elements.cardBack);
-    }
-    syncGrammarControls();
-  });
+    console.info("[grammar:click]", { next, eventType: event.type });
+    setGrammarType(next);
+  };
+  elements.cardGrammarType.addEventListener("click", handleGrammarTypePointer);
+  elements.cardGrammarType.addEventListener("touchstart", handleGrammarTypePointer, { passive: true });
 }
 if (elements.cardNounGender) {
   elements.cardNounGender.addEventListener("click", (event) => {

@@ -523,9 +523,13 @@ body {
 .chip-toggle-group { display:flex; gap:8px; flex-wrap:wrap; }
 .chip-toggle { border:1px solid var(--line); background:transparent; color:var(--text); border-radius:999px; padding:4px 10px; font-size:.84rem; }
 .chip-toggle.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.chip-toggle.is-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .chip-toggle--der.active { border-color:#7dd3fc; background:rgba(125,211,252,.18); }
 .chip-toggle--die.active { border-color:#f9a8d4; background:rgba(249,168,212,.18); }
 .chip-toggle--das.active { border-color:#86efac; background:rgba(134,239,172,.18); }
+.chip-toggle--der.is-active { border-color:#7dd3fc; background:rgba(125,211,252,.18); }
+.chip-toggle--die.is-active { border-color:#f9a8d4; background:rgba(249,168,212,.18); }
+.chip-toggle--das.is-active { border-color:#86efac; background:rgba(134,239,172,.18); }
 .list-item--der, .all-cards-row--der, .review-card--der { box-shadow: inset 3px 0 0 rgba(125,211,252,.7); }
 .list-item--die, .all-cards-row--die, .review-card--die { box-shadow: inset 3px 0 0 rgba(249,168,212,.7); }
 .list-item--das, .all-cards-row--das, .review-card--das { box-shadow: inset 3px 0 0 rgba(134,239,172,.7); }
