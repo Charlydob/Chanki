@@ -241,6 +241,8 @@ export const elements = {
   folderEmojiInput: document.getElementById("folder-emoji-input"),
   folderColorInput: document.getElementById("folder-color-input"),
   folderBothSidesInput: document.getElementById("folder-both-sides-input"),
+  folderSourceLang: document.getElementById("folder-source-lang"),
+  folderTargetLang: document.getElementById("folder-target-lang"),
   saveFolder: document.getElementById("save-folder"),
   cancelFolder: document.getElementById("cancel-folder"),
   cardsSelectToggle: document.getElementById("cards-select-toggle"),

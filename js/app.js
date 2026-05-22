@@ -250,9 +250,16 @@ let cardLastTranslation = "";
 let cardTranslateAbortController = null;
 const translationCache = new Map();
 
-const LANGUAGE_LABELS = { es: "Español", de: "Alemán", en: "Inglés" };
+const LANGUAGE_LABELS = { es: "Español", de: "Alemán", ru: "Ruso", en: "Inglés" };
+const LANGUAGE_INPUT_CLASSES = ["lang-accent-es", "lang-accent-de", "lang-accent-ru"];
 
-function oppositeLanguage(lang) { return lang === "de" ? "es" : "de"; }
+function getActiveFolderLanguages() {
+  const folder = state.folders?.[state.selectedFolderId] || {};
+  return {
+    sourceLang: folder?.sourceLang || "es",
+    targetLang: folder?.targetLang || "de",
+  };
+}
 function speechLocaleFor(lang) { return lang === "de" ? "de-DE" : (lang === "en" ? "en-US" : "es-ES"); }
 function resolveVoiceLang(text = "") {
   const lower = String(text).toLowerCase();
@@ -353,6 +360,12 @@ function maybeHandleNumberedEnter(event) {
   const pos = before.length + nextMarker.length;
   textarea.value = nextValue;
   textarea.setSelectionRange(pos, pos);
+  autoResizeTextarea(textarea);
+}
+function autoResizeTextarea(textarea) {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 420)}px`;
 }
 async function translateStructuredText(text, source, target, signal, contextText = "") {
   const clean = String(text || "").trim();
@@ -390,8 +403,17 @@ async function lookupWord(word, source, target, signal, contextText = "") {
   return translated;
 }
 function updateCardLanguageLabels() {
-  if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${LANGUAGE_LABELS.es})`;
-  if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${LANGUAGE_LABELS.de})`;
+  const { sourceLang, targetLang } = getActiveFolderLanguages();
+  const sourceName = LANGUAGE_LABELS[sourceLang] || sourceLang.toUpperCase();
+  const targetName = LANGUAGE_LABELS[targetLang] || targetLang.toUpperCase();
+  if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${sourceName})`;
+  if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${targetName})`;
+  LANGUAGE_INPUT_CLASSES.forEach((className) => {
+    elements.cardFront?.classList.remove(className);
+    elements.cardBack?.classList.remove(className);
+  });
+  elements.cardFront?.classList.add(`lang-accent-${sourceLang}`);
+  elements.cardBack?.classList.add(`lang-accent-${targetLang}`);
 }
 async function runCardTranslation(direction, { force = false } = {}) {
   if (elements.cardType?.value !== "basic") return;
@@ -405,8 +427,9 @@ async function runCardTranslation(direction, { force = false } = {}) {
   }
   setTranslateStatus("Traduciendo…");
   try {
-    const source = direction === "es-de" ? "es" : "de";
-    const target = oppositeLanguage(source);
+    const { sourceLang, targetLang } = getActiveFolderLanguages();
+    const source = direction === "source-target" ? sourceLang : targetLang;
+    const target = direction === "source-target" ? targetLang : sourceLang;
     console.info("[translate:phrase]", { direction, source, target });
     const translated = await translateStructuredText(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "");
     if (!isSingleWord(sourceText)) elements.cardTranslateContextField?.classList.add("hidden");
@@ -1402,6 +1425,8 @@ function openFolderModal(folder = null) {
   if (elements.folderEmojiInput) elements.folderEmojiInput.value = folder?.emoji || "📁";
   if (elements.folderColorInput) elements.folderColorInput.value = folder?.color || "#8b5cf6";
   if (elements.folderBothSidesInput) elements.folderBothSidesInput.checked = Boolean(folder?.reviewBothSides);
+  if (elements.folderSourceLang) elements.folderSourceLang.value = folder?.sourceLang || "es";
+  if (elements.folderTargetLang) elements.folderTargetLang.value = folder?.targetLang || "de";
   elements.saveFolder.disabled = false;
   showOverlay(elements.folderModal, true);
   elements.folderNameInput.focus();
@@ -1413,6 +1438,8 @@ function closeFolderModal() {
   if (elements.folderEmojiInput) elements.folderEmojiInput.value = "📁";
   if (elements.folderColorInput) elements.folderColorInput.value = "#8b5cf6";
   if (elements.folderBothSidesInput) elements.folderBothSidesInput.checked = false;
+  if (elements.folderSourceLang) elements.folderSourceLang.value = "es";
+  if (elements.folderTargetLang) elements.folderTargetLang.value = "de";
   editingFolderId = null;
 }
 
@@ -1751,6 +1778,8 @@ function openCardModal(card = null) {
   elements.cardTranslateEsDe?.classList.add("hidden");
   elements.cardTranslateDeEs?.classList.add("hidden");
   refreshTranslateCta();
+  autoResizeTextarea(elements.cardFront);
+  autoResizeTextarea(elements.cardBack);
   showOverlay(elements.cardModal, true);
 }
 
@@ -3099,6 +3128,8 @@ async function handleSaveFolder() {
   const emoji = (elements.folderEmojiInput?.value || "📁").trim() || "📁";
   const color = (elements.folderColorInput?.value || "#8b5cf6").trim() || "#8b5cf6";
   const reviewBothSides = Boolean(elements.folderBothSidesInput?.checked);
+  const sourceLang = String(elements.folderSourceLang?.value || "es").trim().toLowerCase();
+  const targetLang = String(elements.folderTargetLang?.value || "de").trim().toLowerCase();
   if (!name) {
     showToast("Escribe un nombre.", "error");
     return;
@@ -3107,9 +3138,9 @@ async function handleSaveFolder() {
   elements.saveFolder.disabled = true;
   try {
     if (editingFolderId) {
-      await updateFolder(db, state.username, editingFolderId, { name, emoji, color, reviewBothSides });
+      await updateFolder(db, state.username, editingFolderId, { name, emoji, color, reviewBothSides, sourceLang, targetLang });
     } else {
-      await createFolder(db, state.username, { name, emoji, color, reviewBothSides });
+      await createFolder(db, state.username, { name, emoji, color, reviewBothSides, sourceLang, targetLang, parentId: null });
     }
     showToast("Guardado");
     closeFolderModal();
@@ -3317,6 +3348,8 @@ async function handleSaveCard() {
     }
     elements.cardFront.value = "";
     elements.cardBack.value = "";
+    autoResizeTextarea(elements.cardFront);
+    autoResizeTextarea(elements.cardBack);
     elements.cardClozeText.value = "";
     elements.cardClozeAnswers.value = "";
     if (elements.cardOrderTokens) {
@@ -5282,6 +5315,7 @@ if (cardOrderAddLabelButton) {
 
 if (elements.cardFront) elements.cardFront.addEventListener("input", () => {
   cardFrontManuallyEdited = true;
+  autoResizeTextarea(elements.cardFront);
   console.info("[translate:auto-disabled]", { field: "front" });
   refreshTranslateCta();
 });
@@ -5313,6 +5347,7 @@ if (elements.cardNounGender) {
 }
 if (elements.cardBack) elements.cardBack.addEventListener("input", () => {
   cardBackManuallyEdited = true;
+  autoResizeTextarea(elements.cardBack);
   console.info("[translate:auto-disabled]", { field: "back" });
   refreshTranslateCta();
 });
@@ -5322,22 +5357,27 @@ if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", asy
   const back = String(elements.cardBack?.value || "").trim();
   if (front && !back) {
     if (isSingleWord(front)) elements.cardTranslateContextField?.classList.remove("hidden");
-    return runCardTranslation("es-de");
+    return runCardTranslation("source-target");
   }
   if (back && !front) {
     if (isSingleWord(back)) elements.cardTranslateContextField?.classList.remove("hidden");
-    return runCardTranslation("de-es");
+    return runCardTranslation("target-source");
   }
   if (front && back) {
     elements.cardTranslateEsDe?.classList.remove("hidden");
     elements.cardTranslateDeEs?.classList.remove("hidden");
+    const { sourceLang, targetLang } = getActiveFolderLanguages();
+    const sourceName = LANGUAGE_LABELS[sourceLang] || sourceLang.toUpperCase();
+    const targetName = LANGUAGE_LABELS[targetLang] || targetLang.toUpperCase();
+    if (elements.cardTranslateEsDe) elements.cardTranslateEsDe.textContent = `Traducir ${sourceName} → ${targetName}`;
+    if (elements.cardTranslateDeEs) elements.cardTranslateDeEs.textContent = `Traducir ${targetName} → ${sourceName}`;
     setTranslateStatus("Elige dirección");
     return;
   }
   showToast("Escribe texto para traducir.", "info");
 });
-if (elements.cardTranslateEsDe) elements.cardTranslateEsDe.addEventListener("click", () => runCardTranslation("es-de", { force: true }));
-if (elements.cardTranslateDeEs) elements.cardTranslateDeEs.addEventListener("click", () => runCardTranslation("de-es", { force: true }));
+if (elements.cardTranslateEsDe) elements.cardTranslateEsDe.addEventListener("click", () => runCardTranslation("source-target", { force: true }));
+if (elements.cardTranslateDeEs) elements.cardTranslateDeEs.addEventListener("click", () => runCardTranslation("target-source", { force: true }));
 elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);
