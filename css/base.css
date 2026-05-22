@@ -29,8 +29,10 @@
   --safe-area-right: env(safe-area-inset-right);
   --nav-bg: rgba(12, 16, 28, 0.86);
   --input-bg: rgba(26, 34, 48, 0.9);
+  --border: rgba(255, 255, 255, 0.1);
 }
 
+:root[data-theme="light"],
 :root.theme-light,
 body.theme-light {
   color-scheme: light;
@@ -42,6 +44,7 @@ body.theme-light {
   --muted: #596579;
   --nav-bg: rgba(255, 255, 255, 0.96);
   --input-bg: #ffffff;
+  --border: rgba(15, 23, 42, 0.16);
 }
 
 *,
@@ -169,7 +172,7 @@ body {
 
 .cards-search input {
   background: var(--surface-2);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   padding: 10px 12px;
   color: var(--text);
@@ -225,7 +228,7 @@ body {
   flex-direction: column;
   gap: 10px;
   background: rgba(15, 23, 42, 0.3);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 14px;
   padding: 10px 12px;
 }
@@ -276,7 +279,7 @@ body {
 }
 
 .tag-chip {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(15, 23, 42, 0.4);
   color: var(--text);
   border-radius: 999px;
@@ -303,7 +306,7 @@ body {
 }
 
 .tag-item__delete {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(239, 68, 68, 0.18);
   color: #fecaca;
   border-radius: 999px;
@@ -322,7 +325,7 @@ body {
   flex-direction: column;
   gap: 6px;
   background: rgba(12, 16, 28, 0.8);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   padding: 8px;
 }
@@ -345,7 +348,7 @@ body {
 
 .review-folder-trigger {
   background: var(--surface-2);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   color: var(--text);
   font-size: 15px;
@@ -403,7 +406,7 @@ body {
 
 .button.ghost {
   background: rgba(15, 23, 42, 0.35);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   color: var(--text);
   box-shadow: none;
 }
@@ -485,7 +488,7 @@ body {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(15, 23, 42, 0.35);
   cursor: pointer;
 }
@@ -503,7 +506,7 @@ body {
   padding: 12px 14px;
   border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   box-shadow: 0 12px 30px rgba(8, 10, 18, 0.35);
   backdrop-filter: blur(14px);
   display: flex;
@@ -647,7 +650,7 @@ body {
 }
 
 .icon-button {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(15, 23, 42, 0.35);
   color: var(--text);
   width: 36px;
@@ -670,7 +673,7 @@ body {
   right: 0;
   top: calc(100% + 6px);
   background: rgba(15, 23, 42, 0.96);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   padding: 6px;
   display: flex;
@@ -713,7 +716,7 @@ body {
   padding: 16px;
   border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   box-shadow: 0 18px 40px rgba(10, 14, 24, 0.4);
   backdrop-filter: blur(18px);
   max-width: 100%;
@@ -770,7 +773,7 @@ body {
 .field select,
 textarea {
   background: var(--input-bg);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   padding: 10px 12px;
   color: var(--text);
@@ -823,7 +826,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   box-shadow: 0 20px 50px rgba(8, 10, 18, 0.5);
   transform: translateY(0);
   animation: modal-pop 0.2s ease;
@@ -874,7 +877,7 @@ textarea {
 }
 
 .order-help {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   border-radius: 12px;
   padding: 10px 12px;
   background: rgba(15, 23, 42, 0.35);
@@ -942,7 +945,7 @@ textarea {
 
 .review-card {
   background: var(--surface-2);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   padding: 20px;
   border-radius: var(--radius);
   min-height: 160px;
@@ -1191,7 +1194,7 @@ textarea#import-text {
   color: var(--text);
   border-radius: var(--radius);
   padding: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
 }
 
 .settings-stack,
@@ -1369,7 +1372,7 @@ canvas.mini-chart {
   padding: 10px 14px;
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   color: var(--text);
   font-size: 13px;
   box-shadow: 0 12px 30px rgba(8, 10, 18, 0.4);
@@ -1529,7 +1532,7 @@ textarea {
   gap: 8px;
   padding: 8px;
   border-radius: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(11, 15, 25, 0.86);
   backdrop-filter: blur(8px);
 }
@@ -1625,7 +1628,7 @@ textarea {
 }
 
 .order-editor-token {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border, var(--glass-border));
   background: rgba(15, 23, 42, 0.45);
   color: var(--text);
   border-radius: 14px;
