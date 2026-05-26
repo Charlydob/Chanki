@@ -1487,9 +1487,20 @@ canvas.mini-chart {
   font-weight: 600;
 }
 
+
+.word-popover-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 12, 0.72);
+  z-index: 2147483000;
+}
+
 .word-popover {
   position: fixed;
-  z-index: 9999;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2147483646;
   max-width: min(320px, calc(100vw - 24px));
   padding: 12px;
   border-radius: 14px;
