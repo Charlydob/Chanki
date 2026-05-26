@@ -44,4 +44,18 @@ ihr - seid
 sie / Sie - sind`
 );
 
+const caseE = `INDIKATIV PRÄSENS
+ich gehedu gehster/sie/es gehtwir gehenihr gehtSie gehen
+INDIKATIV PRÄTERITUM
+ich gingdu gingster/sie/es gingwir gingenihr gingtSie gingen
+IMPERATIV PRÄSENS
+gehe (du)gehen wirgeht ihrgehen Sie
+geh (du)gehen wirgeht ihrgehen Sie`;
+const parsedE = parseGermanConjugationPaste(caseE);
+assert.deepEqual(Object.keys(parsedE.conjugations), [
+  "INDIKATIV PRÄSENS",
+  "INDIKATIV PRÄTERITUM",
+  "IMPERATIV PRÄSENS",
+]);
+
 console.log("verb conjugation parser tests passed");
