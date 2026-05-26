@@ -810,6 +810,11 @@ textarea {
   overflow-y: hidden;
 }
 
+.conjugation-select {
+  min-height: 44px;
+  max-height: 48px;
+}
+
 .lang-bg-es {
   border-color: rgba(255, 82, 82, 0.55) !important;
   box-shadow: 0 0 0 1px rgba(255, 196, 0, 0.2), 0 0 0 4px rgba(255, 82, 82, 0.06);
