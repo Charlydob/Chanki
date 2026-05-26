@@ -45,6 +45,7 @@
           <div class="screen__header">
             <h2>Carpetas</h2>
             <button id="add-folder" class="button">Nueva carpeta</button>
+            <button id="add-card-from-folders" class="button ghost" type="button">Nueva tarjeta</button>
             <button id="add-subfolder" class="button ghost" type="button">Nueva subcarpeta</button>
             <button id="folder-select-toggle" class="button ghost" type="button">Seleccionar</button>
           </div>
@@ -596,6 +597,11 @@
           <button id="card-modal-close" class="icon-button" type="button" aria-label="Cerrar">✕</button>
         </div>
         <div class="modal__body">
+          <label class="field hidden" id="card-folder-field">
+            <span>Carpeta</span>
+            <select id="card-folder-select"></select>
+            <small id="card-folder-empty-message" class="muted hidden">Crea una carpeta antes de añadir tarjetas.</small>
+          </label>
           <label class="field">
             <span>Tipo</span>
             <select id="card-type">

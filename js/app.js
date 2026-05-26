@@ -1745,8 +1745,15 @@ function updateLoadMoreVisibility(searching = false) {
 
 function openCardModal(card = null) {
   const resolvedCard = resolveLegacyOrderCard(card);
+  const openedFromFoldersRoot = !resolvedCard && document.getElementById("screen-folders")?.classList.contains("active");
+  state.cardModalOpenFromFoldersRoot = openedFromFoldersRoot;
   editingCardId = resolvedCard ? resolvedCard.id : null;
   elements.cardModalTitle.textContent = resolvedCard ? "Editar tarjeta" : "Nueva tarjeta";
+  renderCardFolderSelector({
+    openedFromFoldersRoot,
+    selectedFolderId: resolvedCard?.folderId || state.cardModalLastSelectedFolderId || state.selectedFolderId || "",
+    disableSelection: Boolean(resolvedCard),
+  });
   const type = resolvedCard?.type || "basic";
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
@@ -1783,6 +1790,29 @@ function openCardModal(card = null) {
   autoResizeTextarea(elements.cardFront);
   autoResizeTextarea(elements.cardBack);
   showOverlay(elements.cardModal, true);
+}
+
+function renderCardFolderSelector({ openedFromFoldersRoot = false, selectedFolderId = "", disableSelection = false } = {}) {
+  if (!elements.cardFolderField || !elements.cardFolderSelect) return;
+  const folders = Object.values(state.folders || {});
+  const shouldShow = openedFromFoldersRoot || disableSelection;
+  elements.cardFolderField.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) return;
+  elements.cardFolderSelect.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = folders.length ? "Selecciona carpeta…" : "Sin carpetas";
+  elements.cardFolderSelect.appendChild(placeholder);
+  folders.forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = `${folder.emoji || "📁"} ${folder.name || "Carpeta"}`;
+    elements.cardFolderSelect.appendChild(option);
+  });
+  const resolvedSelection = folders.find((folder) => folder.id === selectedFolderId)?.id || "";
+  elements.cardFolderSelect.value = resolvedSelection;
+  elements.cardFolderSelect.disabled = disableSelection || !folders.length;
+  elements.cardFolderEmptyMessage?.classList.toggle("hidden", folders.length > 0);
 }
 
 function ensureReviewEditModal() {
@@ -3365,8 +3395,13 @@ async function handleCardListAction(event) {
 }
 
 async function handleSaveCard() {
-  if (!state.selectedFolderId && !editingCardId) {
-    showToast("Selecciona una carpeta primero.", "error");
+  const folders = Object.values(state.folders || {});
+  const selectedFolderFromModal = elements.cardFolderSelect?.value || "";
+  const folderIdForSave = editingCardId
+    ? (state.cards.find((card) => card.id === editingCardId)?.folderId || state.selectedFolderId || selectedFolderFromModal || "")
+    : (state.cardModalOpenFromFoldersRoot ? selectedFolderFromModal : state.selectedFolderId);
+  if (!folderIdForSave && !editingCardId) {
+    showToast(folders.length ? "Selecciona una carpeta primero." : "Crea una carpeta antes de añadir tarjetas.", "error");
     return;
   }
   if (isActiveFolderReadOnly()) {
@@ -3459,7 +3494,7 @@ async function handleSaveCard() {
     try {
       const result = await upsertCardWithDedupe(db, ownerUid, {
         id,
-        folderId: state.selectedFolderId,
+        folderId: folderIdForSave,
         type,
         front,
         back,
@@ -3529,6 +3564,13 @@ async function handleSaveCard() {
       syncGrammarControls();
     }
     elements.cardFront.focus();
+    if (state.cardModalOpenFromFoldersRoot) {
+      state.cardModalLastSelectedFolderId = folderIdForSave;
+      renderCardFolderSelector({
+        openedFromFoldersRoot: true,
+        selectedFolderId: state.cardModalLastSelectedFolderId,
+      });
+    }
     await loadCards(true);
     return;
   }
@@ -5156,6 +5198,15 @@ elements.addCard.addEventListener("click", () => {
   openCardModal();
 });
 
+if (elements.addCardFromFolders) {
+  elements.addCardFromFolders.addEventListener("click", () => {
+    if (!Object.keys(state.folders || {}).length) {
+      showToast("Crea una carpeta antes de añadir tarjetas.", "error");
+    }
+    openCardModal();
+  });
+}
+
 if (elements.importFolder) {
   elements.importFolder.addEventListener("click", () => {
     if (isActiveFolderReadOnly()) {
@@ -5346,6 +5397,19 @@ if (elements.cardsDupToggle) {
 if (elements.cardType) {
   elements.cardType.addEventListener("change", (event) => {
     updateCardTypeFields(event.target.value);
+  });
+}
+if (elements.cardFolderSelect) {
+  elements.cardFolderSelect.addEventListener("pointerdown", () => {
+    if (!elements.cardModal || elements.cardModal.classList.contains("hidden")) return;
+    renderCardFolderSelector({
+      openedFromFoldersRoot: !elements.cardFolderField.classList.contains("hidden"),
+      selectedFolderId: elements.cardFolderSelect.value || state.cardModalLastSelectedFolderId || state.selectedFolderId || "",
+      disableSelection: Boolean(editingCardId),
+    });
+  });
+  elements.cardFolderSelect.addEventListener("change", () => {
+    state.cardModalLastSelectedFolderId = elements.cardFolderSelect.value || "";
   });
 }
 
