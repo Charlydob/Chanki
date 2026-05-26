@@ -1059,15 +1059,14 @@ textarea {
   white-space: pre-line;
 }
 
-.review-card .speech-items-list {
+.review-card .inline-speech-list {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 6px;
 }
 
-.review-card .speech-item-row {
+.review-card .inline-speech-row {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1075,7 +1074,7 @@ textarea {
   width: 100%;
 }
 
-.review-card .speech-item-row__text {
+.review-card .inline-speech-row__text {
   white-space: pre-wrap;
   text-align: left;
 }
