@@ -15,14 +15,14 @@ er/sie/es verdient
 wir verdienen
 ihr verdient
 Sie verdienen`;
-assert.equal(parseGermanConjugationPaste(caseA), expectedVerdienen);
+assert.equal(parseGermanConjugationPaste(caseA).formatted, expectedVerdienen);
 
 const caseB = "ich verdienedu verdienster/sie/es verdientwir verdienenihr verdientSie verdienen";
-assert.equal(parseGermanConjugationPaste(caseB), expectedVerdienen);
+assert.equal(parseGermanConjugationPaste(caseB).formatted, expectedVerdienen);
 
 const caseC = "ich gehedu gehster/sie/es gehtwir gehenihr gehtSie gehen";
 assert.equal(
-  parseGermanConjugationPaste(caseC),
+  parseGermanConjugationPaste(caseC).formatted,
   `[gehen]
 ich - gehe
 du - gehst
@@ -34,7 +34,7 @@ sie / Sie - gehen`
 
 const caseD = "ich bindu bister/sie/es istwir sindihr seidSie sind";
 assert.equal(
-  parseGermanConjugationPaste(caseD),
+  parseGermanConjugationPaste(caseD).formatted,
   `[sind]
 ich - bin
 du - bist

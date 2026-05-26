@@ -253,6 +253,7 @@ const VERB_TEMPLATE = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie 
 let cardLastTranslation = "";
 let cardTranslateAbortController = null;
 const translationCache = new Map();
+let reviewConjugationHeading = "";
 
 const LANGUAGE_LABELS = { es: "Español", de: "Alemán", ru: "Ruso", en: "Inglés" };
 const LANGUAGE_INPUT_CLASSES = ["lang-bg-es", "lang-bg-de", "lang-bg-ru"];
@@ -1565,11 +1566,14 @@ function buildCardListItem(card, isDuplicate, readOnly) {
     : resolvedCard.type === "order"
       ? `${resolvedCard.front || "(orden sin frente)"}`
       : `${resolvedCard.front}`;
+  const verbConjCount = Array.isArray(resolvedCard.conjugationBlocks) ? resolvedCard.conjugationBlocks.length : 0;
   const detail = resolvedCard.type === "cloze"
     ? `Respuestas: ${(resolvedCard.clozeAnswers || []).join(", ") || "-"}`
     : resolvedCard.type === "order"
       ? `Orden: ${getCardDedupeValues(resolvedCard).back || "-"}`
-      : `${resolvedCard.back}`;
+      : (resolvedCard.cardGrammarType === "verb" && verbConjCount
+        ? `${resolvedCard.back?.split("\n")[0] || "Verbo"} · ${verbConjCount} conjugaciones`
+        : `${resolvedCard.back}`);
   item.innerHTML = `
       ${state.cardsSelectionMode ? `<button class="icon-button icon-button--compact" data-action="toggle-select" data-id="${card.id}" type="button" aria-label="Seleccionar">${isSelected ? "☑️" : "⬜"}</button>` : ""}
       <button class="item-main" data-action="edit" data-id="${card.id}" type="button">
@@ -1825,12 +1829,14 @@ function openCardModal(card = null) {
   renderCardFolderSelector({
     openedFromFoldersRoot,
     selectedFolderId: resolvedCard?.folderId || state.cardModalLastSelectedFolderId || state.selectedFolderId || "",
-    disableSelection: Boolean(resolvedCard),
+    disableSelection: false,
   });
   const type = resolvedCard?.type || "basic";
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
+  if (resolvedCard?.conjugationBlocks?.length) elements.cardBack.dataset.conjugationBlocks = JSON.stringify(resolvedCard.conjugationBlocks);
+  else delete elements.cardBack.dataset.conjugationBlocks;
   if (elements.cardExample) elements.cardExample.value = resolvedCard ? resolvedCard.example || "" : "";
   currentGrammarType = resolvedCard?.cardGrammarType || "normal";
   cardNounGender = resolvedCard?.nounGender || null;
@@ -2187,9 +2193,10 @@ function updateVerbReversoLink() {
 }
 
 function applyReversoConjugationPaste(raw = "") {
-  const normalized = parseGermanConjugationPaste(raw);
-  if (!normalized) return;
-  elements.cardBack.value = normalized;
+  const parsed = parseGermanConjugationPaste(raw);
+  if (!parsed) return;
+  elements.cardBack.value = parsed.formatted;
+  elements.cardBack.dataset.conjugationBlocks = JSON.stringify(parsed.blocks || []);
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
 }
@@ -3530,6 +3537,14 @@ async function handleSaveCard() {
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
+  let conjugationBlocks = [];
+  if (currentGrammarType === "verb") {
+    try { conjugationBlocks = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"); } catch {}
+    if (!conjugationBlocks.length) {
+      const parsed = parseGermanConjugationPaste(back);
+      if (parsed?.blocks?.length) conjugationBlocks = parsed.blocks;
+    }
+  }
   const example = elements.cardExample?.value.trim() || "";
   const clozeText = elements.cardClozeText.value.trim();
   const clozeAnswers = elements.cardClozeAnswers.value
@@ -3599,6 +3614,7 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
+        conjugationBlocks,
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3629,6 +3645,7 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
+        conjugationBlocks,
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -4120,7 +4137,35 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
       backText.className = "review-back";
-      backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
+      const blocks = Array.isArray(resolvedCard.conjugationBlocks) ? resolvedCard.conjugationBlocks : [];
+      if (resolvedCard.cardGrammarType === "verb" && blocks.length) {
+        const kpi = document.createElement("div");
+        kpi.className = "review-conj-tabs";
+        const active = reviewConjugationHeading && blocks.some((b) => b.heading === reviewConjugationHeading)
+          ? reviewConjugationHeading
+          : blocks[0].heading;
+        reviewConjugationHeading = active;
+        blocks.forEach((block) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `chip-toggle${block.heading === active ? " active is-active" : ""}`;
+          btn.textContent = block.label || block.heading;
+          btn.addEventListener("click", () => {
+            reviewConjugationHeading = block.heading;
+            refreshCurrentReviewCard();
+          });
+          kpi.appendChild(btn);
+        });
+        backSection.appendChild(kpi);
+        const selected = blocks.find((b) => b.heading === active) || blocks[0];
+        const lines = ["ich", "du", "er/sie/es", "wir", "ihr", "sie"].map((p) => {
+          const lbl = p === "er/sie/es" ? "er / sie / es" : (p === "sie" ? "sie / Sie" : p);
+          return `${lbl} - ${selected.forms?.[p] || "-"}`;
+        }).join("\n");
+        backText.appendChild(renderBackWithLanguage(lines, glossaryMap));
+      } else {
+        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
+      }
       injectInlineSpeechButtons(backText, targetLang);
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
