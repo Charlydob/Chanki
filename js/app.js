@@ -474,12 +474,6 @@ function cleanTextForSpeech(text = "") {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-function splitSpeechItems(text = "") {
-  return String(text || "")
-    .split(/\r?\n/)
-    .map((line) => cleanTextForSpeech(line))
-    .filter(Boolean);
-}
 function speakText(text, lang) {
   if (!("speechSynthesis" in window)) return;
   const cleaned = cleanTextForSpeech(text);
@@ -500,22 +494,40 @@ function buildAudioButton(text, lang, { label = "Reproducir audio" } = {}) {
   btn.addEventListener("click", () => speakText(text, lang));
   return btn;
 }
-function buildSpeechItemsList(text, lang) {
-  const speechItems = splitSpeechItems(text);
-  if (speechItems.length < 2) return null;
+function injectInlineSpeechButtons(contentEl, lang) {
+  if (!contentEl) return false;
+  const rawText = String(contentEl.innerText || "").replace(/\r/g, "");
+  const lines = rawText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const numberedLineRegex = /^\s*(\d+)\.\s+(.+?)\s*$/;
+  const numberedLines = lines
+    .map((line) => {
+      const match = line.match(numberedLineRegex);
+      if (!match) return null;
+      return { line, number: match[1], cleanText: cleanTextForSpeech(match[2]) };
+    })
+    .filter(Boolean);
+  if (!numberedLines.length || numberedLines.length !== lines.length) return false;
+
+  contentEl.textContent = "";
   const list = document.createElement("div");
-  list.className = "speech-items-list";
-  speechItems.forEach((itemText, index) => {
+  list.className = "inline-speech-list";
+  numberedLines.forEach(({ line, cleanText }, index) => {
     const row = document.createElement("div");
-    row.className = "speech-item-row";
-    row.appendChild(buildAudioButton(itemText, lang, { label: `Reproducir línea ${index + 1}` }));
+    row.className = "inline-speech-row";
+    const btn = buildAudioButton(cleanText, lang, { label: `Reproducir línea ${index + 1}` });
+    btn.dataset.speechText = cleanText;
+    row.appendChild(btn);
     const value = document.createElement("span");
-    value.className = "speech-item-row__text";
-    value.textContent = `${index + 1}. ${itemText}`;
+    value.className = "inline-speech-row__text";
+    value.textContent = line;
     row.appendChild(value);
     list.appendChild(row);
   });
-  return list;
+  contentEl.appendChild(list);
+  return true;
 }
 
 const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee"];
@@ -3788,8 +3800,6 @@ function renderReviewCard(card, showBack = false) {
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), targetLang));
-    const clozeSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), targetLang);
-    if (clozeSpeechItems) frontSection.appendChild(clozeSpeechItems);
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -3827,8 +3837,6 @@ function renderReviewCard(card, showBack = false) {
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
-    const orderSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), sourceLang);
-    if (orderSpeechItems) frontSection.appendChild(orderSpeechItems);
     wrapper.appendChild(frontSection);
 
     const orderCard = document.createElement("div");
@@ -4039,11 +4047,10 @@ function renderReviewCard(card, showBack = false) {
     const frontText = document.createElement("div");
     frontText.className = "review-front";
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap));
+    injectInlineSpeechButtons(frontText, sourceLang);
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
-    const frontSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), sourceLang);
-    if (frontSpeechItems) frontSection.appendChild(frontSpeechItems);
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -4055,11 +4062,10 @@ function renderReviewCard(card, showBack = false) {
       const backText = document.createElement("div");
       backText.className = "review-back";
       backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
+      injectInlineSpeechButtons(backText, targetLang);
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       backSection.appendChild(buildAudioButton((resolvedCard.back || ""), targetLang));
-      const backSpeechItems = buildSpeechItemsList((resolvedCard.back || ""), targetLang);
-      if (backSpeechItems) backSection.appendChild(backSpeechItems);
       wrapper.appendChild(backSection);
     }
   }
