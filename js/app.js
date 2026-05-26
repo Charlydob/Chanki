@@ -1352,26 +1352,23 @@ function buildKnownWordsIndex(cards = []) {
   const index = new Map();
   const allCards = Array.isArray(cards) ? cards : [];
   allCards.forEach((card) => {
-    const texts = [card?.front, card?.back, card?.example, card?.clozeText, ...(card?.clozeAnswers || [])];
-    const blocks = getCardConjugationBlocks(card);
-    blocks.forEach((block) => {
-      (block?.lines || []).forEach((line) => texts.push(line?.value || ""));
-    });
-    texts.forEach((text) => {
-      String(formatCardText(text || "")).match(WORD_TOKEN_REGEX)?.forEach((rawWord) => {
-        const norm = normalizeWordForLookup(rawWord);
-        if (!norm || index.has(norm)) return;
-        const gender = card?.nounGender || "";
-        index.set(norm, {
-          norm,
-          word: rawWord,
-          meaning: card?.back || card?.front || "",
-          folderId: card?.folderId || null,
-          folderName: card?.folderId ? (state.folders?.[card.folderId]?.name || "") : "",
-          gender,
-          cardId: card?.id || null,
-        });
-      });
+    const rawTerm = String(card?.front || "").trim();
+    const norm = normalizeWordForLookup(rawTerm);
+    if (!norm || index.has(norm)) return;
+    const meaning = String(card?.back || "").trim();
+    if (!meaning) return;
+    if (rawTerm.split(/\s+/).length !== 1) return;
+    const gender = ["der", "die", "das"].includes(String(card?.nounGender || "").toLowerCase())
+      ? String(card?.nounGender || "").toLowerCase()
+      : "";
+    index.set(norm, {
+      norm,
+      word: rawTerm,
+      meaning,
+      folderId: card?.folderId || null,
+      folderName: card?.folderId ? (state.folders?.[card.folderId]?.name || "") : "",
+      gender,
+      cardId: card?.id || null,
     });
   });
   return index;
@@ -1400,8 +1397,8 @@ function resolveWordMeta(word, glossaryMap) {
   };
 }
 
-function renderInteractiveText(text, options = {}) {
-  const { glossaryMap = new Map(), language = "de", cardId = "", side = "" } = options;
+function renderClickableWords(text, context = {}) {
+  const { glossaryMap = new Map(), lang = "de", cardId = "", side = "", folderId = "" } = context;
   const formatted = formatCardText(text);
   const fragment = document.createDocumentFragment();
   const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
@@ -1415,16 +1412,18 @@ function renderInteractiveText(text, options = {}) {
     const span = document.createElement("span");
     span.className = "word";
     const meta = resolveWordMeta(word, glossaryMap);
-    if (meta.known || (meta.meaning && meta.meaning.trim())) span.classList.add("gloss-term", "has-meaning");
+    if (meta.meaning && meta.meaning.trim()) span.classList.add("gloss-term", "has-meaning");
     if (meta.gender) span.classList.add(`word--${meta.gender}`);
+    span.dataset.clickableWord = "1";
     span.dataset.word = word;
     span.dataset.norm = meta.norm || "";
     span.dataset.gender = meta.gender || "";
     span.dataset.folderId = meta.folderId || "";
     span.dataset.folderName = meta.folderName || "";
-    span.dataset.lang = language || "de";
+    span.dataset.lang = lang || "de";
     span.dataset.cardId = cardId || "";
     span.dataset.side = side || "";
+    span.dataset.contextFolderId = folderId || "";
     span.textContent = word;
     fragment.appendChild(span);
     lastIndex = match.index + word.length;
@@ -1441,9 +1440,9 @@ function createLanguageChunk(text, language, glossaryMap) {
   chunk.className = "lang-chunk";
   chunk.dataset.language = language;
   chunk.appendChild(
-    renderInteractiveText(text, {
+    renderClickableWords(text, {
       glossaryMap,
-      language,
+      lang: language,
     })
   );
   return chunk;
@@ -1454,11 +1453,12 @@ function renderTextWithLanguage(text, language, glossaryMap, options = {}) {
   chunk.className = "lang-chunk";
   chunk.dataset.language = language;
   chunk.appendChild(
-    renderInteractiveText(text, {
+    renderClickableWords(text, {
       glossaryMap,
-      language,
+      lang: language,
       cardId: options.cardId || "",
       side: options.side || "",
+      folderId: options.folderId || "",
     })
   );
   return chunk;
@@ -4721,7 +4721,7 @@ function handleReviewPointerDown(event) {
   if (elements.screenReviewPlayer?.classList.contains("hidden")) return;
   if (event.button && event.button !== 0) return;
   if (wordPopover && !wordPopover.classList.contains("hidden")) return;
-  if (event.target.closest(".word")) return;
+  if (event.target.closest("[data-clickable-word]")) return;
   swipeState.active = true;
   swipeState.pointerId = event.pointerId;
   swipeState.startX = event.clientX;
@@ -6060,27 +6060,28 @@ if (elements.cardModalClose) {
   elements.cardModalClose.addEventListener("click", closeCardModal);
 }
 
+document.addEventListener("click", (event) => {
+  const wordEl = event.target.closest("[data-clickable-word]");
+  if (!wordEl) return;
+  event.stopPropagation();
+  const word = wordEl.dataset.word;
+  if (!word) return;
+  const language = wordEl.dataset.lang || wordEl.closest(".lang-chunk")?.dataset.language || "de";
+  const card = state.reviewQueue[state.currentIndex];
+  const context = getReviewCardContext(card);
+  state.activeWordContext = {
+    language,
+    cardId: wordEl.dataset.cardId || card?.id || null,
+    folderId: wordEl.dataset.contextFolderId || card?.folderId || null,
+    ownerUid: context.ownerUid || state.username,
+    role: context.role,
+    isShared: context.isShared,
+    side: wordEl.dataset.side || "",
+  };
+  openWordMeaningPopup({ word, anchorRect: wordEl.getBoundingClientRect(), language, context: state.activeWordContext });
+});
+
 if (elements.reviewCard) {
-  elements.reviewCard.addEventListener("click", (event) => {
-    const wordEl = event.target.closest(".word");
-    if (!wordEl) return;
-    event.stopPropagation();
-    const word = wordEl.dataset.word;
-      if (word) {
-        const language = wordEl.dataset.lang || wordEl.closest(".lang-chunk")?.dataset.language || "de";
-        const card = state.reviewQueue[state.currentIndex];
-        const context = getReviewCardContext(card);
-        state.activeWordContext = {
-          language,
-          cardId: wordEl.dataset.cardId || card?.id || null,
-          folderId: card?.folderId || null,
-          ownerUid: context.ownerUid || state.username,
-          role: context.role,
-          isShared: context.isShared,
-        };
-        openWordMeaningPopup({ word, anchorRect: wordEl.getBoundingClientRect(), language, context: state.activeWordContext });
-      }
-  });
   elements.reviewCard.addEventListener("pointerdown", handleReviewPointerDown);
   elements.reviewCard.addEventListener("pointermove", handleReviewPointerMove);
   elements.reviewCard.addEventListener("pointerup", finalizeSwipe);
@@ -6270,7 +6271,7 @@ document.addEventListener(
   "pointerdown",
   (event) => {
     if (wordPopover && !wordPopover.classList.contains("hidden")) {
-      if (!event.target.closest(".word-popover") && !event.target.closest(".word")) {
+      if (!event.target.closest(".word-popover") && !event.target.closest("[data-clickable-word]")) {
         closeWordPopover();
         event.stopPropagation();
         event.preventDefault();
