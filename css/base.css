@@ -1519,6 +1519,12 @@ canvas.mini-chart {
   margin-top: 10px;
 }
 
+
+.word--der { text-decoration: underline; text-decoration-color: #60a5fa; text-decoration-thickness: 2px; }
+.word--die { text-decoration: underline; text-decoration-color: #f472b6; text-decoration-thickness: 2px; }
+.word--das { text-decoration: underline; text-decoration-color: #34d399; text-decoration-thickness: 2px; }
+.word-popover__folder { width: 100%; margin-top: 8px; border-radius: 10px; }
+.word-popover__genders { display:flex; gap:8px; margin-bottom:8px; }
 .word-popover input {
   width: 100%;
   font-size: 16px;
