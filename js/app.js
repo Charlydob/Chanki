@@ -4291,7 +4291,7 @@ function renderReviewCard(card, showBack = false) {
     const frontText = document.createElement("div");
     frontText.className = "review-front";
     console.log("[word-debug:front-render]", { cardId: resolvedCard.id, grammarType, side: "front", usesRenderClickableText: true });
-    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", sourceLang, glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
     injectInlineSpeechButtons(frontText, sourceLang);
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -4337,7 +4337,7 @@ function renderReviewCard(card, showBack = false) {
         } else {
           console.log("[word-debug:normal-back-render]", { cardId: resolvedCard.id, grammarType, side: "back", usesRenderClickableText: true });
         }
-        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap, { cardId: resolvedCard.id, side: "back", grammarType }));
+        backText.appendChild(renderTextWithLanguage(resolvedCard.back || "", targetLang, glossaryMap, { cardId: resolvedCard.id, side: "back", grammarType }));
       }
       injectInlineSpeechButtons(backText, targetLang);
       backSection.appendChild(backLabel);
@@ -4360,16 +4360,32 @@ function renderReviewCard(card, showBack = false) {
   const backContainer = elements.reviewCard.querySelector(".review-back");
   const exampleContainer = elements.reviewCard.querySelector(".review-example");
   const conjugationContainer = elements.reviewCard.querySelector(".review-conj-select")?.parentElement || null;
+  const frontChunkyWordCount = frontContainer ? frontContainer.querySelectorAll(".chunky-word").length : 0;
+  const backChunkyWordCount = backContainer ? backContainer.querySelectorAll(".chunky-word").length : 0;
+  const exampleChunkyWordCount = exampleContainer ? exampleContainer.querySelectorAll(".chunky-word").length : 0;
+  const conjugationChunkyWordCount = conjugationContainer ? conjugationContainer.querySelectorAll(".chunky-word").length : 0;
+
   console.log("[word-debug:dom]", {
     cardId: resolvedCard?.id || null,
     grammarType,
     side: showBack ? "back" : "front",
     totalChunkyWords,
-    front: { hasContainer: Boolean(frontContainer), chunkyWordCount: frontContainer ? frontContainer.querySelectorAll(".chunky-word").length : 0 },
-    back: { hasContainer: Boolean(backContainer), chunkyWordCount: backContainer ? backContainer.querySelectorAll(".chunky-word").length : 0 },
-    example: { hasContainer: Boolean(exampleContainer), chunkyWordCount: exampleContainer ? exampleContainer.querySelectorAll(".chunky-word").length : 0 },
-    conjugation: { hasContainer: Boolean(conjugationContainer), chunkyWordCount: conjugationContainer ? conjugationContainer.querySelectorAll(".chunky-word").length : 0 },
+    front: { hasContainer: Boolean(frontContainer), chunkyWordCount: frontChunkyWordCount },
+    back: { hasContainer: Boolean(backContainer), chunkyWordCount: backChunkyWordCount },
+    example: { hasContainer: Boolean(exampleContainer), chunkyWordCount: exampleChunkyWordCount },
+    conjugation: { hasContainer: Boolean(conjugationContainer), chunkyWordCount: conjugationChunkyWordCount },
   });
+
+  const isReviewBasicLike = resolvedCard?.type !== "cloze" && resolvedCard?.type !== "order";
+  if (isReviewBasicLike && showBack && (frontChunkyWordCount === 0 || backChunkyWordCount === 0)) {
+    console.error("[word-debug:dom-check-failed]", {
+      cardId: resolvedCard?.id || null,
+      grammarType,
+      frontChunkyWordCount,
+      backChunkyWordCount,
+      expected: "frontContainer.querySelectorAll('.chunky-word').length > 0 && backContainer.querySelectorAll('.chunky-word').length > 0",
+    });
+  }
 }
 
 function ensureSwipeOverlay() {
