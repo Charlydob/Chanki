@@ -1361,12 +1361,11 @@ function buildKnownWordsIndex(cards = []) {
       String(formatCardText(text || "")).match(WORD_TOKEN_REGEX)?.forEach((rawWord) => {
         const norm = normalizeWordForLookup(rawWord);
         if (!norm || index.has(norm)) return;
-        const cardGrammarType = card?.cardGrammarType || card?.grammarType || "";
         const gender = card?.nounGender || "";
         index.set(norm, {
           norm,
           word: rawWord,
-          meaning: (cardGrammarType === "noun" && gender ? `${gender} ` : "") + (card?.back || card?.front || ""),
+          meaning: card?.back || card?.front || "",
           folderId: card?.folderId || null,
           folderName: card?.folderId ? (state.folders?.[card.folderId]?.name || "") : "",
           gender,
@@ -1401,7 +1400,8 @@ function resolveWordMeta(word, glossaryMap) {
   };
 }
 
-function buildTextFragment(text, glossaryMap) {
+function renderInteractiveText(text, options = {}) {
+  const { glossaryMap = new Map(), language = "de", cardId = "", side = "" } = options;
   const formatted = formatCardText(text);
   const fragment = document.createDocumentFragment();
   const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
@@ -1422,6 +1422,9 @@ function buildTextFragment(text, glossaryMap) {
     span.dataset.gender = meta.gender || "";
     span.dataset.folderId = meta.folderId || "";
     span.dataset.folderName = meta.folderName || "";
+    span.dataset.lang = language || "de";
+    span.dataset.cardId = cardId || "";
+    span.dataset.side = side || "";
     span.textContent = word;
     fragment.appendChild(span);
     lastIndex = match.index + word.length;
@@ -1437,25 +1440,41 @@ function createLanguageChunk(text, language, glossaryMap) {
   const chunk = document.createElement("span");
   chunk.className = "lang-chunk";
   chunk.dataset.language = language;
-  chunk.appendChild(buildTextFragment(text, glossaryMap));
+  chunk.appendChild(
+    renderInteractiveText(text, {
+      glossaryMap,
+      language,
+    })
+  );
   return chunk;
 }
 
-function renderTextWithLanguage(text, language, glossaryMap) {
-  return createLanguageChunk(text, language, glossaryMap);
+function renderTextWithLanguage(text, language, glossaryMap, options = {}) {
+  const chunk = document.createElement("span");
+  chunk.className = "lang-chunk";
+  chunk.dataset.language = language;
+  chunk.appendChild(
+    renderInteractiveText(text, {
+      glossaryMap,
+      language,
+      cardId: options.cardId || "",
+      side: options.side || "",
+    })
+  );
+  return chunk;
 }
 
-function renderBackWithLanguage(text, glossaryMap) {
+function renderBackWithLanguage(text, glossaryMap, options = {}) {
   const fragment = document.createDocumentFragment();
   const markerIndex = text.toLowerCase().indexOf("es:");
   if (markerIndex === -1) {
-    fragment.appendChild(renderTextWithLanguage(text, "es", glossaryMap));
+    fragment.appendChild(renderTextWithLanguage(text, "es", glossaryMap, options));
     return fragment;
   }
   const before = text.slice(0, markerIndex);
   const after = text.slice(markerIndex);
-  fragment.appendChild(renderTextWithLanguage(before, "de", glossaryMap));
-  fragment.appendChild(renderTextWithLanguage(after, "es", glossaryMap));
+  fragment.appendChild(renderTextWithLanguage(before, "de", glossaryMap, options));
+  fragment.appendChild(renderTextWithLanguage(after, "es", glossaryMap, options));
   return fragment;
 }
 
@@ -4033,7 +4052,7 @@ function renderReviewCard(card, showBack = false) {
       let blankIndex = 0;
       clozeTokens.forEach((token) => {
         if (token.type === "text") {
-          frontText.appendChild(renderTextWithLanguage(token.value, "de", glossaryMap));
+          frontText.appendChild(renderTextWithLanguage(token.value, "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
           return;
         }
         const currentIndex = blankIndex;
@@ -4074,7 +4093,7 @@ function renderReviewCard(card, showBack = false) {
         blankIndex += 1;
       });
     } else {
-      frontText.appendChild(renderTextWithLanguage(resolvedCard.clozeText || "", "de", glossaryMap));
+      frontText.appendChild(renderTextWithLanguage(resolvedCard.clozeText || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
     }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -4112,7 +4131,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Español";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
@@ -4325,7 +4344,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
     injectInlineSpeechButtons(frontText, sourceLang);
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -4363,9 +4382,9 @@ function renderReviewCard(card, showBack = false) {
         backSection.appendChild(selector);
         const selected = blocks.find((b) => b.heading === active) || blocks[0];
         const lines = (selected.lines || []).map((line) => `${line.pronoun} - ${line.value}`).join("\n");
-        backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap));
+        backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "back" }));
       } else {
-        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
+        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap, { cardId: resolvedCard.id, side: "back" }));
       }
       injectInlineSpeechButtons(backText, targetLang);
       backSection.appendChild(backLabel);
@@ -4374,7 +4393,7 @@ function renderReviewCard(card, showBack = false) {
       if (resolvedCard.example) {
         const exampleText = document.createElement("div");
         exampleText.className = "review-example";
-        exampleText.appendChild(renderTextWithLanguage(resolvedCard.example, targetLang, glossaryMap));
+        exampleText.appendChild(renderTextWithLanguage(resolvedCard.example, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "example" }));
         backSection.appendChild(exampleText);
       }
       wrapper.appendChild(backSection);
@@ -6048,13 +6067,12 @@ if (elements.reviewCard) {
     event.stopPropagation();
     const word = wordEl.dataset.word;
       if (word) {
-        const langChunk = wordEl.closest(".lang-chunk");
-        const language = langChunk?.dataset.language || "de";
+        const language = wordEl.dataset.lang || wordEl.closest(".lang-chunk")?.dataset.language || "de";
         const card = state.reviewQueue[state.currentIndex];
         const context = getReviewCardContext(card);
         state.activeWordContext = {
           language,
-          cardId: card?.id || null,
+          cardId: wordEl.dataset.cardId || card?.id || null,
           folderId: card?.folderId || null,
           ownerUid: context.ownerUid || state.username,
           role: context.role,
