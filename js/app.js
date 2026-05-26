@@ -3949,7 +3949,13 @@ function renderReviewCard(card, showBack = false) {
     const promptText = document.createElement("div");
     promptText.className = "review-back";
     const promptValue = (resolvedCard.front || "").trim();
-    promptText.textContent = promptValue || "Traduce al alemán:";
+    promptText.appendChild(
+      renderTextWithLanguage(promptValue || "Traduce al alemán:", "es", glossaryMap, {
+        cardId: resolvedCard.id,
+        side: "front",
+        grammarType,
+      })
+    );
     promptSection.appendChild(promptLabel);
     promptSection.appendChild(promptText);
     wrapper.appendChild(promptSection);
@@ -3979,7 +3985,7 @@ function renderReviewCard(card, showBack = false) {
       let blankIndex = 0;
       clozeTokens.forEach((token) => {
         if (token.type === "text") {
-          frontText.appendChild(renderTextWithLanguage(token.value, "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
+          frontText.appendChild(renderTextWithLanguage(token.value, "de", glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
           return;
         }
         const currentIndex = blankIndex;
@@ -4020,7 +4026,7 @@ function renderReviewCard(card, showBack = false) {
         blankIndex += 1;
       });
     } else {
-      frontText.appendChild(renderTextWithLanguage(resolvedCard.clozeText || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
+      frontText.appendChild(renderTextWithLanguage(resolvedCard.clozeText || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
     }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -4035,7 +4041,13 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Respuesta";
       const answers = document.createElement("div");
       answers.className = "review-back";
-      answers.textContent = formatCardText((resolvedCard.clozeAnswers || []).join(" | ")) || "-";
+      answers.appendChild(
+        renderTextWithLanguage(formatCardText((resolvedCard.clozeAnswers || []).join(" | ")) || "-", "de", glossaryMap, {
+          cardId: resolvedCard.id,
+          side: "back",
+          grammarType,
+        })
+      );
       backSection.appendChild(backLabel);
       backSection.appendChild(answers);
       wrapper.appendChild(backSection);
@@ -4058,7 +4070,7 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Español";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
@@ -4243,10 +4255,17 @@ function renderReviewCard(card, showBack = false) {
         }
         solutionRow.appendChild(chip);
       });
-      solutionText.textContent = solutionTokens
-        .map(({ token }) => token?.text)
-        .filter(Boolean)
-        .join(" ");
+      solutionText.appendChild(
+        renderTextWithLanguage(
+          solutionTokens
+            .map(({ token }) => token?.text)
+            .filter(Boolean)
+            .join(" "),
+          "de",
+          glossaryMap,
+          { cardId: resolvedCard.id, side: "back", grammarType }
+        )
+      );
       solution.appendChild(solutionLabel);
       solution.appendChild(solutionRow);
       solution.appendChild(solutionText);
