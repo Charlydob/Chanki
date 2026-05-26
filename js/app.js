@@ -1,3 +1,4 @@
+import "./debug-console.js";
 import { getDb } from "../lib/firebase.js";
 import {
   listenFolders,
