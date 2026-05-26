@@ -500,7 +500,7 @@ function buildAudioButton(text, lang, { label = "Reproducir audio" } = {}) {
   btn.addEventListener("click", () => speakText(text, lang));
   return btn;
 }
-function injectInlineSpeechButtons(contentEl, lang) {
+function injectInlineSpeechButtons(contentEl, lang, context = {}) {
   if (!contentEl) return false;
   const rawText = String(contentEl.innerText || "").replace(/\r/g, "");
   const lines = rawText
@@ -528,7 +528,15 @@ function injectInlineSpeechButtons(contentEl, lang) {
     row.appendChild(btn);
     const value = document.createElement("span");
     value.className = "inline-speech-row__text";
-    value.textContent = line;
+    value.appendChild(
+      renderClickableText(line, {
+        lang: context.lang || lang || "de",
+        cardId: context.cardId || "",
+        side: context.side || "",
+        folderId: context.folderId || "",
+        grammarType: context.grammarType || "",
+      })
+    );
     row.appendChild(value);
     list.appendChild(row);
   });
@@ -4293,7 +4301,13 @@ function renderReviewCard(card, showBack = false) {
     frontText.className = "review-front";
     console.log("[word-debug:front-render]", { cardId: resolvedCard.id, grammarType, side: "front", usesRenderClickableText: true });
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", sourceLang, glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
-    injectInlineSpeechButtons(frontText, sourceLang);
+    injectInlineSpeechButtons(frontText, sourceLang, {
+      lang: sourceLang,
+      cardId: resolvedCard.id,
+      side: "front",
+      folderId: resolvedCard.folderId || "",
+      grammarType,
+    });
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
     frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
@@ -4340,7 +4354,13 @@ function renderReviewCard(card, showBack = false) {
         }
         backText.appendChild(renderTextWithLanguage(resolvedCard.back || "", targetLang, glossaryMap, { cardId: resolvedCard.id, side: "back", grammarType }));
       }
-      injectInlineSpeechButtons(backText, targetLang);
+      injectInlineSpeechButtons(backText, targetLang, {
+        lang: targetLang,
+        cardId: resolvedCard.id,
+        side: "back",
+        folderId: resolvedCard.folderId || "",
+        grammarType,
+      });
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       backSection.appendChild(buildAudioButton((resolvedCard.back || ""), targetLang));
