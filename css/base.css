@@ -1464,7 +1464,8 @@ canvas.mini-chart {
 }
 
 .word.has-meaning {
-  color: #ffd34d;
+  background: rgba(255, 211, 77, 0.35);
+  color: inherit;
 }
 
 .word:active,
@@ -1474,8 +1475,7 @@ canvas.mini-chart {
 }
 
 .gloss-term {
-  color: #ffd34d;
-  text-shadow: 0 0 8px rgba(255, 211, 77, 0.35);
+  background: rgba(255, 211, 77, 0.35);
 }
 
 .lang-chunk {

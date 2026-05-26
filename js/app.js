@@ -1254,13 +1254,23 @@ function formatCardText(value) {
 }
 
 const TERM_PUNCTUATION_REGEX = /^[.,;:!?()[\]{}"“”'’]+|[.,;:!?()[\]{}"“”'’]+$/g;
+const LEADING_NUMBER_REGEX = /^\d+[.):-]?\s*/;
+const LEADING_ARTICLE_REGEX = /^(der|die|das|el|la|los|las)\s+/i;
 const WORD_TOKEN_REGEX = /[A-Za-zÀ-ÿÄÖÜäöüß]+(?:-[A-Za-zÀ-ÿÄÖÜäöüß]+)*/g;
 
-function normalizeTerm(term) {
+function normalizeWordForLookup(term) {
   return String(term || "")
     .trim()
-    .toLowerCase()
-    .replace(TERM_PUNCTUATION_REGEX, "");
+    .replace(LEADING_NUMBER_REGEX, "")
+    .replace(TERM_PUNCTUATION_REGEX, "")
+    .replace(LEADING_ARTICLE_REGEX, "")
+    .replace(TERM_PUNCTUATION_REGEX, "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeTerm(term) {
+  return normalizeWordForLookup(term);
 }
 
 function normalizeGlossaryEntries(glossary) {
@@ -1338,15 +1348,56 @@ function buildGlossaryMap(card) {
   return merged;
 }
 
+function buildKnownWordsIndex(cards = []) {
+  const index = new Map();
+  const allCards = Array.isArray(cards) ? cards : [];
+  allCards.forEach((card) => {
+    const texts = [card?.front, card?.back, card?.example, card?.clozeText, ...(card?.clozeAnswers || [])];
+    const blocks = getCardConjugationBlocks(card);
+    blocks.forEach((block) => {
+      (block?.lines || []).forEach((line) => texts.push(line?.value || ""));
+    });
+    texts.forEach((text) => {
+      String(formatCardText(text || "")).match(WORD_TOKEN_REGEX)?.forEach((rawWord) => {
+        const norm = normalizeWordForLookup(rawWord);
+        if (!norm || index.has(norm)) return;
+        const cardGrammarType = card?.cardGrammarType || card?.grammarType || "";
+        const gender = card?.nounGender || "";
+        index.set(norm, {
+          norm,
+          word: rawWord,
+          meaning: (cardGrammarType === "noun" && gender ? `${gender} ` : "") + (card?.back || card?.front || ""),
+          folderId: card?.folderId || null,
+          folderName: card?.folderId ? (state.folders?.[card.folderId]?.name || "") : "",
+          gender,
+          cardId: card?.id || null,
+        });
+      });
+    });
+  });
+  return index;
+}
+
+function getKnownWord(word) {
+  if (!state.knownWordsIndex) {
+    state.knownWordsIndex = buildKnownWordsIndex([...(state.cards || []), ...(state.reviewQueue || [])]);
+  }
+  return state.knownWordsIndex.get(normalizeWordForLookup(word)) || null;
+}
+
 function resolveWordMeta(word, glossaryMap) {
   const norm = normalizeWordCacheKey(word);
-  if (!norm) return { norm: "", meaning: "", gender: "" };
+  if (!norm) return { norm: "", meaning: "", gender: "", known: false, folderId: null, folderName: "" };
   const cached = state.glossaryCache.get(norm) || {};
   const entry = getLexiconEntry(norm) || {};
+  const known = getKnownWord(word) || {};
   return {
     norm,
-    meaning: glossaryMap.get(norm) || cached.meaning || entry.meaning || "",
-    gender: cached.gender || entry.gender || "",
+    meaning: glossaryMap.get(norm) || cached.meaning || entry.meaning || known.meaning || "",
+    gender: cached.gender || entry.gender || known.gender || "",
+    known: Boolean(known.norm),
+    folderId: known.folderId || null,
+    folderName: known.folderName || "",
   };
 }
 
@@ -1364,11 +1415,13 @@ function buildTextFragment(text, glossaryMap) {
     const span = document.createElement("span");
     span.className = "word";
     const meta = resolveWordMeta(word, glossaryMap);
-    if (meta.meaning && meta.meaning.trim()) span.classList.add("gloss-term", "has-meaning");
+    if (meta.known || (meta.meaning && meta.meaning.trim())) span.classList.add("gloss-term", "has-meaning");
     if (meta.gender) span.classList.add(`word--${meta.gender}`);
     span.dataset.word = word;
     span.dataset.norm = meta.norm || "";
     span.dataset.gender = meta.gender || "";
+    span.dataset.folderId = meta.folderId || "";
+    span.dataset.folderName = meta.folderName || "";
     span.textContent = word;
     fragment.appendChild(span);
     lastIndex = match.index + word.length;
@@ -1453,7 +1506,7 @@ async function ensureVocabFolderIds() {
 }
 
 function normalizeWordCacheKey(word) {
-  return normalizeTerm(word);
+  return normalizeWordForLookup(word);
 }
 
 function buildCardGlossaryPayload(card, word, meaning) {
@@ -2505,6 +2558,7 @@ function ensureWordPopover() {
           });
         }
       }
+      state.knownWordsIndex = null;
       refreshCurrentReviewCard();
     } catch (error) {
       handleErrorToast(error, "No se pudo guardar el glosario.");
@@ -2552,7 +2606,8 @@ function closeWordPopover() {
   wordPopoverAnchor = null;
 }
 
-async function openWordPopover(word, anchorRect) {
+async function openWordMeaningPopup(payload) {
+  const { word, anchorRect } = payload || {};
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
     return;
@@ -2624,6 +2679,13 @@ async function openWordPopover(word, anchorRect) {
   } catch (error) {
     handleErrorToast(error, "No se pudo cargar la palabra.");
   }
+}
+
+const openWordPopover = openWordMeaningPopup;
+
+async function saveWordMeaning(payload = {}) {
+  if (wordPopoverInput && typeof payload.meaning === "string") wordPopoverInput.value = payload.meaning;
+  await wordPopoverSave?.click?.();
 }
 
 async function debugFolderSelection(folderId) {
@@ -5987,8 +6049,7 @@ if (elements.reviewCard) {
     const word = wordEl.dataset.word;
       if (word) {
         const langChunk = wordEl.closest(".lang-chunk");
-        const language = langChunk?.dataset.language
-          || (wordEl.closest(".review-front") ? "de" : "es");
+        const language = langChunk?.dataset.language || "de";
         const card = state.reviewQueue[state.currentIndex];
         const context = getReviewCardContext(card);
         state.activeWordContext = {
@@ -5999,7 +6060,7 @@ if (elements.reviewCard) {
           role: context.role,
           isShared: context.isShared,
         };
-        openWordPopover(word, wordEl.getBoundingClientRect());
+        openWordMeaningPopup({ word, anchorRect: wordEl.getBoundingClientRect(), language, context: state.activeWordContext });
       }
   });
   elements.reviewCard.addEventListener("pointerdown", handleReviewPointerDown);
