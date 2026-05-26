@@ -4355,37 +4355,14 @@ function renderReviewCard(card, showBack = false) {
   }
 
   elements.reviewCard.appendChild(wrapper);
-  const totalChunkyWords = document.querySelectorAll(".chunky-word").length;
-  const frontContainer = elements.reviewCard.querySelector(".review-front");
-  const backContainer = elements.reviewCard.querySelector(".review-back");
-  const exampleContainer = elements.reviewCard.querySelector(".review-example");
-  const conjugationContainer = elements.reviewCard.querySelector(".review-conj-select")?.parentElement || null;
-  const frontChunkyWordCount = frontContainer ? frontContainer.querySelectorAll(".chunky-word").length : 0;
-  const backChunkyWordCount = backContainer ? backContainer.querySelectorAll(".chunky-word").length : 0;
-  const exampleChunkyWordCount = exampleContainer ? exampleContainer.querySelectorAll(".chunky-word").length : 0;
-  const conjugationChunkyWordCount = conjugationContainer ? conjugationContainer.querySelectorAll(".chunky-word").length : 0;
-
-  console.log("[word-debug:dom]", {
+  console.log("[WORD-CHECK]", {
     cardId: resolvedCard?.id || null,
+    type: resolvedCard?.type || null,
     grammarType,
-    side: showBack ? "back" : "front",
-    totalChunkyWords,
-    front: { hasContainer: Boolean(frontContainer), chunkyWordCount: frontChunkyWordCount },
-    back: { hasContainer: Boolean(backContainer), chunkyWordCount: backChunkyWordCount },
-    example: { hasContainer: Boolean(exampleContainer), chunkyWordCount: exampleChunkyWordCount },
-    conjugation: { hasContainer: Boolean(conjugationContainer), chunkyWordCount: conjugationChunkyWordCount },
+    html: elements.reviewCard.innerHTML,
+    words: elements.reviewCard.querySelectorAll(".chunky-word").length,
+    textNodes: elements.reviewCard.textContent,
   });
-
-  const isReviewBasicLike = resolvedCard?.type !== "cloze" && resolvedCard?.type !== "order";
-  if (isReviewBasicLike && showBack && (frontChunkyWordCount === 0 || backChunkyWordCount === 0)) {
-    console.error("[word-debug:dom-check-failed]", {
-      cardId: resolvedCard?.id || null,
-      grammarType,
-      frontChunkyWordCount,
-      backChunkyWordCount,
-      expected: "frontContainer.querySelectorAll('.chunky-word').length > 0 && backContainer.querySelectorAll('.chunky-word').length > 0",
-    });
-  }
 }
 
 function ensureSwipeOverlay() {
@@ -6046,34 +6023,11 @@ if (elements.cardModalClose) {
 }
 
 document.addEventListener("click", (event) => {
-  const wordEl = event.target.closest(".chunky-word");
-  console.log("[word-debug:click]", {
-    targetTag: event?.target?.tagName || null,
-    targetClass: event?.target?.className || null,
-    hasClosestChunkyWord: Boolean(wordEl),
-    word: wordEl?.dataset?.word || "",
-    side: wordEl?.dataset?.side || "",
-    cardId: wordEl?.dataset?.cardId || "",
-  });
-  if (!wordEl) return;
-  event.stopPropagation();
-  const word = wordEl.dataset.word;
+  const word = event.target.closest(".chunky-word");
   if (!word) return;
-  const language = wordEl.dataset.lang || wordEl.closest(".lang-chunk")?.dataset.language || "de";
-  const card = state.reviewQueue[state.currentIndex];
-  const context = getReviewCardContext(card);
-  state.activeWordContext = {
-    language,
-    cardId: wordEl.dataset.cardId || card?.id || null,
-    folderId: wordEl.dataset.contextFolderId || card?.folderId || null,
-    ownerUid: context.ownerUid || state.username,
-    role: context.role,
-    isShared: context.isShared,
-    side: wordEl.dataset.side || "",
-  };
-  console.log("[word-debug:click]", { callsOpenWordMeaningPopup: true, word, side: wordEl.dataset.side || "", cardId: wordEl.dataset.cardId || "" });
-  openWordMeaningPopup({ word, anchorRect: wordEl.getBoundingClientRect(), language, context: state.activeWordContext });
+  openWordMeaningPopup(word.dataset);
 });
+
 
 if (elements.reviewCard) {
   elements.reviewCard.addEventListener("pointerdown", handleReviewPointerDown);
