@@ -395,7 +395,8 @@ async function translateStructuredText(text, source, target, signal, contextText
     const translated = isSingleWord(body)
       ? await lookupWord(body, source, target, signal, contextText)
       : await translatePhrase(body, source, target, signal, { verify: true });
-    out.push(marker ? `${marker.indent}${marker.number}. ${translated}` : translated);
+    const sanitized = marker ? String(translated || "").replace(/^\s*\d+\.\s*/, "").trim() : translated;
+    out.push(marker ? `${marker.indent}${marker.number}. ${sanitized}` : translated);
   }
   return out.join("\n");
 }
@@ -1821,6 +1822,7 @@ function openCardModal(card = null) {
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
+  if (elements.cardExample) elements.cardExample.value = resolvedCard ? resolvedCard.example || "" : "";
   currentGrammarType = resolvedCard?.cardGrammarType || "normal";
   cardNounGender = resolvedCard?.nounGender || null;
   elements.cardClozeText.value = resolvedCard ? resolvedCard.clozeText || "" : "";
@@ -1852,6 +1854,7 @@ function openCardModal(card = null) {
   refreshTranslateCta();
   autoResizeTextarea(elements.cardFront);
   autoResizeTextarea(elements.cardBack);
+  autoResizeTextarea(elements.cardExample);
   showOverlay(elements.cardModal, true);
 }
 
@@ -2203,14 +2206,13 @@ function setGrammarType(nextGrammarType = "normal") {
   const next = ["normal", "verb", "noun"].includes(nextGrammarType) ? nextGrammarType : "normal";
   const previous = currentGrammarType;
   currentGrammarType = next;
-  if (currentGrammarType !== "noun") {
-    cardNounGender = null;
-  }
-  if (currentGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
-    elements.cardBack.value = VERB_TEMPLATE;
-    autoResizeTextarea(elements.cardBack);
-    console.info("[grammar:apply-template]", { previous, next: currentGrammarType });
-  }
+  cardNounGender = currentGrammarType === "noun" ? cardNounGender : null;
+  if (elements.cardFront) elements.cardFront.value = "";
+  if (elements.cardBack) elements.cardBack.value = currentGrammarType === "verb" ? VERB_TEMPLATE : "";
+  if (elements.cardExample) elements.cardExample.value = "";
+  autoResizeTextarea(elements.cardFront);
+  autoResizeTextarea(elements.cardBack);
+  autoResizeTextarea(elements.cardExample);
   console.info("[grammar:set]", { previous, next: currentGrammarType });
   syncGrammarControls();
   updateVerbReversoLink();
@@ -3475,6 +3477,7 @@ async function handleSaveCard() {
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
+  const example = elements.cardExample?.value.trim() || "";
   const clozeText = elements.cardClozeText.value.trim();
   const clozeAnswers = elements.cardClozeAnswers.value
     .split("|")
@@ -3532,6 +3535,7 @@ async function handleSaveCard() {
         type,
         front,
         back,
+        example,
         clozeText,
         clozeAnswers,
         orderTokens,
@@ -3561,6 +3565,7 @@ async function handleSaveCard() {
         type,
         front,
         back,
+        example,
         clozeText,
         clozeAnswers,
         orderTokens,
@@ -3587,6 +3592,7 @@ async function handleSaveCard() {
     }
     elements.cardFront.value = "";
     elements.cardBack.value = "";
+    if (elements.cardExample) elements.cardExample.value = "";
     autoResizeTextarea(elements.cardFront);
     autoResizeTextarea(elements.cardBack);
     elements.cardClozeText.value = "";
@@ -4066,6 +4072,12 @@ function renderReviewCard(card, showBack = false) {
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       backSection.appendChild(buildAudioButton((resolvedCard.back || ""), targetLang));
+      if (resolvedCard.example) {
+        const exampleText = document.createElement("div");
+        exampleText.className = "review-example";
+        exampleText.appendChild(renderTextWithLanguage(resolvedCard.example, targetLang, glossaryMap));
+        backSection.appendChild(exampleText);
+      }
       wrapper.appendChild(backSection);
     }
   }
@@ -5711,6 +5723,15 @@ if (elements.cardTranslate) elements.cardTranslate.addEventListener("click", asy
 });
 if (elements.cardTranslateEsDe) elements.cardTranslateEsDe.addEventListener("click", () => runCardTranslation("source-target", { force: true }));
 if (elements.cardTranslateDeEs) elements.cardTranslateDeEs.addEventListener("click", () => runCardTranslation("target-source", { force: true }));
+if (elements.cardClear) elements.cardClear.addEventListener("click", () => {
+  if (elements.cardFront) elements.cardFront.value = "";
+  if (elements.cardBack) elements.cardBack.value = currentGrammarType === "verb" ? VERB_TEMPLATE : "";
+  if (elements.cardExample) elements.cardExample.value = "";
+  autoResizeTextarea(elements.cardFront);
+  autoResizeTextarea(elements.cardBack);
+  autoResizeTextarea(elements.cardExample);
+  elements.cardFront?.focus();
+});
 elements.saveCard.addEventListener("click", handleSaveCard);
 
 elements.cancelCard.addEventListener("click", closeCardModal);

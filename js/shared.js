@@ -156,6 +156,8 @@ export const elements = {
   cardType: document.getElementById("card-type"),
   cardFront: document.getElementById("card-front"),
   cardBack: document.getElementById("card-back"),
+  cardClear: document.getElementById("card-clear"),
+  cardExample: document.getElementById("card-example"),
   cardGrammarType: document.getElementById("card-grammar-type"),
   cardVerbToolsField: document.getElementById("card-verb-tools-field"),
   cardVerbReversoLink: document.getElementById("card-verb-reverso-link"),
