@@ -2241,21 +2241,39 @@ function toConjugationBlocksFromMap(conjugations = []) {
   }).filter(Boolean);
 }
 
+function dedupeConjugationBlocks(blocks = []) {
+  const seen = new Map();
+  const deduped = [];
+  (Array.isArray(blocks) ? blocks : []).forEach((block) => {
+    if (!block) return;
+    const label = String(block.label || block.heading || "").trim();
+    if (!label) return;
+    const body = block.raw || (block.lines || []).map((l) => `${l.pronoun} - ${l.value}`).join("\n");
+    if (!seen.has(label)) {
+      seen.set(label, body);
+      deduped.push(block);
+      return;
+    }
+    if (seen.get(label) !== body) console.warn("[conjugations:duplicate-label]", { label });
+  });
+  return deduped;
+}
+
 function ensureCardConjugationStructure(card = {}) {
   if (!card || card.cardGrammarType !== "verb") return card;
-  if (card.conjugations && (Array.isArray(card.conjugations) ? card.conjugations.length : Object.keys(card.conjugations).length)) return { ...card, conjugationBlocks: toConjugationBlocksFromMap(card.conjugations) };
+  if (card.conjugations && (Array.isArray(card.conjugations) ? card.conjugations.length : Object.keys(card.conjugations).length)) return { ...card, conjugationBlocks: dedupeConjugationBlocks(toConjugationBlocksFromMap(card.conjugations)) };
   if (Array.isArray(card.conjugationBlocks) && card.conjugationBlocks.length) {
-    return card;
+    return { ...card, conjugationBlocks: dedupeConjugationBlocks(card.conjugationBlocks) };
   }
   const parsed = parseGermanConjugationPaste(card.back || "");
-  if (parsed?.blocks?.length) return { ...card, conjugationBlocks: parsed.blocks };
+  if (parsed?.blocks?.length) return { ...card, conjugationBlocks: dedupeConjugationBlocks(parsed.blocks) };
   return card;
 }
 
 function getCardConjugationBlocks(card = {}) {
   const normalized = ensureCardConjugationStructure(card);
-  if (normalized.conjugations && (Array.isArray(normalized.conjugations) ? normalized.conjugations.length : Object.keys(normalized.conjugations).length)) return toConjugationBlocksFromMap(normalized.conjugations);
-  return Array.isArray(normalized.conjugationBlocks) ? normalized.conjugationBlocks : [];
+  if (normalized.conjugations && (Array.isArray(normalized.conjugations) ? normalized.conjugations.length : Object.keys(normalized.conjugations).length)) return dedupeConjugationBlocks(toConjugationBlocksFromMap(normalized.conjugations));
+  return dedupeConjugationBlocks(Array.isArray(normalized.conjugationBlocks) ? normalized.conjugationBlocks : []);
 }
 
 function detectGermanVerbForReverso(text = "") {
@@ -2280,39 +2298,40 @@ function updateVerbReversoLink() {
 
 function renderCardConjugationTabs(blocks = [], activeHeading = "") {
   if (!elements.cardConjugationTabs) return;
-  const hasBlocks = Array.isArray(blocks) && blocks.length > 1 && currentGrammarType === "verb";
+  const uniqueBlocks = dedupeConjugationBlocks(blocks);
+  const hasBlocks = uniqueBlocks.length > 0 && currentGrammarType === "verb";
   elements.cardConjugationTabs.innerHTML = "";
   elements.cardConjugationTabs.classList.toggle("hidden", !hasBlocks);
   if (!hasBlocks) return;
-  const active = blocks.some((b) => b.heading === activeHeading) ? activeHeading : blocks[0].heading;
+  const active = uniqueBlocks.some((b) => b.heading === activeHeading) ? activeHeading : uniqueBlocks[0].heading;
   elements.cardBack.dataset.activeConjugationHeading = active;
-  blocks.forEach((block) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = `chip-toggle${block.heading === active ? " active is-active" : ""}`;
-    btn.textContent = block.label || block.heading;
-    btn.addEventListener("click", () => {
-      const latest = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]");
-      const selected = latest.find((item) => item.heading === block.heading);
-      elements.cardBack.dataset.activeConjugationHeading = block.heading;
-      if (selected) {
-        elements.cardBack.value = selected.raw || (selected.lines || []).map((l) => `${l.pronoun} - ${l.value}`).join("\n");
-        autoResizeTextarea(elements.cardBack);
-      }
-      renderCardConjugationTabs(latest, block.heading);
-    });
-    elements.cardConjugationTabs.appendChild(btn);
+  uniqueBlocks.forEach((block) => {
+    const option = document.createElement("option");
+    option.value = block.heading;
+    option.textContent = block.label || block.heading;
+    option.selected = block.heading === active;
+    elements.cardConjugationTabs.appendChild(option);
   });
+  elements.cardConjugationTabs.onchange = () => {
+    const latest = dedupeConjugationBlocks(JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"));
+    const nextHeading = elements.cardConjugationTabs.value;
+    const selected = latest.find((item) => item.heading === nextHeading) || latest[0];
+    if (!selected) return;
+    elements.cardBack.dataset.activeConjugationHeading = selected.heading;
+    elements.cardBack.value = selected.raw || (selected.lines || []).map((l) => `${l.pronoun} - ${l.value}`).join("\n");
+    autoResizeTextarea(elements.cardBack);
+  };
 }
 
 function applyReversoConjugationPaste(raw = "") {
   const parsed = parseGermanConjugationPaste(raw);
   if (!parsed) return;
-  const firstBlock = parsed.blocks?.[0];
-  elements.cardBack.dataset.conjugationBlocks = JSON.stringify(parsed.blocks || []);
+  const deduped = dedupeConjugationBlocks(parsed.blocks || []);
+  const firstBlock = deduped[0];
+  elements.cardBack.dataset.conjugationBlocks = JSON.stringify(deduped);
   if (firstBlock?.heading) elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
   elements.cardBack.value = firstBlock?.raw || "";
-  renderCardConjugationTabs(parsed.blocks || [], firstBlock?.heading || "");
+  renderCardConjugationTabs(deduped, firstBlock?.heading || "");
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
 }
@@ -3661,6 +3680,7 @@ async function handleSaveCard() {
       const parsed = parseGermanConjugationPaste(back);
       if (parsed?.blocks?.length) conjugationBlocks = parsed.blocks;
     }
+    conjugationBlocks = dedupeConjugationBlocks(conjugationBlocks);
     const selected = conjugationBlocks.find((b) => b.heading === active) || conjugationBlocks[0];
     if (selected) back = selected.raw || "";
   }
@@ -4261,24 +4281,24 @@ function renderReviewCard(card, showBack = false) {
       const normalizedVerbCard = ensureCardConjugationStructure(resolvedCard);
       const blocks = getCardConjugationBlocks(normalizedVerbCard);
       if (blocks.length) {
-        const kpi = document.createElement("div");
-        kpi.className = "review-conj-tabs";
+        const selector = document.createElement("select");
+        selector.className = "review-conj-select";
         const active = reviewConjugationHeading && blocks.some((b) => b.heading === reviewConjugationHeading)
           ? reviewConjugationHeading
           : blocks[0].heading;
         reviewConjugationHeading = active;
         blocks.forEach((block) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `chip-toggle${block.heading === active ? " active is-active" : ""}`;
-          btn.textContent = block.label || block.heading;
-          btn.addEventListener("click", () => {
-            reviewConjugationHeading = block.heading;
-            refreshCurrentReviewCard();
-          });
-          kpi.appendChild(btn);
+          const option = document.createElement("option");
+          option.value = block.heading;
+          option.textContent = block.label || block.heading;
+          option.selected = block.heading === active;
+          selector.appendChild(option);
         });
-        backSection.appendChild(kpi);
+        selector.addEventListener("change", () => {
+          reviewConjugationHeading = selector.value;
+          refreshCurrentReviewCard();
+        });
+        backSection.appendChild(selector);
         const selected = blocks.find((b) => b.heading === active) || blocks[0];
         const lines = (selected.lines || []).map((line) => `${line.pronoun} - ${line.value}`).join("\n");
         backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap));
