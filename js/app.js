@@ -1841,10 +1841,12 @@ function openCardModal(card = null) {
     const firstBlock = normalizedConjCard.conjugationBlocks[0];
     elements.cardBack.dataset.conjugationBlocks = JSON.stringify(normalizedConjCard.conjugationBlocks);
     elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
-    elements.cardBack.value = firstBlock.lines.map((l) => `${l.pronoun} - ${l.value}`).join("\n");
+    elements.cardBack.value = firstBlock.raw || firstBlock.lines.map((l) => `${l.pronoun} - ${l.value}`).join("\n");
+    renderCardConjugationTabs(normalizedConjCard.conjugationBlocks, firstBlock.heading);
   } else {
     delete elements.cardBack.dataset.conjugationBlocks;
     delete elements.cardBack.dataset.activeConjugationHeading;
+    renderCardConjugationTabs([], "");
   }
   if (elements.cardExample) elements.cardExample.value = resolvedCard ? resolvedCard.example || "" : "";
   currentGrammarType = resolvedCard?.cardGrammarType || "normal";
@@ -2231,7 +2233,8 @@ function closeCardModal() {
   editingCardId = null;
 }
 
-function toConjugationBlocksFromMap(conjugations = {}) {
+function toConjugationBlocksFromMap(conjugations = []) {
+  if (Array.isArray(conjugations)) return conjugations.filter(Boolean);
   return Object.entries(conjugations || {}).map(([heading, body]) => {
     const parsed = parseGermanConjugationPaste(`${heading}\n${body}`);
     return parsed?.blocks?.[0] || null;
@@ -2240,7 +2243,7 @@ function toConjugationBlocksFromMap(conjugations = {}) {
 
 function ensureCardConjugationStructure(card = {}) {
   if (!card || card.cardGrammarType !== "verb") return card;
-  if (card.conjugations && Object.keys(card.conjugations).length) return { ...card, conjugationBlocks: toConjugationBlocksFromMap(card.conjugations) };
+  if (card.conjugations && (Array.isArray(card.conjugations) ? card.conjugations.length : Object.keys(card.conjugations).length)) return { ...card, conjugationBlocks: toConjugationBlocksFromMap(card.conjugations) };
   if (Array.isArray(card.conjugationBlocks) && card.conjugationBlocks.length) {
     return card;
   }
@@ -2251,7 +2254,7 @@ function ensureCardConjugationStructure(card = {}) {
 
 function getCardConjugationBlocks(card = {}) {
   const normalized = ensureCardConjugationStructure(card);
-  if (normalized.conjugations && Object.keys(normalized.conjugations).length) return toConjugationBlocksFromMap(normalized.conjugations);
+  if (normalized.conjugations && (Array.isArray(normalized.conjugations) ? normalized.conjugations.length : Object.keys(normalized.conjugations).length)) return toConjugationBlocksFromMap(normalized.conjugations);
   return Array.isArray(normalized.conjugationBlocks) ? normalized.conjugationBlocks : [];
 }
 
@@ -2274,13 +2277,42 @@ function updateVerbReversoLink() {
   if (elements.cardVerbReversoLink) elements.cardVerbReversoLink.href = href;
 }
 
+
+function renderCardConjugationTabs(blocks = [], activeHeading = "") {
+  if (!elements.cardConjugationTabs) return;
+  const hasBlocks = Array.isArray(blocks) && blocks.length > 1 && currentGrammarType === "verb";
+  elements.cardConjugationTabs.innerHTML = "";
+  elements.cardConjugationTabs.classList.toggle("hidden", !hasBlocks);
+  if (!hasBlocks) return;
+  const active = blocks.some((b) => b.heading === activeHeading) ? activeHeading : blocks[0].heading;
+  elements.cardBack.dataset.activeConjugationHeading = active;
+  blocks.forEach((block) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `chip-toggle${block.heading === active ? " active is-active" : ""}`;
+    btn.textContent = block.label || block.heading;
+    btn.addEventListener("click", () => {
+      const latest = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]");
+      const selected = latest.find((item) => item.heading === block.heading);
+      elements.cardBack.dataset.activeConjugationHeading = block.heading;
+      if (selected) {
+        elements.cardBack.value = selected.raw || (selected.lines || []).map((l) => `${l.pronoun} - ${l.value}`).join("\n");
+        autoResizeTextarea(elements.cardBack);
+      }
+      renderCardConjugationTabs(latest, block.heading);
+    });
+    elements.cardConjugationTabs.appendChild(btn);
+  });
+}
+
 function applyReversoConjugationPaste(raw = "") {
   const parsed = parseGermanConjugationPaste(raw);
   if (!parsed) return;
   const firstBlock = parsed.blocks?.[0];
-  elements.cardBack.value = firstBlock ? firstBlock.lines.map((l) => `${l.pronoun} - ${l.value}`).join("\n") : parsed.formatted;
   elements.cardBack.dataset.conjugationBlocks = JSON.stringify(parsed.blocks || []);
   if (firstBlock?.heading) elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
+  elements.cardBack.value = firstBlock?.raw || "";
+  renderCardConjugationTabs(parsed.blocks || [], firstBlock?.heading || "");
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
 }
@@ -3620,14 +3652,17 @@ async function handleSaveCard() {
   const ownerUid = getActiveOwnerUid();
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
-  const back = elements.cardBack.value.trim();
+  let back = elements.cardBack.value.trim();
   let conjugationBlocks = [];
   if (currentGrammarType === "verb") {
+    const active = elements.cardBack?.dataset?.activeConjugationHeading || "";
     try { conjugationBlocks = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"); } catch {}
     if (!conjugationBlocks.length) {
       const parsed = parseGermanConjugationPaste(back);
       if (parsed?.blocks?.length) conjugationBlocks = parsed.blocks;
     }
+    const selected = conjugationBlocks.find((b) => b.heading === active) || conjugationBlocks[0];
+    if (selected) back = selected.raw || "";
   }
   const example = elements.cardExample?.value.trim() || "";
   const clozeText = elements.cardClozeText.value.trim();
@@ -3698,7 +3733,8 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
-        conjugationBlocks
+        conjugationBlocks,
+        conjugations: conjugationBlocks
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3729,7 +3765,8 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
-        conjugationBlocks
+        conjugationBlocks,
+        conjugations: conjugationBlocks
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
