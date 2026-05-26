@@ -1835,8 +1835,16 @@ function openCardModal(card = null) {
   elements.cardType.value = type;
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
-  if (resolvedCard?.conjugationBlocks?.length) elements.cardBack.dataset.conjugationBlocks = JSON.stringify(resolvedCard.conjugationBlocks);
-  else delete elements.cardBack.dataset.conjugationBlocks;
+  const normalizedConjCard = ensureCardConjugationStructure(resolvedCard || {});
+  if (normalizedConjCard?.conjugations && Object.keys(normalizedConjCard.conjugations).length) {
+    const headings = Object.keys(normalizedConjCard.conjugations);
+    elements.cardBack.dataset.conjugations = JSON.stringify(normalizedConjCard.conjugations);
+    elements.cardBack.dataset.activeConjugationHeading = headings[0];
+    elements.cardBack.value = normalizedConjCard.conjugations[headings[0]] || "";
+  } else {
+    delete elements.cardBack.dataset.conjugations;
+    delete elements.cardBack.dataset.activeConjugationHeading;
+  }
   if (elements.cardExample) elements.cardExample.value = resolvedCard ? resolvedCard.example || "" : "";
   currentGrammarType = resolvedCard?.cardGrammarType || "normal";
   cardNounGender = resolvedCard?.nounGender || null;
@@ -2173,6 +2181,41 @@ function closeCardModal() {
   showOverlay(elements.cardModal, false);
   editingCardId = null;
 }
+
+function toConjugationBlocksFromMap(conjugations = {}) {
+  return Object.entries(conjugations || {}).map(([heading, body]) => ({
+    heading,
+    label: heading.replace(/^(?:INDIKATIV|KONJUNKTIV\s+[IⅡ1]+|IMPERATIV)\s*/i, "").trim() || heading,
+    forms: parseGermanConjugationPaste(`${heading}\n${body}`)?.blocks?.[0]?.forms || {},
+  }));
+}
+
+function ensureCardConjugationStructure(card = {}) {
+  if (!card || card.cardGrammarType !== "verb") return card;
+  if (card.conjugations && Object.keys(card.conjugations).length) return card;
+  if (Array.isArray(card.conjugationBlocks) && card.conjugationBlocks.length) {
+    const conjugations = Object.fromEntries(card.conjugationBlocks.map((b) => {
+      const rows = ["ich", "du", "er/sie/es", "wir", "ihr", "sie"].map((p) => {
+        const lbl = p === "er/sie/es" ? "er / sie / es" : (p === "sie" ? "sie / Sie" : p);
+        return `${lbl} - ${b.forms?.[p] || "-"}`;
+      }).join("\n");
+      return [b.heading, rows];
+    }));
+    return { ...card, conjugations };
+  }
+  const parsed = parseGermanConjugationPaste(card.back || "");
+  if (parsed?.blocks?.length) return { ...card, conjugations: parsed.conjugations, conjugationBlocks: parsed.blocks };
+  return card;
+}
+
+function getCardConjugationBlocks(card = {}) {
+  const normalized = ensureCardConjugationStructure(card);
+  if (normalized.conjugations && Object.keys(normalized.conjugations).length) {
+    return toConjugationBlocksFromMap(normalized.conjugations);
+  }
+  return Array.isArray(normalized.conjugationBlocks) ? normalized.conjugationBlocks : [];
+}
+
 function detectGermanVerbForReverso(text = "") {
   const lines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const bracket = lines[0]?.match(/^\[([^\]]+)\]$/);
@@ -2195,8 +2238,10 @@ function updateVerbReversoLink() {
 function applyReversoConjugationPaste(raw = "") {
   const parsed = parseGermanConjugationPaste(raw);
   if (!parsed) return;
-  elements.cardBack.value = parsed.formatted;
-  elements.cardBack.dataset.conjugationBlocks = JSON.stringify(parsed.blocks || []);
+  const firstHeading = Object.keys(parsed.conjugations || {})[0];
+  elements.cardBack.value = firstHeading ? (parsed.conjugations[firstHeading] || "") : parsed.formatted;
+  elements.cardBack.dataset.conjugations = JSON.stringify(parsed.conjugations || {});
+  if (firstHeading) elements.cardBack.dataset.activeConjugationHeading = firstHeading;
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
 }
@@ -3537,13 +3582,16 @@ async function handleSaveCard() {
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
+  let conjugations = {};
   let conjugationBlocks = [];
   if (currentGrammarType === "verb") {
-    try { conjugationBlocks = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"); } catch {}
-    if (!conjugationBlocks.length) {
+    try { conjugations = JSON.parse(elements.cardBack?.dataset?.conjugations || "{}"); } catch {}
+    if (!Object.keys(conjugations).length) {
       const parsed = parseGermanConjugationPaste(back);
+      if (parsed?.conjugations) conjugations = parsed.conjugations;
       if (parsed?.blocks?.length) conjugationBlocks = parsed.blocks;
     }
+    if (!conjugationBlocks.length && Object.keys(conjugations).length) conjugationBlocks = toConjugationBlocksFromMap(conjugations);
   }
   const example = elements.cardExample?.value.trim() || "";
   const clozeText = elements.cardClozeText.value.trim();
@@ -3615,6 +3663,7 @@ async function handleSaveCard() {
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
         conjugationBlocks,
+        conjugations,
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3646,6 +3695,7 @@ async function handleSaveCard() {
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
         conjugationBlocks,
+        conjugations,
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -4137,7 +4187,8 @@ function renderReviewCard(card, showBack = false) {
       backLabel.textContent = "Reverso";
       const backText = document.createElement("div");
       backText.className = "review-back";
-      const blocks = Array.isArray(resolvedCard.conjugationBlocks) ? resolvedCard.conjugationBlocks : [];
+      const normalizedVerbCard = ensureCardConjugationStructure(resolvedCard);
+      const blocks = getCardConjugationBlocks(normalizedVerbCard);
       if (resolvedCard.cardGrammarType === "verb" && blocks.length) {
         const kpi = document.createElement("div");
         kpi.className = "review-conj-tabs";
