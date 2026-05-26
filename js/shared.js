@@ -156,6 +156,7 @@ export const elements = {
   cardType: document.getElementById("card-type"),
   cardFront: document.getElementById("card-front"),
   cardBack: document.getElementById("card-back"),
+  cardConjugationTabs: document.getElementById("card-conjugation-tabs"),
   cardClear: document.getElementById("card-clear"),
   cardExample: document.getElementById("card-example"),
   cardGrammarType: document.getElementById("card-grammar-type"),
