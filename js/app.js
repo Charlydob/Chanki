@@ -1400,12 +1400,13 @@ function resolveWordMeta(word) {
 }
 
 function renderClickableText(text, context = {}) {
-  const { lang = "de", cardId = "", side = "", folderId = "" } = context;
+  const { lang = "de", cardId = "", side = "", folderId = "", grammarType = "" } = context;
   const formatted = formatCardText(text);
   const fragment = document.createDocumentFragment();
   const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
   let lastIndex = 0;
   let match = regex.exec(formatted);
+  let generatedWords = 0;
   while (match) {
     if (match.index > lastIndex) {
       fragment.appendChild(document.createTextNode(formatted.slice(lastIndex, match.index)));
@@ -1427,12 +1428,14 @@ function renderClickableText(text, context = {}) {
     span.dataset.contextFolderId = folderId || "";
     span.textContent = word;
     fragment.appendChild(span);
+    generatedWords += 1;
     lastIndex = match.index + word.length;
     match = regex.exec(formatted);
   }
   if (lastIndex < formatted.length) {
     fragment.appendChild(document.createTextNode(formatted.slice(lastIndex)));
   }
+  console.log("[word-debug:wrap]", { cardId, grammarType, side, lang, usesRenderClickableText: true, chunkyWordCount: generatedWords });
   return fragment;
 }
 
@@ -1458,6 +1461,7 @@ function renderTextWithLanguage(text, language, glossaryMap, options = {}) {
       cardId: options.cardId || "",
       side: options.side || "",
       folderId: options.folderId || "",
+      grammarType: options.grammarType || "",
     })
   );
   return chunk;
@@ -2583,6 +2587,7 @@ function closeWordPopover() {
 
 async function openWordMeaningPopup(payload) {
   const { word, anchorRect } = payload || {};
+  console.log("[word-debug:popup-open]", { word, hasAnchorRect: Boolean(anchorRect), context: payload?.context || null });
   if (!state.username) {
     showToast("Define tu usuario en Ajustes o al iniciar.", "error");
     return;
@@ -3933,6 +3938,7 @@ function renderReviewCard(card, showBack = false) {
   const wrapper = document.createElement("div");
   wrapper.className = showBack ? "review-text review-text--reveal" : "review-text";
   const glossaryMap = buildGlossaryMap(resolvedCard);
+  const grammarType = resolvedCard?.cardGrammarType || "normal";
 
   if (resolvedCard.type === "cloze") {
     const promptSection = document.createElement("div");
@@ -4265,7 +4271,8 @@ function renderReviewCard(card, showBack = false) {
     frontLabel.textContent = "Frente";
     const frontText = document.createElement("div");
     frontText.className = "review-front";
-    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front" }));
+    console.log("[word-debug:front-render]", { cardId: resolvedCard.id, grammarType, side: "front", usesRenderClickableText: true });
+    frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap, { cardId: resolvedCard.id, side: "front", grammarType }));
     injectInlineSpeechButtons(frontText, sourceLang);
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
@@ -4283,6 +4290,7 @@ function renderReviewCard(card, showBack = false) {
       const normalizedVerbCard = ensureCardConjugationStructure(resolvedCard);
       const blocks = getCardConjugationBlocks(normalizedVerbCard);
       if (blocks.length) {
+        console.log("[word-debug:verb-back-render]", { cardId: resolvedCard.id, grammarType, side: "back", usesRenderClickableText: true, blockCount: blocks.length });
         const selector = document.createElement("select");
         selector.className = "review-conj-select";
         const active = reviewConjugationHeading && blocks.some((b) => b.heading === reviewConjugationHeading)
@@ -4303,18 +4311,24 @@ function renderReviewCard(card, showBack = false) {
         backSection.appendChild(selector);
         const selected = blocks.find((b) => b.heading === active) || blocks[0];
         const lines = (selected.lines || []).map((line) => `${line.pronoun} - ${line.value}`).join("\n");
-        backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "back" }));
+        backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "back", grammarType }));
       } else {
-        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap, { cardId: resolvedCard.id, side: "back" }));
+        if (grammarType === "noun") {
+          console.log("[word-debug:noun-back-render]", { cardId: resolvedCard.id, grammarType, side: "back", usesRenderClickableText: true });
+        } else {
+          console.log("[word-debug:normal-back-render]", { cardId: resolvedCard.id, grammarType, side: "back", usesRenderClickableText: true });
+        }
+        backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap, { cardId: resolvedCard.id, side: "back", grammarType }));
       }
       injectInlineSpeechButtons(backText, targetLang);
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
       backSection.appendChild(buildAudioButton((resolvedCard.back || ""), targetLang));
       if (resolvedCard.example) {
+        console.log("[word-debug:example-render]", { cardId: resolvedCard.id, grammarType, side: "example", usesRenderClickableText: true });
         const exampleText = document.createElement("div");
         exampleText.className = "review-example";
-        exampleText.appendChild(renderTextWithLanguage(resolvedCard.example, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "example" }));
+        exampleText.appendChild(renderTextWithLanguage(resolvedCard.example, targetLang, glossaryMap, { cardId: resolvedCard.id, side: "example", grammarType }));
         backSection.appendChild(exampleText);
       }
       wrapper.appendChild(backSection);
@@ -4322,6 +4336,21 @@ function renderReviewCard(card, showBack = false) {
   }
 
   elements.reviewCard.appendChild(wrapper);
+  const totalChunkyWords = document.querySelectorAll(".chunky-word").length;
+  const frontContainer = elements.reviewCard.querySelector(".review-front");
+  const backContainer = elements.reviewCard.querySelector(".review-back");
+  const exampleContainer = elements.reviewCard.querySelector(".review-example");
+  const conjugationContainer = elements.reviewCard.querySelector(".review-conj-select")?.parentElement || null;
+  console.log("[word-debug:dom]", {
+    cardId: resolvedCard?.id || null,
+    grammarType,
+    side: showBack ? "back" : "front",
+    totalChunkyWords,
+    front: { hasContainer: Boolean(frontContainer), chunkyWordCount: frontContainer ? frontContainer.querySelectorAll(".chunky-word").length : 0 },
+    back: { hasContainer: Boolean(backContainer), chunkyWordCount: backContainer ? backContainer.querySelectorAll(".chunky-word").length : 0 },
+    example: { hasContainer: Boolean(exampleContainer), chunkyWordCount: exampleContainer ? exampleContainer.querySelectorAll(".chunky-word").length : 0 },
+    conjugation: { hasContainer: Boolean(conjugationContainer), chunkyWordCount: conjugationContainer ? conjugationContainer.querySelectorAll(".chunky-word").length : 0 },
+  });
 }
 
 function ensureSwipeOverlay() {
@@ -5983,6 +6012,14 @@ if (elements.cardModalClose) {
 
 document.addEventListener("click", (event) => {
   const wordEl = event.target.closest(".chunky-word");
+  console.log("[word-debug:click]", {
+    targetTag: event?.target?.tagName || null,
+    targetClass: event?.target?.className || null,
+    hasClosestChunkyWord: Boolean(wordEl),
+    word: wordEl?.dataset?.word || "",
+    side: wordEl?.dataset?.side || "",
+    cardId: wordEl?.dataset?.cardId || "",
+  });
   if (!wordEl) return;
   event.stopPropagation();
   const word = wordEl.dataset.word;
@@ -5999,6 +6036,7 @@ document.addEventListener("click", (event) => {
     isShared: context.isShared,
     side: wordEl.dataset.side || "",
   };
+  console.log("[word-debug:click]", { callsOpenWordMeaningPopup: true, word, side: wordEl.dataset.side || "", cardId: wordEl.dataset.cardId || "" });
   openWordMeaningPopup({ word, anchorRect: wordEl.getBoundingClientRect(), language, context: state.activeWordContext });
 });
 
