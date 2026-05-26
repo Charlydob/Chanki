@@ -202,6 +202,7 @@ let wordPopoverFolderSelect = null;
 let wordPopoverGenderButtons = null;
 let wordPopoverAnchor = null;
 let wordPopoverEditing = false;
+let wordPopoverOverlay = null;
 let reviewEditModal = null;
 let reviewEditCardId = null;
 let reviewEditType = "basic";
@@ -2476,6 +2477,8 @@ function updateCardTypeFields(type) {
 
 function ensureWordPopover() {
   if (wordPopover) return;
+  wordPopoverOverlay = document.createElement("div");
+  wordPopoverOverlay.className = "word-popover-overlay hidden";
   wordPopover = document.createElement("div");
   wordPopover.className = "word-popover hidden";
   wordPopover.innerHTML = `
@@ -2494,7 +2497,8 @@ function ensureWordPopover() {
       <button class="button small" type="button">Guardar</button>
     </div>
   `;
-  document.body.appendChild(wordPopover);
+  wordPopoverOverlay.appendChild(wordPopover);
+  document.body.appendChild(wordPopoverOverlay);
   wordPopoverTitle = wordPopover.querySelector(".word-popover__title");
   wordPopoverMeaning = wordPopover.querySelector(".word-popover__meaning .meaning");
   wordPopoverEditor = wordPopover.querySelector(".word-popover__editor");
@@ -2560,38 +2564,29 @@ function updateWordPopoverMeaning(meaning) {
 }
 
 function positionWordPopover() {
-  if (!wordPopover || !wordPopoverAnchor) return;
-  if (wordPopoverEditing && document.activeElement === wordPopoverInput) return;
-  const padding = 12;
-  const safeTop = getSafeAreaInset("top");
-  const safeBottom = getSafeAreaInset("bottom");
-  const safeLeft = getSafeAreaInset("left");
-  const safeRight = getSafeAreaInset("right");
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const rect = wordPopover.getBoundingClientRect();
-  let left = wordPopoverAnchor.left + wordPopoverAnchor.width / 2 - rect.width / 2;
-  left = Math.max(padding + safeLeft, Math.min(left, viewportWidth - rect.width - padding - safeRight));
-
-  let top = wordPopoverAnchor.top - rect.height - 8;
-  if (top < padding + safeTop) {
-    top = wordPopoverAnchor.bottom + 8;
-  }
-  top = Math.max(padding + safeTop, Math.min(top, viewportHeight - rect.height - padding - safeBottom));
-
-  wordPopover.style.left = `${left}px`;
-  wordPopover.style.top = `${top}px`;
+  if (!wordPopover) return;
+  wordPopover.style.left = "50%";
+  wordPopover.style.top = "50%";
+  wordPopover.style.transform = "translate(-50%, -50%)";
 }
 
 function closeWordPopover() {
   if (!wordPopover) return;
   wordPopover.classList.add("hidden");
+  wordPopoverOverlay?.classList.add("hidden");
   wordPopoverEditor?.classList.add("hidden");
   wordPopoverEditing = false;
   state.activeWordKey = null;
   state.activeWordNorm = null;
   state.activeWordContext = null;
   wordPopoverAnchor = null;
+  window.__lastWordPopupState = {
+    word: wordPopoverTitle?.textContent || "",
+    visible: false,
+    mounted: false,
+    rect: null,
+    timestamp: Date.now(),
+  };
 }
 
 async function openWordMeaningPopup(payload) {
@@ -2623,6 +2618,7 @@ async function openWordMeaningPopup(payload) {
   }
   wordPopover.dataset.gender = "";
   wordPopoverGenderButtons?.forEach((btn)=>btn.classList.remove("active","is-active"));
+  wordPopoverOverlay?.classList.remove("hidden");
   wordPopover.classList.remove("hidden");
   positionWordPopover();
   updateWordPopoverMeaning(existing?.meaning || "");
@@ -2633,6 +2629,15 @@ async function openWordMeaningPopup(payload) {
   if (wordPopoverInput) wordPopoverInput.value = existing?.meaning || "";
   if (wordPopoverFolderSelect && existing?.folderId) wordPopoverFolderSelect.value = existing.folderId;
   positionWordPopover();
+  const rect = wordPopover.getBoundingClientRect();
+  window.__lastWordPopupState = {
+    word,
+    visible: !wordPopover.classList.contains("hidden"),
+    mounted: Boolean(wordPopover.isConnected),
+    rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+    timestamp: Date.now(),
+  };
+  console.log("[word-debug:popup-mounted]", window.__lastWordPopupState);
 }
 
 const openWordPopover = openWordMeaningPopup;
