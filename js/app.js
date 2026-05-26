@@ -262,12 +262,26 @@ function getActiveFolderLanguages() {
     targetLang: folder?.targetLang || "de",
   };
 }
-function speechLocaleFor(lang) { return lang === "de" ? "de-DE" : (lang === "en" ? "en-US" : "es-ES"); }
-function resolveVoiceLang(text = "") {
-  const lower = String(text).toLowerCase();
-  if (/[äöüß]|\b(der|die|das|und|ich|nicht)\b/.test(lower)) return "de";
-  if (/[ñ¿¡]|\b(el|la|de|que|con|para)\b/.test(lower)) return "es";
-  return "en";
+const SPEECH_LANGUAGE_MAP = { es: ["es-ES", "es"], de: ["de-DE", "de"], en: ["en-US", "en"] };
+function normalizeSpeechLang(lang = "") {
+  const normalized = String(lang || "").trim().toLowerCase();
+  if (!normalized) return "en";
+  if (normalized.startsWith("es")) return "es";
+  if (normalized.startsWith("de")) return "de";
+  if (normalized.startsWith("en")) return "en";
+  return normalized;
+}
+function getVoiceForLanguage(lang = "") {
+  const normalized = normalizeSpeechLang(lang);
+  const preferences = SPEECH_LANGUAGE_MAP[normalized] || [normalized];
+  const locale = preferences[0];
+  const voices = window.speechSynthesis?.getVoices?.() || [];
+  const exact = voices.find((voice) => String(voice.lang || "").toLowerCase() === locale.toLowerCase());
+  if (exact) return { locale, voice: exact };
+  const byPrefix = voices.find((voice) => preferences.some(
+    (pref) => String(voice.lang || "").toLowerCase().startsWith(pref.toLowerCase())
+  ));
+  return { locale, voice: byPrefix || null };
 }
 function normalizeEsText(text = "") {
   return String(text || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -447,24 +461,61 @@ async function runCardTranslation(direction, { force = false } = {}) {
     showToast("No se pudo traducir", "info");
   }
 }
+function cleanTextForSpeech(text = "") {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line
+      .replace(/^\s*(?:[-*•]+|\d+\s*(?:[.)]|-\s*))\s*/, "")
+      .replace(/^\s*[|:;,.·-]+\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+function splitSpeechItems(text = "") {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => cleanTextForSpeech(line))
+    .filter(Boolean);
+}
 function speakText(text, lang) {
-  if (!('speechSynthesis' in window) || !text) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = speechLocaleFor(lang);
-  const voices = window.speechSynthesis.getVoices() || [];
-  const voice = voices.find((v) => v.lang?.toLowerCase().startsWith(utter.lang.slice(0,2).toLowerCase()));
+  if (!("speechSynthesis" in window)) return;
+  const cleaned = cleanTextForSpeech(text);
+  if (!cleaned) return;
+  const { locale, voice } = getVoiceForLanguage(lang);
+  const utter = new SpeechSynthesisUtterance(cleaned.replace(/\n+/g, ". "));
+  utter.lang = locale;
   if (voice) utter.voice = voice;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utter);
 }
-function buildAudioButton(text, lang) {
+function buildAudioButton(text, lang, { label = "Reproducir audio" } = {}) {
   const btn = document.createElement("button");
   btn.className = "icon-button icon-button--compact";
   btn.type = "button";
   btn.textContent = "🔊";
-  btn.setAttribute("aria-label", "Reproducir audio");
-  btn.addEventListener("click", () => speakText(String(text || "").trim(), lang || resolveVoiceLang(text)));
+  btn.setAttribute("aria-label", label);
+  btn.addEventListener("click", () => speakText(text, lang));
   return btn;
+}
+function buildSpeechItemsList(text, lang) {
+  const speechItems = splitSpeechItems(text);
+  if (speechItems.length < 2) return null;
+  const list = document.createElement("div");
+  list.className = "speech-items-list";
+  speechItems.forEach((itemText, index) => {
+    const row = document.createElement("div");
+    row.className = "speech-item-row";
+    row.appendChild(buildAudioButton(itemText, lang, { label: `Reproducir línea ${index + 1}` }));
+    const value = document.createElement("span");
+    value.className = "speech-item-row__text";
+    value.textContent = `${index + 1}. ${itemText}`;
+    row.appendChild(value);
+    list.appendChild(row);
+  });
+  return list;
 }
 
 const ORDER_LABEL_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#22d3ee"];
@@ -3643,6 +3694,7 @@ function ensureOrderState(card) {
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const resolvedCard = resolveLegacyOrderCard(card);
+  const { sourceLang, targetLang } = getActiveFolderLanguages();
   elements.reviewCard.classList.remove("review-card--der", "review-card--die", "review-card--das");
   if (resolvedCard?.cardGrammarType === "noun" && resolvedCard?.nounGender) {
     elements.reviewCard.classList.add(`review-card--${resolvedCard.nounGender}`);
@@ -3735,7 +3787,9 @@ function renderReviewCard(card, showBack = false) {
     }
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
-    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), targetLang));
+    const clozeSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), targetLang);
+    if (clozeSpeechItems) frontSection.appendChild(clozeSpeechItems);
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -3772,7 +3826,9 @@ function renderReviewCard(card, showBack = false) {
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "es", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
-    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
+    const orderSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), sourceLang);
+    if (orderSpeechItems) frontSection.appendChild(orderSpeechItems);
     wrapper.appendChild(frontSection);
 
     const orderCard = document.createElement("div");
@@ -3985,7 +4041,9 @@ function renderReviewCard(card, showBack = false) {
     frontText.appendChild(renderTextWithLanguage(resolvedCard.front || "", "de", glossaryMap));
     frontSection.appendChild(frontLabel);
     frontSection.appendChild(frontText);
-    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), resolveVoiceLang(resolvedCard.front || "")));
+    frontSection.appendChild(buildAudioButton((resolvedCard.front || ""), sourceLang));
+    const frontSpeechItems = buildSpeechItemsList((resolvedCard.front || ""), sourceLang);
+    if (frontSpeechItems) frontSection.appendChild(frontSpeechItems);
     wrapper.appendChild(frontSection);
 
     if (showBack) {
@@ -3999,7 +4057,9 @@ function renderReviewCard(card, showBack = false) {
       backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
       backSection.appendChild(backLabel);
       backSection.appendChild(backText);
-      backSection.appendChild(buildAudioButton((resolvedCard.back || ""), resolveVoiceLang(resolvedCard.back || "")));
+      backSection.appendChild(buildAudioButton((resolvedCard.back || ""), targetLang));
+      const backSpeechItems = buildSpeechItemsList((resolvedCard.back || ""), targetLang);
+      if (backSpeechItems) backSection.appendChild(backSpeechItems);
       wrapper.appendChild(backSection);
     }
   }
