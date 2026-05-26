@@ -1837,13 +1837,13 @@ function openCardModal(card = null) {
   elements.cardFront.value = resolvedCard ? resolvedCard.front || "" : "";
   elements.cardBack.value = resolvedCard ? resolvedCard.back || "" : "";
   const normalizedConjCard = ensureCardConjugationStructure(resolvedCard || {});
-  if (normalizedConjCard?.conjugations && Object.keys(normalizedConjCard.conjugations).length) {
-    const headings = Object.keys(normalizedConjCard.conjugations);
-    elements.cardBack.dataset.conjugations = JSON.stringify(normalizedConjCard.conjugations);
-    elements.cardBack.dataset.activeConjugationHeading = headings[0];
-    elements.cardBack.value = normalizedConjCard.conjugations[headings[0]] || "";
+  if (Array.isArray(normalizedConjCard?.conjugationBlocks) && normalizedConjCard.conjugationBlocks.length) {
+    const firstBlock = normalizedConjCard.conjugationBlocks[0];
+    elements.cardBack.dataset.conjugationBlocks = JSON.stringify(normalizedConjCard.conjugationBlocks);
+    elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
+    elements.cardBack.value = firstBlock.lines.map((l) => `${l.pronoun} - ${l.value}`).join("\n");
   } else {
-    delete elements.cardBack.dataset.conjugations;
+    delete elements.cardBack.dataset.conjugationBlocks;
     delete elements.cardBack.dataset.activeConjugationHeading;
   }
   if (elements.cardExample) elements.cardExample.value = resolvedCard ? resolvedCard.example || "" : "";
@@ -1963,6 +1963,7 @@ function ensureReviewEditModal() {
       </div>
       <div class="modal__footer modal__footer--sticky">
         <div class="row row--end">
+          <button class="button danger" type="button" data-review-action="eliminar">Eliminar tarjeta</button>
           <button class="button ghost" type="button" data-review-action="cancelar">Cancelar</button>
           <button class="button" type="button" data-review-action="guardar">Guardar</button>
         </div>
@@ -1990,6 +1991,7 @@ function ensureReviewEditModal() {
   reviewEditCancel = reviewEditModal.querySelector("[data-review-action=\"cancelar\"]");
   reviewEditClose = reviewEditModal.querySelector("[data-review-action=\"cerrar\"]");
   reviewEditSave = reviewEditModal.querySelector("[data-review-action=\"guardar\"]");
+  const reviewEditDelete = reviewEditModal.querySelector("[data-review-action=\"eliminar\"]");
 
   reviewEditCancel.addEventListener("click", closeReviewEditModal);
   reviewEditClose.addEventListener("click", closeReviewEditModal);
@@ -1999,6 +2001,30 @@ function ensureReviewEditModal() {
     }
   });
   reviewEditSave.addEventListener("click", handleReviewEditSave);
+  reviewEditDelete?.addEventListener("click", handleReviewEditDelete);
+}
+
+async function handleReviewEditDelete() {
+  if (!reviewEditCardId || !state.username) return;
+  if (!window.confirm("¿Eliminar tarjeta? Esta acción no se puede deshacer.")) return;
+  const card = state.cards.find((entry) => entry.id === reviewEditCardId) || state.reviewQueue.find((entry) => entry.id === reviewEditCardId);
+  if (!card) return;
+  try {
+    const db = getDb();
+    const ownerUid = reviewEditOwnerUid || state.username;
+    await deleteCard(db, ownerUid, card);
+    state.cards = state.cards.filter((entry) => entry.id !== reviewEditCardId);
+    state.reviewQueue = state.reviewQueue.filter((entry) => entry.id !== reviewEditCardId);
+    state.cardsCache = state.cards;
+    state.cardsLoadedIds.delete(reviewEditCardId);
+    state.cardCache.delete(reviewEditCardId);
+    renderCardsView();
+    refreshCurrentReviewCard();
+    closeReviewEditModal();
+    showToast("Tarjeta eliminada.");
+  } catch (error) {
+    handleErrorToast(error, "No se pudo eliminar la tarjeta.");
+  }
 }
 
 function openReviewEditModal(card) {
@@ -2206,36 +2232,26 @@ function closeCardModal() {
 }
 
 function toConjugationBlocksFromMap(conjugations = {}) {
-  return Object.entries(conjugations || {}).map(([heading, body]) => ({
-    heading,
-    label: heading.replace(/^(?:INDIKATIV|KONJUNKTIV\s+[IⅡ1]+|IMPERATIV)\s*/i, "").trim() || heading,
-    forms: parseGermanConjugationPaste(`${heading}\n${body}`)?.blocks?.[0]?.forms || {},
-  }));
+  return Object.entries(conjugations || {}).map(([heading, body]) => {
+    const parsed = parseGermanConjugationPaste(`${heading}\n${body}`);
+    return parsed?.blocks?.[0] || null;
+  }).filter(Boolean);
 }
 
 function ensureCardConjugationStructure(card = {}) {
   if (!card || card.cardGrammarType !== "verb") return card;
-  if (card.conjugations && Object.keys(card.conjugations).length) return card;
+  if (card.conjugations && Object.keys(card.conjugations).length) return { ...card, conjugationBlocks: toConjugationBlocksFromMap(card.conjugations) };
   if (Array.isArray(card.conjugationBlocks) && card.conjugationBlocks.length) {
-    const conjugations = Object.fromEntries(card.conjugationBlocks.map((b) => {
-      const rows = ["ich", "du", "er/sie/es", "wir", "ihr", "sie"].map((p) => {
-        const lbl = p === "er/sie/es" ? "er / sie / es" : (p === "sie" ? "sie / Sie" : p);
-        return `${lbl} - ${b.forms?.[p] || "-"}`;
-      }).join("\n");
-      return [b.heading, rows];
-    }));
-    return { ...card, conjugations };
+    return card;
   }
   const parsed = parseGermanConjugationPaste(card.back || "");
-  if (parsed?.blocks?.length) return { ...card, conjugations: parsed.conjugations, conjugationBlocks: parsed.blocks };
+  if (parsed?.blocks?.length) return { ...card, conjugationBlocks: parsed.blocks };
   return card;
 }
 
 function getCardConjugationBlocks(card = {}) {
   const normalized = ensureCardConjugationStructure(card);
-  if (normalized.conjugations && Object.keys(normalized.conjugations).length) {
-    return toConjugationBlocksFromMap(normalized.conjugations);
-  }
+  if (normalized.conjugations && Object.keys(normalized.conjugations).length) return toConjugationBlocksFromMap(normalized.conjugations);
   return Array.isArray(normalized.conjugationBlocks) ? normalized.conjugationBlocks : [];
 }
 
@@ -2261,10 +2277,10 @@ function updateVerbReversoLink() {
 function applyReversoConjugationPaste(raw = "") {
   const parsed = parseGermanConjugationPaste(raw);
   if (!parsed) return;
-  const firstHeading = Object.keys(parsed.conjugations || {})[0];
-  elements.cardBack.value = firstHeading ? (parsed.conjugations[firstHeading] || "") : parsed.formatted;
-  elements.cardBack.dataset.conjugations = JSON.stringify(parsed.conjugations || {});
-  if (firstHeading) elements.cardBack.dataset.activeConjugationHeading = firstHeading;
+  const firstBlock = parsed.blocks?.[0];
+  elements.cardBack.value = firstBlock ? firstBlock.lines.map((l) => `${l.pronoun} - ${l.value}`).join("\n") : parsed.formatted;
+  elements.cardBack.dataset.conjugationBlocks = JSON.stringify(parsed.blocks || []);
+  if (firstBlock?.heading) elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
 }
@@ -3605,16 +3621,13 @@ async function handleSaveCard() {
   const type = elements.cardType.value;
   const front = elements.cardFront.value.trim();
   const back = elements.cardBack.value.trim();
-  let conjugations = {};
   let conjugationBlocks = [];
   if (currentGrammarType === "verb") {
-    try { conjugations = JSON.parse(elements.cardBack?.dataset?.conjugations || "{}"); } catch {}
-    if (!Object.keys(conjugations).length) {
+    try { conjugationBlocks = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"); } catch {}
+    if (!conjugationBlocks.length) {
       const parsed = parseGermanConjugationPaste(back);
-      if (parsed?.conjugations) conjugations = parsed.conjugations;
       if (parsed?.blocks?.length) conjugationBlocks = parsed.blocks;
     }
-    if (!conjugationBlocks.length && Object.keys(conjugations).length) conjugationBlocks = toConjugationBlocksFromMap(conjugations);
   }
   const example = elements.cardExample?.value.trim() || "";
   const clozeText = elements.cardClozeText.value.trim();
@@ -3685,8 +3698,7 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
-        conjugationBlocks,
-        conjugations,
+        conjugationBlocks
       });
       if (result?.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -3717,8 +3729,7 @@ async function handleSaveCard() {
         tags: tagsToMap(finalTags),
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
-        conjugationBlocks,
-        conjugations,
+        conjugationBlocks
       });
       if (result.status === "duplicate") {
         showToast("Duplicado omitido.");
@@ -4232,11 +4243,8 @@ function renderReviewCard(card, showBack = false) {
         });
         backSection.appendChild(kpi);
         const selected = blocks.find((b) => b.heading === active) || blocks[0];
-        const lines = ["ich", "du", "er/sie/es", "wir", "ihr", "sie"].map((p) => {
-          const lbl = p === "er/sie/es" ? "er / sie / es" : (p === "sie" ? "sie / Sie" : p);
-          return `${lbl} - ${selected.forms?.[p] || "-"}`;
-        }).join("\n");
-        backText.appendChild(renderBackWithLanguage(lines, glossaryMap));
+        const lines = (selected.lines || []).map((line) => `${line.pronoun} - ${line.value}`).join("\n");
+        backText.appendChild(renderTextWithLanguage(lines, targetLang, glossaryMap));
       } else {
         backText.appendChild(renderBackWithLanguage(resolvedCard.back || "", glossaryMap));
       }
