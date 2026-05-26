@@ -197,6 +197,8 @@ let wordPopoverMeaning = null;
 let wordPopoverEditor = null;
 let wordPopoverInput = null;
 let wordPopoverSave = null;
+let wordPopoverFolderSelect = null;
+let wordPopoverGenderButtons = null;
 let wordPopoverAnchor = null;
 let wordPopoverEditing = false;
 let reviewEditModal = null;
@@ -1334,10 +1336,16 @@ function buildGlossaryMap(card) {
   return merged;
 }
 
-function resolveGlossaryMeaning(word, glossaryMap) {
+function resolveWordMeta(word, glossaryMap) {
   const norm = normalizeWordCacheKey(word);
-  if (!norm) return "";
-  return glossaryMap.get(norm) || state.glossaryCache.get(norm)?.meaning || "";
+  if (!norm) return { norm: "", meaning: "", gender: "" };
+  const cached = state.glossaryCache.get(norm) || {};
+  const entry = getLexiconEntry(norm) || {};
+  return {
+    norm,
+    meaning: glossaryMap.get(norm) || cached.meaning || entry.meaning || "",
+    gender: cached.gender || entry.gender || "",
+  };
 }
 
 function buildTextFragment(text, glossaryMap) {
@@ -1353,11 +1361,12 @@ function buildTextFragment(text, glossaryMap) {
     const word = match[0];
     const span = document.createElement("span");
     span.className = "word";
-    const meaning = resolveGlossaryMeaning(word, glossaryMap);
-    if (meaning && meaning.trim()) {
-      span.classList.add("gloss-term", "has-meaning");
-    }
+    const meta = resolveWordMeta(word, glossaryMap);
+    if (meta.meaning && meta.meaning.trim()) span.classList.add("gloss-term", "has-meaning");
+    if (meta.gender) span.classList.add(`word--${meta.gender}`);
     span.dataset.word = word;
+    span.dataset.norm = meta.norm || "";
+    span.dataset.gender = meta.gender || "";
     span.textContent = word;
     fragment.appendChild(span);
     lastIndex = match.index + word.length;
@@ -2249,7 +2258,13 @@ function ensureWordPopover() {
       <span class="meaning"></span>
     </button>
     <div class="word-popover__editor hidden">
+      <div class="chip-toggle-group word-popover__genders">
+        <button class="chip-toggle chip-toggle--der" data-gender="der" type="button">der</button>
+        <button class="chip-toggle chip-toggle--die" data-gender="die" type="button">die</button>
+        <button class="chip-toggle chip-toggle--das" data-gender="das" type="button">das</button>
+      </div>
       <input type="text" class="word-popover__input" />
+      <select class="word-popover__folder"></select>
       <button class="button small" type="button">Guardar</button>
     </div>
   `;
@@ -2259,6 +2274,8 @@ function ensureWordPopover() {
   wordPopoverEditor = wordPopover.querySelector(".word-popover__editor");
   wordPopoverInput = wordPopover.querySelector(".word-popover__input");
   wordPopoverSave = wordPopover.querySelector(".word-popover__editor .button");
+  wordPopoverFolderSelect = wordPopover.querySelector(".word-popover__folder");
+  wordPopoverGenderButtons = Array.from(wordPopover.querySelectorAll("[data-gender]"));
 
   wordPopover.querySelector(".word-popover__meaning").addEventListener("click", () => {
     if (!wordPopover || wordPopover.classList.contains("hidden")) return;
@@ -2270,6 +2287,14 @@ function ensureWordPopover() {
     wordPopoverInput.focus();
   });
 
+
+  wordPopoverGenderButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      wordPopoverGenderButtons.forEach((entry) => entry.classList.remove("active", "is-active"));
+      btn.classList.add("active", "is-active");
+      wordPopover.dataset.gender = btn.dataset.gender || "";
+    });
+  });
   wordPopoverSave.addEventListener("click", async () => {
     const key = state.activeWordKey;
     const norm = state.activeWordNorm;
@@ -2279,12 +2304,14 @@ function ensureWordPopover() {
     const { cleanedMeaning, tags } = parseMeaningInput(meaning);
     try {
       const db = getDb();
+      const selectedGender = wordPopover.dataset.gender || "";
       await upsertGlossaryEntries(db, state.username, [
         {
           key,
           word: wordPopoverTitle.textContent,
           meaning,
           tags: tagsToMap(tags),
+          gender: selectedGender || null,
         },
       ]);
       if (termKey) {
@@ -2293,6 +2320,7 @@ function ensureWordPopover() {
           ...state.lexicon,
           [termKey]: {
             meaning,
+            gender: selectedGender || null,
             updatedAt: Date.now(),
           },
         };
@@ -2302,6 +2330,7 @@ function ensureWordPopover() {
           key,
           word: wordPopoverTitle.textContent,
           meaning,
+          gender: selectedGender || "",
           tags,
         });
       }
@@ -2323,11 +2352,9 @@ function ensureWordPopover() {
       wordPopoverEditing = false;
       wordPopoverEditor.classList.add("hidden");
       updateWordPopoverMeaning(meaning);
-      if (cleanedMeaning) {
-        const folderIds = await ensureVocabFolderIds();
-        const direction = state.activeWordContext?.language === "es" ? "es-de" : "de-es";
-        const folderId = direction === "es-de" ? folderIds?.esDe : folderIds?.deEs;
-        if (folderId) {
+      {
+        const folderId = wordPopoverFolderSelect?.value || "";
+        if (folderId && cleanedMeaning) {
           await createOrUpdateVocabCard(db, state.username, {
             folderId,
             front: wordPopoverTitle.textContent,
@@ -2398,6 +2425,18 @@ async function openWordPopover(word, anchorRect) {
   wordPopoverEditor.classList.add("hidden");
   wordPopoverEditing = false;
   updateWordPopoverMeaning("");
+  if (wordPopoverFolderSelect) {
+    wordPopoverFolderSelect.innerHTML = "";
+    const entries = Object.entries(state.folders || {});
+    entries.forEach(([id, folder]) => {
+      const op = document.createElement("option");
+      op.value = id;
+      op.textContent = folder?.name || id;
+      wordPopoverFolderSelect.appendChild(op);
+    });
+  }
+  wordPopover.dataset.gender = "";
+  wordPopoverGenderButtons?.forEach((btn)=>btn.classList.remove("active","is-active"));
   wordPopover.classList.remove("hidden");
   positionWordPopover();
   const lexiconMeaning = norm ? resolveLexiconMeaning(norm) : "";
@@ -2426,6 +2465,18 @@ async function openWordPopover(word, anchorRect) {
       updateWordPopoverMeaning(entry.m || entry.meaning || "");
     } else {
       updateWordPopoverMeaning("");
+  if (wordPopoverFolderSelect) {
+    wordPopoverFolderSelect.innerHTML = "";
+    const entries = Object.entries(state.folders || {});
+    entries.forEach(([id, folder]) => {
+      const op = document.createElement("option");
+      op.value = id;
+      op.textContent = folder?.name || id;
+      wordPopoverFolderSelect.appendChild(op);
+    });
+  }
+  wordPopover.dataset.gender = "";
+  wordPopoverGenderButtons?.forEach((btn)=>btn.classList.remove("active","is-active"));
     }
     positionWordPopover();
   } catch (error) {
@@ -3435,6 +3486,7 @@ async function handleCardListAction(event) {
     const newFolderId = prompt(`Mover a carpeta (id:nombre)\n${folderOptions}`);
     if (newFolderId && state.folders[newFolderId]) {
       const db = getDb();
+      const selectedGender = wordPopover.dataset.gender || "";
       await moveCardFolder(db, ownerUid, card, newFolderId);
       await loadCards(true);
     }
@@ -3443,6 +3495,7 @@ async function handleCardListAction(event) {
     const confirmDelete = confirm("¿Borrar esta tarjeta?");
     if (confirmDelete) {
       const db = getDb();
+      const selectedGender = wordPopover.dataset.gender || "";
       try {
         await deleteCard(db, ownerUid, card);
         showToast("Tarjeta borrada.");
@@ -5229,6 +5282,7 @@ if (elements.shareResults) {
     if (!sharedUid) return;
     try {
       const db = getDb();
+      const selectedGender = wordPopover.dataset.gender || "";
       const role = elements.shareRoleToggle?.checked ? "editor" : "viewer";
       await shareFolder(db, {
         ownerUid: shareContext.ownerUid,
@@ -5256,6 +5310,7 @@ if (elements.shareCurrentList) {
     if (!sharedUid) return;
     try {
       const db = getDb();
+      const selectedGender = wordPopover.dataset.gender || "";
       await unshareFolder(db, {
         ownerUid: shareContext.ownerUid,
         folderId: shareContext.folderId,
