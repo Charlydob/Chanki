@@ -1348,16 +1348,24 @@ function buildGlossaryMap(card) {
   return merged;
 }
 
-function buildKnownWordsIndex(cards = []) {
+function normalizeMeaningWord(word = "") {
+  return String(word || "")
+    .toLowerCase()
+    .replace(/^\s*\d+[\).:-]?\s*/, "")
+    .replace(/^[\s"'“”‘’([{<]+|[\s"'“”‘’)\]}>!?.,;:]+$/g, "")
+    .replace(/^(der|die|das|el|la|los|las)\s+/i, "")
+    .trim();
+}
+
+function buildMeaningIndex(cards = []) {
   const index = new Map();
   const allCards = Array.isArray(cards) ? cards : [];
   allCards.forEach((card) => {
     const rawTerm = String(card?.front || "").trim();
-    const norm = normalizeWordForLookup(rawTerm);
+    const norm = normalizeMeaningWord(rawTerm);
     if (!norm || index.has(norm)) return;
     const meaning = String(card?.back || "").trim();
     if (!meaning) return;
-    if (rawTerm.split(/\s+/).length !== 1) return;
     const gender = ["der", "die", "das"].includes(String(card?.nounGender || "").toLowerCase())
       ? String(card?.nounGender || "").toLowerCase()
       : "";
@@ -1374,31 +1382,25 @@ function buildKnownWordsIndex(cards = []) {
   return index;
 }
 
-function getKnownWord(word) {
-  if (!state.knownWordsIndex) {
-    state.knownWordsIndex = buildKnownWordsIndex([...(state.cards || []), ...(state.reviewQueue || [])]);
-  }
-  return state.knownWordsIndex.get(normalizeWordForLookup(word)) || null;
-}
-
-function resolveWordMeta(word, glossaryMap) {
-  const norm = normalizeWordCacheKey(word);
+function resolveWordMeta(word) {
+  const norm = normalizeMeaningWord(word);
   if (!norm) return { norm: "", meaning: "", gender: "", known: false, folderId: null, folderName: "" };
-  const cached = state.glossaryCache.get(norm) || {};
-  const entry = getLexiconEntry(norm) || {};
-  const known = getKnownWord(word) || {};
+  if (!state.meaningIndex) {
+    state.meaningIndex = buildMeaningIndex([...(state.cards || []), ...(state.reviewQueue || [])]);
+  }
+  const known = state.meaningIndex.get(norm) || {};
   return {
     norm,
-    meaning: glossaryMap.get(norm) || cached.meaning || entry.meaning || known.meaning || "",
-    gender: cached.gender || entry.gender || known.gender || "",
+    meaning: known.meaning || "",
+    gender: known.gender || "",
     known: Boolean(known.norm),
     folderId: known.folderId || null,
     folderName: known.folderName || "",
   };
 }
 
-function renderClickableWords(text, context = {}) {
-  const { glossaryMap = new Map(), lang = "de", cardId = "", side = "", folderId = "" } = context;
+function renderClickableText(text, context = {}) {
+  const { lang = "de", cardId = "", side = "", folderId = "" } = context;
   const formatted = formatCardText(text);
   const fragment = document.createDocumentFragment();
   const regex = new RegExp(WORD_TOKEN_REGEX.source, "g");
@@ -1410,11 +1412,10 @@ function renderClickableWords(text, context = {}) {
     }
     const word = match[0];
     const span = document.createElement("span");
-    span.className = "word";
-    const meta = resolveWordMeta(word, glossaryMap);
-    if (meta.meaning && meta.meaning.trim()) span.classList.add("gloss-term", "has-meaning");
+    span.className = "chunky-word";
+    const meta = resolveWordMeta(word);
+    if (meta.meaning && meta.meaning.trim()) span.classList.add("has-meaning");
     if (meta.gender) span.classList.add(`word--${meta.gender}`);
-    span.dataset.clickableWord = "1";
     span.dataset.word = word;
     span.dataset.norm = meta.norm || "";
     span.dataset.gender = meta.gender || "";
@@ -1440,8 +1441,7 @@ function createLanguageChunk(text, language, glossaryMap) {
   chunk.className = "lang-chunk";
   chunk.dataset.language = language;
   chunk.appendChild(
-    renderClickableWords(text, {
-      glossaryMap,
+    renderClickableText(text, {
       lang: language,
     })
   );
@@ -1453,8 +1453,7 @@ function renderTextWithLanguage(text, language, glossaryMap, options = {}) {
   chunk.className = "lang-chunk";
   chunk.dataset.language = language;
   chunk.appendChild(
-    renderClickableWords(text, {
-      glossaryMap,
+    renderClickableText(text, {
       lang: language,
       cardId: options.cardId || "",
       side: options.side || "",
@@ -2510,74 +2509,31 @@ function ensureWordPopover() {
     });
   });
   wordPopoverSave.addEventListener("click", async () => {
-    const key = state.activeWordKey;
     const norm = state.activeWordNorm;
-    if (!key || !state.username) return;
+    if (!norm || !state.username) return;
     const meaning = wordPopoverInput.value.trim();
-    const termKey = normalizeTerm(wordPopoverTitle.textContent);
-    const { cleanedMeaning, tags } = parseMeaningInput(meaning);
     try {
       const db = getDb();
       const selectedGender = wordPopover.dataset.gender || "";
-      await upsertGlossaryEntries(db, state.username, [
-        {
-          key,
-          word: wordPopoverTitle.textContent,
-          meaning,
-          tags: tagsToMap(tags),
-          gender: selectedGender || null,
-        },
-      ]);
-      if (termKey) {
-        await upsertLexiconEntry(db, state.username, termKey, meaning);
-        state.lexicon = {
-          ...state.lexicon,
-          [termKey]: {
-            meaning,
-            gender: selectedGender || null,
-            updatedAt: Date.now(),
-          },
-        };
-      }
-      if (norm) {
-        state.glossaryCache.set(norm, {
-          key,
-          word: wordPopoverTitle.textContent,
-          meaning,
-          gender: selectedGender || "",
-          tags,
+      const existing = buildMeaningIndex([...(state.cards || []), ...(state.reviewQueue || [])]).get(norm);
+      if (existing?.cardId) {
+        await updateCard(db, state.username, existing.cardId, { back: meaning, nounGender: selectedGender || null });
+      } else {
+        const folderId = wordPopoverFolderSelect?.value || state.selectedFolderId || "";
+        if (!folderId) throw new Error("missing-folder");
+        await createOrUpdateVocabCard(db, state.username, {
+          folderId,
+          front: wordPopoverTitle.textContent,
+          back: meaning,
+          nounGender: selectedGender || null,
+          tags: ["vocab"],
         });
-      }
-      if (state.activeWordContext?.cardId && meaning) {
-        if (state.activeWordContext.isShared && state.activeWordContext.role !== "editor") {
-          showToast("Solo el editor puede guardar glosario en la tarjeta.", "error");
-        } else {
-          const ownerUid = state.activeWordContext.ownerUid || state.username;
-          const activeCard = state.reviewQueue.find((card) => card.id === state.activeWordContext.cardId)
-            || state.cards.find((card) => card.id === state.activeWordContext.cardId);
-          const nextGlossary = buildCardGlossaryPayload(activeCard, wordPopoverTitle.textContent, meaning);
-          await updateCard(db, ownerUid, state.activeWordContext.cardId, {
-            glossary: nextGlossary,
-          });
-          updateCardGlossaryLocal(state.activeWordContext.cardId, nextGlossary);
-        }
       }
       showToast("Significado guardado.");
       wordPopoverEditing = false;
       wordPopoverEditor.classList.add("hidden");
       updateWordPopoverMeaning(meaning);
-      {
-        const folderId = wordPopoverFolderSelect?.value || "";
-        if (folderId && cleanedMeaning) {
-          await createOrUpdateVocabCard(db, state.username, {
-            folderId,
-            front: wordPopoverTitle.textContent,
-            back: cleanedMeaning,
-            tags: [...tags, "vocab"],
-          });
-        }
-      }
-      state.knownWordsIndex = null;
+      state.meaningIndex = null;
       refreshCurrentReviewCard();
     } catch (error) {
       handleErrorToast(error, "No se pudo guardar el glosario.");
@@ -2632,9 +2588,9 @@ async function openWordMeaningPopup(payload) {
     return;
   }
   ensureWordPopover();
-  const norm = normalizeWordCacheKey(word);
-  const key = norm ? await buildWordKey(norm) : "";
-  state.activeWordKey = key;
+  const norm = normalizeMeaningWord(word);
+  const existing = buildMeaningIndex([...(state.cards || []), ...(state.reviewQueue || [])]).get(norm);
+  state.activeWordKey = existing?.cardId || null;
   state.activeWordNorm = norm;
   wordPopoverTitle.textContent = word;
   wordPopoverAnchor = anchorRect;
@@ -2655,49 +2611,14 @@ async function openWordMeaningPopup(payload) {
   wordPopoverGenderButtons?.forEach((btn)=>btn.classList.remove("active","is-active"));
   wordPopover.classList.remove("hidden");
   positionWordPopover();
-  const lexiconMeaning = norm ? resolveLexiconMeaning(norm) : "";
-  if (lexiconMeaning) {
-    updateWordPopoverMeaning(lexiconMeaning);
-    positionWordPopover();
-    return;
+  updateWordPopoverMeaning(existing?.meaning || "");
+  if (existing?.gender) {
+    wordPopover.dataset.gender = existing.gender;
+    wordPopoverGenderButtons?.forEach((btn) => btn.classList.toggle("active", btn.dataset.gender === existing.gender));
   }
-  if (norm && state.glossaryCache.has(norm)) {
-    const cached = state.glossaryCache.get(norm);
-    updateWordPopoverMeaning(cached.meaning || "");
-    positionWordPopover();
-    return;
-  }
-  try {
-    const db = getDb();
-    const entry = await fetchGlossaryWord(db, state.username, key);
-    if (entry) {
-      const normalized = normalizeWordCacheKey(entry.wn || entry.w || word);
-      state.glossaryCache.set(normalized, {
-        key,
-        word: entry.w || word,
-        meaning: entry.m || entry.meaning || "",
-        tags: entry.tags ? Object.keys(entry.tags) : [],
-      });
-      updateWordPopoverMeaning(entry.m || entry.meaning || "");
-    } else {
-      updateWordPopoverMeaning("");
-  if (wordPopoverFolderSelect) {
-    wordPopoverFolderSelect.innerHTML = "";
-    const entries = Object.entries(state.folders || {});
-    entries.forEach(([id, folder]) => {
-      const op = document.createElement("option");
-      op.value = id;
-      op.textContent = folder?.name || id;
-      wordPopoverFolderSelect.appendChild(op);
-    });
-  }
-  wordPopover.dataset.gender = "";
-  wordPopoverGenderButtons?.forEach((btn)=>btn.classList.remove("active","is-active"));
-    }
-    positionWordPopover();
-  } catch (error) {
-    handleErrorToast(error, "No se pudo cargar la palabra.");
-  }
+  if (wordPopoverInput) wordPopoverInput.value = existing?.meaning || "";
+  if (wordPopoverFolderSelect && existing?.folderId) wordPopoverFolderSelect.value = existing.folderId;
+  positionWordPopover();
 }
 
 const openWordPopover = openWordMeaningPopup;
@@ -4721,7 +4642,7 @@ function handleReviewPointerDown(event) {
   if (elements.screenReviewPlayer?.classList.contains("hidden")) return;
   if (event.button && event.button !== 0) return;
   if (wordPopover && !wordPopover.classList.contains("hidden")) return;
-  if (event.target.closest("[data-clickable-word]")) return;
+  if (event.target.closest(".chunky-word")) return;
   swipeState.active = true;
   swipeState.pointerId = event.pointerId;
   swipeState.startX = event.clientX;
@@ -6061,7 +5982,7 @@ if (elements.cardModalClose) {
 }
 
 document.addEventListener("click", (event) => {
-  const wordEl = event.target.closest("[data-clickable-word]");
+  const wordEl = event.target.closest(".chunky-word");
   if (!wordEl) return;
   event.stopPropagation();
   const word = wordEl.dataset.word;
@@ -6271,7 +6192,7 @@ document.addEventListener(
   "pointerdown",
   (event) => {
     if (wordPopover && !wordPopover.classList.contains("hidden")) {
-      if (!event.target.closest(".word-popover") && !event.target.closest("[data-clickable-word]")) {
+      if (!event.target.closest(".word-popover") && !event.target.closest(".chunky-word")) {
         closeWordPopover();
         event.stopPropagation();
         event.preventDefault();

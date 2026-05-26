@@ -1455,7 +1455,7 @@ canvas.mini-chart {
   border-color: rgba(251, 113, 133, 0.6);
 }
 
-.word {
+.chunky-word {
   display: inline-block;
   padding: 2px 4px;
   border-radius: 6px;
@@ -1463,13 +1463,13 @@ canvas.mini-chart {
   cursor: pointer;
 }
 
-.word.has-meaning {
+.chunky-word.has-meaning {
   background: transparent;
   color: #facc15;
 }
 
-.word:active,
-.word:hover {
+.chunky-word:active,
+.chunky-word:hover {
   background: rgba(139, 92, 246, 0.2);
   color: #fff;
 }
@@ -1530,9 +1530,9 @@ canvas.mini-chart {
 }
 
 
-.word--der { text-decoration: underline; text-decoration-color: #60a5fa; text-decoration-thickness: 2px; }
-.word--die { text-decoration: underline; text-decoration-color: #f472b6; text-decoration-thickness: 2px; }
-.word--das { text-decoration: underline; text-decoration-color: #34d399; text-decoration-thickness: 2px; }
+.chunky-word.word--der { text-decoration: underline; text-decoration-color: #60a5fa; text-decoration-thickness: 2px; }
+.chunky-word.word--die { text-decoration: underline; text-decoration-color: #f472b6; text-decoration-thickness: 2px; }
+.chunky-word.word--das { text-decoration: underline; text-decoration-color: #34d399; text-decoration-thickness: 2px; }
 .word-popover__folder { width: 100%; margin-top: 8px; border-radius: 10px; }
 .word-popover__genders { display:flex; gap:8px; margin-bottom:8px; }
 .word-popover input {
