@@ -206,6 +206,7 @@ let reviewEditCardId = null;
 let reviewEditType = "basic";
 let reviewEditFront = null;
 let reviewEditBack = null;
+let reviewEditFolderSelect = null;
 let reviewEditClozeText = null;
 let reviewEditClozeAnswers = null;
 let reviewEditOrderTokens = null;
@@ -1923,6 +1924,10 @@ function ensureReviewEditModal() {
           <span>Reverso</span>
           <textarea rows="3"></textarea>
         </label>
+        <label class="field" data-review-field="folder">
+          <span>Carpeta</span>
+          <select></select>
+        </label>
         <label class="field hidden" data-review-field="cloze-text">
           <span>Texto cloze (usa ____ para el hueco)</span>
           <textarea rows="3"></textarea>
@@ -1967,6 +1972,7 @@ function ensureReviewEditModal() {
   document.body.appendChild(reviewEditModal);
   const basicFrontField = reviewEditModal.querySelector("[data-review-field=\"basic-front\"]");
   const basicBackField = reviewEditModal.querySelector("[data-review-field=\"basic-back\"]");
+  const folderField = reviewEditModal.querySelector("[data-review-field=\"folder\"]");
   const clozeTextField = reviewEditModal.querySelector("[data-review-field=\"cloze-text\"]");
   const clozeAnswersField = reviewEditModal.querySelector("[data-review-field=\"cloze-answers\"]");
   const orderTokensField = reviewEditModal.querySelector("[data-review-field=\"order-tokens\"]");
@@ -1975,6 +1981,7 @@ function ensureReviewEditModal() {
   reviewEditOrderHelp = reviewEditModal.querySelector("[data-review-field=\"order-help\"]");
   reviewEditFront = basicFrontField.querySelector("textarea");
   reviewEditBack = basicBackField.querySelector("textarea");
+  reviewEditFolderSelect = folderField.querySelector("select");
   reviewEditClozeText = clozeTextField.querySelector("textarea");
   reviewEditClozeAnswers = clozeAnswersField.querySelector("input");
   reviewEditOrderTokens = orderTokensField.querySelector("textarea");
@@ -2007,6 +2014,18 @@ function openReviewEditModal(card) {
   reviewEditType = resolvedCard.type || "basic";
   reviewEditFront.value = resolvedCard.front || "";
   reviewEditBack.value = resolvedCard.back || "";
+  if (reviewEditFolderSelect) {
+    const folders = Object.values(state.folders || {});
+    reviewEditFolderSelect.innerHTML = "";
+    folders.forEach((folder) => {
+      const option = document.createElement("option");
+      option.value = folder.id;
+      option.textContent = `${folder.emoji || "📁"} ${folder.name || "Carpeta"}`;
+      reviewEditFolderSelect.appendChild(option);
+    });
+    reviewEditFolderSelect.value = resolvedCard.folderId || "";
+    reviewEditFolderSelect.disabled = reviewEditIsShared && reviewEditRole !== "editor";
+  }
   reviewEditClozeText.value = resolvedCard.clozeText || "";
   reviewEditClozeAnswers.value = (resolvedCard.clozeAnswers || []).join(" | ");
   if (reviewEditOrderTokens) {
@@ -2065,6 +2084,7 @@ async function handleReviewEditSave() {
   const ownerUid = reviewEditOwnerUid || state.username;
   const nextFront = reviewEditFront.value.trim();
   const nextBack = reviewEditBack.value.trim();
+  const nextFolderId = reviewEditFolderSelect?.value || "";
   const nextClozeText = reviewEditClozeText.value.trim();
   const nextClozeAnswers = reviewEditClozeAnswers.value
     .split("|")
@@ -2124,6 +2144,7 @@ async function handleReviewEditSave() {
       orderLabelsCatalog,
       orderTokenLabels,
       labels: legacyOrderLabels,
+      folderId: nextFolderId || null,
     });
     if (result?.status === "duplicate") {
       showToast("Duplicado omitido.");
@@ -2143,6 +2164,7 @@ async function handleReviewEditSave() {
         orderLabelsCatalog,
         orderTokenLabels,
         labels: legacyOrderLabels,
+        folderId: nextFolderId || null,
       };
     };
     state.reviewQueue = state.reviewQueue.map(updateCardLocal);
@@ -2161,6 +2183,7 @@ async function handleReviewEditSave() {
         orderLabelsCatalog,
         orderTokenLabels,
         labels: legacyOrderLabels,
+        folderId: nextFolderId || null,
       });
     }
     if (reviewEditType === "order") {
@@ -4189,7 +4212,7 @@ function renderReviewCard(card, showBack = false) {
       backText.className = "review-back";
       const normalizedVerbCard = ensureCardConjugationStructure(resolvedCard);
       const blocks = getCardConjugationBlocks(normalizedVerbCard);
-      if (resolvedCard.cardGrammarType === "verb" && blocks.length) {
+      if (blocks.length) {
         const kpi = document.createElement("div");
         kpi.className = "review-conj-tabs";
         const active = reviewConjugationHeading && blocks.some((b) => b.heading === reviewConjugationHeading)
