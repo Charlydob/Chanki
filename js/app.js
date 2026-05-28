@@ -251,6 +251,7 @@ const swipeState = {
 let cardBackManuallyEdited = false;
 let cardFrontManuallyEdited = false;
 let currentGrammarType = "normal";
+let cardModalLanguageOverride = null;
 let cardNounGender = null;
 const VERB_TEMPLATE = "[verbo]\nich -\ndu -\ner / sie / es -\nwir -\nihr -\nsie / Sie -";
 let cardLastTranslation = "";
@@ -261,11 +262,23 @@ let reviewConjugationHeading = "";
 const LANGUAGE_LABELS = { es: "Español", de: "Alemán", ru: "Ruso", en: "Inglés" };
 const LANGUAGE_INPUT_CLASSES = ["lang-bg-es", "lang-bg-de", "lang-bg-ru"];
 
-function getActiveFolderLanguages() {
+function getBaseFolderLanguages() {
   const folder = state.folders?.[state.selectedFolderId] || {};
   return {
     sourceLang: folder?.sourceLang || "es",
     targetLang: folder?.targetLang || "de",
+  };
+}
+
+function getActiveFolderLanguages() {
+  return cardModalLanguageOverride || getBaseFolderLanguages();
+}
+
+function getCardLanguages(card = {}) {
+  const base = getBaseFolderLanguages();
+  return {
+    sourceLang: card?.sourceLang || base.sourceLang,
+    targetLang: card?.targetLang || base.targetLang,
   };
 }
 const SPEECH_LANGUAGE_MAP = { es: ["es-ES", "es"], de: ["de-DE", "de"], en: ["en-US", "en"] };
@@ -425,12 +438,34 @@ async function lookupWord(word, source, target, signal, contextText = "") {
   console.info("[translate:success]", { mode: "word", source, target, word: clean, translated });
   return translated;
 }
+function swapCardLanguages() {
+  const current = getActiveFolderLanguages();
+  cardModalLanguageOverride = {
+    sourceLang: current.targetLang,
+    targetLang: current.sourceLang,
+  };
+  const frontValue = elements.cardFront?.value || "";
+  const backValue = elements.cardBack?.value || "";
+  if (elements.cardFront) elements.cardFront.value = backValue;
+  if (elements.cardBack) elements.cardBack.value = frontValue;
+  cardFrontManuallyEdited = Boolean(elements.cardFront?.value);
+  cardBackManuallyEdited = Boolean(elements.cardBack?.value);
+  updateCardLanguageLabels();
+  autoResizeTextarea(elements.cardFront);
+  autoResizeTextarea(elements.cardBack);
+  refreshTranslateCta();
+  updateVerbReversoLink();
+  console.info("[chanki:lang-swap]", { sourceLang: cardModalLanguageOverride.sourceLang, targetLang: cardModalLanguageOverride.targetLang });
+}
+
 function updateCardLanguageLabels() {
   const { sourceLang, targetLang } = getActiveFolderLanguages();
   const sourceName = LANGUAGE_LABELS[sourceLang] || sourceLang.toUpperCase();
   const targetName = LANGUAGE_LABELS[targetLang] || targetLang.toUpperCase();
   if (elements.cardFrontLabel) elements.cardFrontLabel.textContent = `Frente (${sourceName})`;
   if (elements.cardBackLabel) elements.cardBackLabel.textContent = `Reverso (${targetName})`;
+  if (elements.cardFront) elements.cardFront.placeholder = `Texto en ${sourceName}`;
+  if (elements.cardBack) elements.cardBack.placeholder = `Texto en ${targetName}`;
   LANGUAGE_INPUT_CLASSES.forEach((className) => {
     elements.cardFront?.classList.remove(className);
     elements.cardBack?.classList.remove(className);
@@ -442,8 +477,9 @@ async function runCardTranslation(direction, { force = false } = {}) {
   if (elements.cardType?.value !== "basic") return;
   if (cardTranslateAbortController) cardTranslateAbortController.abort();
   cardTranslateAbortController = new AbortController();
-  const sourceText = direction === "es-de" ? elements.cardFront.value : elements.cardBack.value;
-  const hasTarget = direction === "es-de" ? String(elements.cardBack.value || "").trim() : String(elements.cardFront.value || "").trim();
+  const isSourceToTarget = direction === "source-target" || direction === "es-de";
+  const sourceText = isSourceToTarget ? elements.cardFront.value : elements.cardBack.value;
+  const hasTarget = isSourceToTarget ? String(elements.cardBack.value || "").trim() : String(elements.cardFront.value || "").trim();
   if (hasTarget && !force) {
     const ok = window.confirm("El campo destino tiene texto. ¿Sobrescribir?");
     if (!ok) return;
@@ -456,7 +492,7 @@ async function runCardTranslation(direction, { force = false } = {}) {
     console.info("[translate:phrase]", { direction, source, target });
     const translated = await translateStructuredText(sourceText, source, target, cardTranslateAbortController.signal, elements.cardTranslateContext?.value || "");
     if (!isSingleWord(sourceText)) elements.cardTranslateContextField?.classList.add("hidden");
-    if (direction === "es-de") { elements.cardBack.value = translated; autoResizeTextarea(elements.cardBack); }
+    if (isSourceToTarget) { elements.cardBack.value = translated; autoResizeTextarea(elements.cardBack); }
     else { elements.cardFront.value = translated; autoResizeTextarea(elements.cardFront); }
     refreshTranslateCta();
     cardLastTranslation = translated;
@@ -1912,6 +1948,9 @@ function openCardModal(card = null) {
   state.cardModalOpenFromFoldersRoot = openedFromFoldersRoot;
   editingCardId = resolvedCard ? resolvedCard.id : null;
   elements.cardModalTitle.textContent = resolvedCard ? "Editar tarjeta" : "Nueva tarjeta";
+  cardModalLanguageOverride = resolvedCard
+    ? getCardLanguages(resolvedCard)
+    : getBaseFolderLanguages();
   renderCardFolderSelector({
     openedFromFoldersRoot,
     selectedFolderId: resolvedCard?.folderId || state.cardModalLastSelectedFolderId || state.selectedFolderId || "",
@@ -2316,6 +2355,7 @@ async function handleReviewEditSave() {
 function closeCardModal() {
   showOverlay(elements.cardModal, false);
   editingCardId = null;
+  cardModalLanguageOverride = null;
 }
 
 function toConjugationBlocksFromMap(conjugations = []) {
@@ -2408,10 +2448,54 @@ function renderCardConjugationTabs(blocks = [], activeHeading = "") {
   };
 }
 
+function extractInfinitiveFromText(text = "") {
+  const source = String(text || "");
+  const bracket = source.match(/^\s*\[([^\]\n]+)\]/m);
+  if (bracket?.[1] && !/^(verb|verbo)$/i.test(bracket[1].trim())) return bracket[1].trim();
+  const explicit = source.match(/(?:infinitiv|infinitivo|verb(?:o)?|verbo)\s*[:\-]?\s*([A-Za-zÄÖÜäöüß]+(?:n|en))\b/i);
+  if (explicit?.[1]) return explicit[1].trim();
+  const singleHeading = source.split(/\n+/).map((line) => line.trim()).find((line) => /^[A-Za-zÄÖÜäöüß]+(?:n|en)$/.test(line));
+  return singleHeading || "";
+}
+
+function inferInfinitiveFromBlocks(blocks = []) {
+  const present = blocks.find((block) => String(block.heading || "").includes("PRÄSENS")) || blocks[0];
+  const plural = present?.lines?.find((line) => ["wir", "sie / Sie"].includes(line.pronoun) && line.value && line.value !== "-");
+  return plural?.value || "";
+}
+
+function addInfinitiveHeaderToBlock(block, infinitive = "") {
+  if (!block) return block;
+  const cleanInfinitive = String(infinitive || "").trim();
+  const body = (block.lines || []).map((line) => `${line.pronoun} ${line.value || "-"}`.trim()).join("\n");
+  return {
+    ...block,
+    raw: cleanInfinitive ? `[${cleanInfinitive}]\n${body}` : (block.raw || body),
+    infinitive: cleanInfinitive || block.infinitive || "",
+  };
+}
+
+function clearVerbConjugationState({ clearTemplate = false } = {}) {
+  if (elements.cardBack?.dataset) {
+    delete elements.cardBack.dataset.conjugationBlocks;
+    delete elements.cardBack.dataset.activeConjugationHeading;
+  }
+  if (elements.cardVerbPaste) elements.cardVerbPaste.value = "";
+  if (clearTemplate && elements.cardBack && String(elements.cardBack.value || "").trim() === VERB_TEMPLATE.trim()) {
+    elements.cardBack.value = "";
+    autoResizeTextarea(elements.cardBack);
+  }
+  renderCardConjugationTabs([], "");
+}
+
 function applyReversoConjugationPaste(raw = "") {
   const parsed = parseGermanConjugationPaste(raw);
   if (!parsed) return;
-  const deduped = dedupeConjugationBlocks(parsed.blocks || []);
+  const parsedBlocks = dedupeConjugationBlocks(parsed.blocks || []);
+  const infinitive = extractInfinitiveFromText(raw)
+    || extractInfinitiveFromText(elements.cardBack?.value || "")
+    || inferInfinitiveFromBlocks(parsedBlocks);
+  const deduped = parsedBlocks.map((block) => addInfinitiveHeaderToBlock(block, infinitive));
   const firstBlock = deduped[0];
   elements.cardBack.dataset.conjugationBlocks = JSON.stringify(deduped);
   if (firstBlock?.heading) elements.cardBack.dataset.activeConjugationHeading = firstBlock.heading;
@@ -2419,6 +2503,7 @@ function applyReversoConjugationPaste(raw = "") {
   renderCardConjugationTabs(deduped, firstBlock?.heading || "");
   autoResizeTextarea(elements.cardBack);
   updateVerbReversoLink();
+  console.info("[chanki:verb-paste-parse]", { infinitive, blockCount: deduped.length, firstHeading: firstBlock?.heading || null });
 }
 
 function syncGrammarControls() {
@@ -2427,9 +2512,14 @@ function syncGrammarControls() {
     btn.classList.toggle("active", isActive);
     btn.classList.toggle("is-active", isActive);
   });
-  elements.cardVerbToolsField?.classList.toggle("hidden", currentGrammarType !== "verb");
+  const showVerbFields = currentGrammarType === "verb";
+  elements.cardVerbToolsField?.classList.toggle("hidden", !showVerbFields);
   elements.cardNounToolsField?.classList.toggle("hidden", currentGrammarType !== "noun");
   elements.cardNounGenderField?.classList.toggle("hidden", currentGrammarType !== "noun");
+  let currentBlocks = [];
+  try { currentBlocks = JSON.parse(elements.cardBack?.dataset?.conjugationBlocks || "[]"); } catch {}
+  renderCardConjugationTabs(showVerbFields ? currentBlocks : [], elements.cardBack?.dataset?.activeConjugationHeading || "");
+  console.info("[chanki:verb-fields-toggle]", { visible: showVerbFields, currentGrammarType });
   elements.cardNounGender?.querySelectorAll("[data-noun-gender]").forEach((btn) => {
     const isActive = btn.dataset.nounGender === cardNounGender;
     btn.classList.toggle("active", isActive);
@@ -2441,15 +2531,20 @@ function syncGrammarControls() {
 function setGrammarType(nextGrammarType = "normal") {
   const next = ["normal", "verb", "noun"].includes(nextGrammarType) ? nextGrammarType : "normal";
   const previous = currentGrammarType;
+  if (previous === next) return;
   currentGrammarType = next;
   cardNounGender = currentGrammarType === "noun" ? cardNounGender : null;
-  if (elements.cardFront) elements.cardFront.value = "";
-  if (elements.cardBack) elements.cardBack.value = currentGrammarType === "verb" ? VERB_TEMPLATE : "";
-  if (elements.cardExample) elements.cardExample.value = "";
+  if (previous === "verb" && currentGrammarType !== "verb") {
+    clearVerbConjugationState({ clearTemplate: true });
+  }
+  if (currentGrammarType === "verb" && !String(elements.cardBack?.value || "").trim()) {
+    elements.cardBack.value = VERB_TEMPLATE;
+    autoResizeTextarea(elements.cardBack);
+  }
   autoResizeTextarea(elements.cardFront);
   autoResizeTextarea(elements.cardBack);
   autoResizeTextarea(elements.cardExample);
-  console.info("[grammar:set]", { previous, next: currentGrammarType });
+  console.info("[chanki:type-change]", { previous, next: currentGrammarType });
   syncGrammarControls();
   updateVerbReversoLink();
 }
@@ -3691,6 +3786,7 @@ async function handleSaveCard() {
   }
   const ownerUid = getActiveOwnerUid();
   const type = elements.cardType.value;
+  const { sourceLang, targetLang } = getActiveFolderLanguages();
   const front = elements.cardFront.value.trim();
   let back = elements.cardBack.value.trim();
   let conjugationBlocks = [];
@@ -3772,6 +3868,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
+        sourceLang,
+        targetLang,
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
         conjugationBlocks,
@@ -3804,6 +3902,8 @@ async function handleSaveCard() {
         orderTokenLabels,
         labels: legacyOrderLabels,
         tags: tagsToMap(finalTags),
+        sourceLang,
+        targetLang,
         cardGrammarType: currentGrammarType,
         nounGender: currentGrammarType === "noun" ? (cardNounGender || null) : null,
         conjugationBlocks,
@@ -3944,7 +4044,7 @@ function ensureOrderState(card) {
 function renderReviewCard(card, showBack = false) {
   elements.reviewCard.innerHTML = "";
   const resolvedCard = resolveLegacyOrderCard(card);
-  const { sourceLang, targetLang } = getActiveFolderLanguages();
+  const { sourceLang, targetLang } = getCardLanguages(resolvedCard);
   elements.reviewCard.classList.remove("review-card--der", "review-card--die", "review-card--das");
   if (resolvedCard?.cardGrammarType === "noun" && resolvedCard?.nounGender) {
     elements.reviewCard.classList.add(`review-card--${resolvedCard.nounGender}`);
@@ -4687,15 +4787,6 @@ async function handleReviewRating(rating) {
   } catch (error) {
     handleErrorToast(error, "No se pudo guardar el repaso.");
     return;
-  }
-
-  if (rating === "error") {
-    const reinjectedCard = {
-      ...card,
-      srs: { ...nextSrs },
-    };
-    state.reviewQueue.splice(state.currentIndex + 1, 0, reinjectedCard);
-    state.sessionTotal += 1;
   }
 
   state.sessionStats.answeredCount += 1;
@@ -5796,6 +5887,14 @@ if (elements.cardFolderSelect) {
   });
   elements.cardFolderSelect.addEventListener("change", () => {
     state.cardModalLastSelectedFolderId = elements.cardFolderSelect.value || "";
+    if (!editingCardId) {
+      const folder = state.folders?.[state.cardModalLastSelectedFolderId] || {};
+      cardModalLanguageOverride = {
+        sourceLang: folder.sourceLang || "es",
+        targetLang: folder.targetLang || "de",
+      };
+      updateCardLanguageLabels();
+    }
   });
 }
 
@@ -5973,11 +6072,12 @@ if (elements.cardGrammarType) {
     const button = event.target.closest("[data-grammar-type]");
     if (!button) return;
     const next = button.dataset.grammarType || "normal";
-    console.info("[grammar:click]", { next, eventType: event.type });
     setGrammarType(next);
   };
   elements.cardGrammarType.addEventListener("click", handleGrammarTypePointer);
-  elements.cardGrammarType.addEventListener("touchstart", handleGrammarTypePointer, { passive: true });
+}
+if (elements.cardLangSwap) {
+  elements.cardLangSwap.addEventListener("click", swapCardLanguages);
 }
 if (elements.cardNounGender) {
   elements.cardNounGender.addEventListener("click", (event) => {
