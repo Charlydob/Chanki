@@ -829,6 +829,24 @@ textarea {
   background-color: var(--input-bg);
   background-blend-mode: soft-light;
 }
+
+.card-lang-swap-row {
+  display: flex;
+  justify-content: center;
+  margin: -6px 0 2px;
+}
+
+.card-lang-swap {
+  width: 42px;
+  min-width: 42px;
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 17px;
+  line-height: 1;
+}
+
 .lang-bg-ru {
   border-color: rgba(59, 130, 246, 0.6) !important;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 4px rgba(59, 130, 246, 0.08);

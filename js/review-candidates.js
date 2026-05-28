@@ -1,5 +1,6 @@
 import { getDb } from "../lib/firebase.js";
 import { fetchCardsForSearch } from "../lib/rtdb.js";
+import { normalizeSrs } from "../lib/srs.js";
 import { BUCKET_ORDER, canonicalizeBucketId, getReviewFolderSelections } from "./shared.js";
 
 function mapToTags(tagsMap) {
@@ -65,11 +66,21 @@ export function getReviewCandidates(state, cards, folders) {
   const withoutExclude = withInclude.filter((card) => !cardMatchesExclude(mapToTags(card.tags), excludeTags));
   reductions.push({ filter: `excludeTags=${excludeTags.length ? excludeTags.join(",") : "none"}`, before: withInclude.length, after: withoutExclude.length });
 
-  const candidates = withoutExclude.filter((card) => {
+  const now = Date.now();
+  const dueCards = withoutExclude.map((card) => ({
+    ...card,
+    srs: normalizeSrs(card.srs, card.createdAt),
+  })).filter((card) => {
+    const nextReviewAt = Number(card.srs?.nextReviewAt || card.srs?.dueAt || card.createdAt || 0);
+    return nextReviewAt <= now;
+  });
+  reductions.push({ filter: "due=nextReviewAt<=now", before: withoutExclude.length, after: dueCards.length });
+
+  const candidates = dueCards.filter((card) => {
     const bucket = canonicalizeBucketId(card.srs?.bucket) || "new";
     return selectedBuckets.includes(bucket);
   });
-  reductions.push({ filter: `buckets=${selectedBuckets.join(",")}`, before: withoutExclude.length, after: candidates.length });
+  reductions.push({ filter: `buckets=${selectedBuckets.join(",")}`, before: dueCards.length, after: candidates.length });
 
   return {
     candidates,
@@ -88,6 +99,7 @@ export function getReviewCandidates(state, cards, folders) {
         folderId: card.folderId || null,
         tags: mapToTags(card.tags),
         bucketInfo: canonicalizeBucketId(card.srs?.bucket) || "new",
+        nextReviewAt: card.srs?.nextReviewAt || card.srs?.dueAt || null,
       })),
     },
   };
