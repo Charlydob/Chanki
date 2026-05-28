@@ -4766,12 +4766,35 @@ async function handleReviewRating(rating) {
     rating = "good";
   }
   const db = getDb();
+  console.info("[chanki:review:answer]", {
+    cardId: card.id,
+    rating,
+    previousBucket: card.srs?.bucket || null,
+    previousReviewCount: card.srs?.reviewCount ?? card.srs?.repetitions ?? card.srs?.reps ?? 0,
+    previousNextReviewAt: card.srs?.nextReviewAt || card.srs?.dueAt || null,
+  });
   const nextSrs = computeNextSrs(card.srs, rating);
   const ownerUid = context.ownerUid || state.username;
   try {
     await updateReview(db, ownerUid, card, nextSrs);
     card.srs = nextSrs;
     state.cardCache.set(card.id, card);
+    console.info("[chanki:review:update-card]", {
+      cardId: card.id,
+      ownerUid,
+      bucket: nextSrs.bucket,
+      reviewCount: nextSrs.reviewCount,
+      mistakes: nextSrs.mistakes,
+      correctCount: nextSrs.correctCount,
+      lastReviewedAt: nextSrs.lastReviewedAt,
+      nextReviewAt: nextSrs.nextReviewAt,
+      intervalMinutes: nextSrs.intervalMinutes,
+      intervalDays: nextSrs.intervalDays,
+      ease: nextSrs.ease,
+      srsLevel: nextSrs.srsLevel,
+      averageGrade: nextSrs.averageGrade,
+      reviewScore: nextSrs.reviewScore,
+    });
 
     const now = Date.now();
     const minutesDelta = state.lastReviewAt ? Math.max(0, Math.round((now - state.lastReviewAt) / 60000)) : 0;
@@ -4792,6 +4815,7 @@ async function handleReviewRating(rating) {
   state.sessionStats.answeredCount += 1;
   state.currentIndex += 1;
   showNextReviewCard();
+  await refreshReviewBucketCounts();
   await loadStats();
 }
 

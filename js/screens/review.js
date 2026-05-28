@@ -38,17 +38,9 @@ export async function refreshReviewBucketCounts() {
     selectedBuckets,
   };
   const cards = await loadReviewCards(state);
-  const { candidates } = getReviewCandidates(normalizedState, cards, state.folders || {});
-  const combinedCounts = BUCKET_ORDER.reduce((acc, bucket) => {
-    acc[bucket] = 0;
-    return acc;
-  }, {});
-  candidates.forEach((card) => {
-    const bucket = canonicalizeBucketId(card.srs?.bucket) || "new";
-    combinedCounts[bucket] = (combinedCounts[bucket] || 0) + 1;
-  });
-  state.reviewBucketCounts = combinedCounts;
-  state.reviewFilterVisibleCount = Object.values(combinedCounts).reduce((sum, value) => sum + value, 0);
+  const { bucketCounts, candidates } = getReviewCandidates(normalizedState, cards, state.folders || {});
+  state.reviewBucketCounts = bucketCounts;
+  state.reviewFilterVisibleCount = candidates.length;
   if (elements.reviewFilterSummary) {
     elements.reviewFilterSummary.textContent = state.reviewFilterVisibleCount
       ? `Tarjetas visibles: ${state.reviewFilterVisibleCount}`
