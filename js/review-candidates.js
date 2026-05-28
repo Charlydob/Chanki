@@ -1,6 +1,6 @@
 import { getDb } from "../lib/firebase.js";
 import { fetchCardsForSearch } from "../lib/rtdb.js";
-import { normalizeSrs } from "../lib/srs.js";
+import { classifySrsBucket, normalizeSrs } from "../lib/srs.js";
 import { BUCKET_ORDER, canonicalizeBucketId, getReviewFolderSelections } from "./shared.js";
 
 function mapToTags(tagsMap) {
@@ -67,23 +67,51 @@ export function getReviewCandidates(state, cards, folders) {
   reductions.push({ filter: `excludeTags=${excludeTags.length ? excludeTags.join(",") : "none"}`, before: withInclude.length, after: withoutExclude.length });
 
   const now = Date.now();
-  const dueCards = withoutExclude.map((card) => ({
-    ...card,
-    srs: normalizeSrs(card.srs, card.createdAt),
-  })).filter((card) => {
-    const nextReviewAt = Number(card.srs?.nextReviewAt || card.srs?.dueAt || card.createdAt || 0);
-    return nextReviewAt <= now;
+  const classifiedCards = withoutExclude.map((card) => {
+    const srs = normalizeSrs(card.srs, card.createdAt);
+    const bucket = classifySrsBucket(srs, now);
+    const classified = {
+      ...card,
+      srs: {
+        ...srs,
+        bucket,
+      },
+    };
+    console.debug("[chanki:buckets:card-classified]", {
+      cardId: card.id,
+      bucket,
+      reviewCount: classified.srs.reviewCount,
+      lastReviewedAt: classified.srs.lastReviewedAt || null,
+      nextReviewAt: classified.srs.nextReviewAt || null,
+    });
+    return classified;
   });
-  reductions.push({ filter: "due=nextReviewAt<=now", before: withoutExclude.length, after: dueCards.length });
+  reductions.push({ filter: "classified=srs", before: withoutExclude.length, after: classifiedCards.length });
 
-  const candidates = dueCards.filter((card) => {
+  const bucketCounts = BUCKET_ORDER.reduce((acc, bucket) => {
+    acc[bucket] = 0;
+    return acc;
+  }, {});
+  classifiedCards.forEach((card) => {
+    const bucket = canonicalizeBucketId(card.srs?.bucket) || "new";
+    bucketCounts[bucket] = (bucketCounts[bucket] || 0) + 1;
+  });
+  console.debug("[chanki:buckets:summary]", {
+    counts: bucketCounts,
+    total: classifiedCards.length,
+    selectedBuckets,
+  });
+
+  const candidates = classifiedCards.filter((card) => {
     const bucket = canonicalizeBucketId(card.srs?.bucket) || "new";
     return selectedBuckets.includes(bucket);
   });
-  reductions.push({ filter: `buckets=${selectedBuckets.join(",")}`, before: dueCards.length, after: candidates.length });
+  reductions.push({ filter: `buckets=${selectedBuckets.join(",")}`, before: classifiedCards.length, after: candidates.length });
 
   return {
     candidates,
+    bucketCounts,
+    classifiedCards,
     debug: {
       totalCardsLoaded: cards.length,
       folderMode: folderState.mode,
