@@ -1,4 +1,4 @@
-const CACHE_NAME = "chanki-static-v3";
+const CACHE_NAME = "chanki-static-v4";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   "./js/screens/review.js",
   "./js/screens/stats.js",
   "./js/screens/folders.js",
+  "./js/vocabulary-sync-ui.js",
   "./manifest.webmanifest",
   "./lib/firebase.js",
   "./lib/data-layer.js",
@@ -19,6 +20,11 @@ const STATIC_ASSETS = [
   "./lib/srs.js",
   "./lib/parser.js",
   "./lib/stats.js",
+  "./lib/vocabulary-model.js",
+  "./lib/vocabulary-headers.js",
+  "./lib/vocabulary-selection.js",
+  "./lib/vocabulary-store.js",
+  "./lib/vocabulary-sync.js",
 ];
 
 self.addEventListener("install", (event) => {

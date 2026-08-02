@@ -74,6 +74,7 @@ import { initDailyScreen } from "./screens/daily.js";
 import { getVisibleReviewFolderOptionIds, renderFolders, renderFolderSelects } from "./screens/folders.js";
 import { getReviewCandidates, loadReviewCards } from "./review-candidates.js";
 import { translateTextWithFallback } from "./translationService.js";
+import { initVocabularySyncUI } from "./vocabulary-sync-ui.js";
 
 const APP_VERSION = "0.15.0";
 const APP_BASE = (() => {
@@ -6546,4 +6547,5 @@ window.addEventListener("hashchange", () => {
   applyRoute();
 });
 
+initVocabularySyncUI({ showToast });
 initApp();
