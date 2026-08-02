@@ -60,6 +60,24 @@
             </div>
           </div>
           <div id="folders-breadcrumb" class="muted"></div>
+          <section id="vocabulary-sync-deck" class="card vocabulary-sync" aria-labelledby="vocabulary-sync-title">
+            <div class="screen__header">
+              <div><h3 id="vocabulary-sync-title">🇩🇪 Alemán · 1000 palabras</h3><p class="muted" data-vocab-count>0 tarjetas</p></div>
+              <div class="row"><button class="button ghost" type="button" data-vocab-new>Nueva tarjeta</button><button class="button ghost" type="button" data-vocab-edit>Editar actual</button><button class="button" type="button" data-vocab-sync>Sincronizar ahora</button></div>
+            </div>
+            <div class="vocabulary-sync__status" role="status" aria-live="polite"><span data-vocab-pending>Cambios pendientes: 0</span><span data-vocab-last>Sincronización pendiente de configurar</span></div>
+            <form class="hidden vocabulary-sync__form" data-vocab-form>
+              <input type="hidden" name="id" />
+              <label class="field"><span>Artículo</span><select name="article"><option value="">—</option><option>der</option><option>die</option><option>das</option></select></label>
+              <label class="field"><span>Palabra alemana *</span><input name="word" required autocomplete="off" /></label>
+              <label class="field"><span>Significado</span><input name="meaning" /></label>
+              <label class="field"><span>Frase de ejemplo</span><textarea name="exampleSentence"></textarea></label>
+              <label class="field"><span>Traducción de la frase</span><textarea name="exampleTranslation"></textarea></label>
+              <label class="field"><span><input type="checkbox" name="learned" value="true" /> Marcar como sabida</span></label>
+              <div class="row"><button class="button" type="submit">Guardar</button><button class="button ghost" type="button" data-vocab-cancel>Cancelar</button></div>
+            </form>
+            <div class="vocabulary-sync__card" data-vocab-card></div>
+          </section>
           <div id="folder-tree" class="list"></div>
         </section>
         <div id="folder-move-modal" class="overlay hidden">
